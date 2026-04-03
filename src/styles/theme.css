@@ -1,0 +1,27 @@
+:root {
+  --primary: #00c4a0;
+  --font-family: 'Fira Sans', sans-serif;
+  --text-base: 13px;
+  --text-sm: 12px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #0a0e0f;
+  color: #dfe9ec;
+  font-family: var(--font-family);
+  font-size: var(--text-base);
+}
+
+/* Match calendar icon colour to placeholder text: rgba(161,189,198,0.5) */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) sepia(0.15) saturate(0.8) hue-rotate(155deg) opacity(0.5);
+  cursor: pointer;
+}
