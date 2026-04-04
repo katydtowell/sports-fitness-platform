@@ -1,5 +1,6 @@
 import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
 import { FormField, SectionCard, ReadOnlyField, formatDateDisplay } from "./FormField";
+import { CancelConfirmModal } from "./CancelConfirmModal";
 
 // ── Shared imperative handle ──────────────────────────────────────────────────
 // Each editable section exposes save() and undo() so App.tsx can trigger
@@ -9,6 +10,7 @@ export interface SectionHandle {
   save: () => void;
   undo: () => void;       // reset draft + exit edit mode (used by Cancel Editing)
   resetDraft: () => void; // reset draft only, stay in edit mode (used by Undo All)
+  hasChanges: () => boolean; // true if draft differs from last saved state
 }
 
 // ── Per-section Save / Cancel buttons ────────────────────────────────────────
@@ -89,14 +91,17 @@ export interface ProfileSectionProps {
   initialData?: ProfileData;
   /** Called after any save with the full saved profile data. */
   onSave?: (data: ProfileData) => void;
+  /** Fired when local edit mode starts (true) or ends (false). */
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 export const ProfileSection = forwardRef<SectionHandle, ProfileSectionProps>(
-  ({ isEditing = false, onCancelAll, initialData, onSave }, ref) => {
+  ({ isEditing = false, onCancelAll, initialData, onSave, onEditingChange }, ref) => {
     const [savedData, setSavedData] = useState<ProfileData>(initialData ?? DEFAULT_PROFILE);
     const [draftData, setDraftData] = useState<ProfileData>(initialData ?? DEFAULT_PROFILE);
     const [localEditing, setLocalEditing] = useState(false);
     const [validationAttempted, setValidationAttempted] = useState(false);
+    const [showCancelModal, setShowCancelModal] = useState(false);
 
     const REQUIRED_FIELDS: (keyof ProfileData)[] = ["firstName", "lastName", "gender", "dateOfBirth", "billingStatus", "date", "endDate"];
     const hasErrors = REQUIRED_FIELDS.some((f) => !draftData[f]);
@@ -112,24 +117,34 @@ export const ProfileSection = forwardRef<SectionHandle, ProfileSectionProps>(
       if (isEditing) setDraftData({ ...savedRef.current });
     }, [isEditing]);
 
-    // Always-current ref so imperative save() can call the latest onSave callback.
+    // Always-current refs so imperative methods never capture stale callbacks.
     const onSaveRef = useRef(onSave);
     onSaveRef.current = onSave;
+    const onEditingChangeRef = useRef(onEditingChange);
+    onEditingChangeRef.current = onEditingChange;
+
+    function setLocalEditingAndNotify(val: boolean) {
+      setLocalEditing(val);
+      onEditingChangeRef.current?.(val);
+    }
 
     // Global Save All / Undo All called by App.tsx via ref.
     useImperativeHandle(ref, () => ({
       save() {
         const d = draftRef.current;
         setSavedData({ ...d });
-        setLocalEditing(false);
+        setLocalEditingAndNotify(false);
         onSaveRef.current?.({ ...d });
       },
       undo() {
         setDraftData({ ...savedRef.current });
-        setLocalEditing(false);
+        setLocalEditingAndNotify(false);
       },
       resetDraft() {
         setDraftData({ ...savedRef.current });
+      },
+      hasChanges() {
+        return JSON.stringify(draftRef.current) !== JSON.stringify(savedRef.current);
       },
     }), []);
 
@@ -137,21 +152,21 @@ export const ProfileSection = forwardRef<SectionHandle, ProfileSectionProps>(
 
     function handleEdit() {
       setDraftData({ ...savedRef.current });
-      setLocalEditing(true);
+      setLocalEditingAndNotify(true);
     }
 
     function handleSave() {
       if (hasErrors) { setValidationAttempted(true); return; }
       const d = draftRef.current;
       setSavedData({ ...d });
-      setLocalEditing(false);
+      setLocalEditingAndNotify(false);
       setValidationAttempted(false);
       onSave?.({ ...d });
     }
 
     function handleCancel() {
       setDraftData({ ...savedRef.current });
-      setLocalEditing(false);
+      setLocalEditingAndNotify(false);
       setValidationAttempted(false);
     }
 
@@ -164,14 +179,28 @@ export const ProfileSection = forwardRef<SectionHandle, ProfileSectionProps>(
       setDraftData((prev) => ({ ...prev, [key]: val }));
     }
 
-    // Header Cancel: exit global mode if active, otherwise exit local edit.
-    const handleHeaderCancel = isEditing ? (onCancelAll ?? handleCancel) : handleCancel;
+    // Section Cancel link: guard with modal if there are unsaved changes.
+    function handleCancelClick() {
+      const changed = JSON.stringify(draftRef.current) !== JSON.stringify(savedRef.current);
+      if (changed) {
+        setShowCancelModal(true);
+      } else {
+        handleCancel();
+      }
+    }
 
     return (
+      <>
+      {showCancelModal && (
+        <CancelConfirmModal
+          onConfirm={() => { setShowCancelModal(false); handleCancel(); }}
+          onKeepEditing={() => setShowCancelModal(false)}
+        />
+      )}
       <SectionCard
         title="Profile Information"
         onEdit={handleEdit}
-        onCancel={handleHeaderCancel}
+        onCancel={handleCancelClick}
         isEditing={effectiveEditing}
       >
         {effectiveEditing ? (
@@ -219,6 +248,7 @@ export const ProfileSection = forwardRef<SectionHandle, ProfileSectionProps>(
           </div>
         )}
       </SectionCard>
+      </>
     );
   }
 );

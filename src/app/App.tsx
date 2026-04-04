@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useIsMobile } from "./components/ui/use-mobile";
 import { useIsTablet } from "./components/ui/use-tablet";
 import { Layout } from "./components/layout/Layout";
+import { SIDEBAR_WIDTH } from "./components/layout/Sidebar";
 import { ClientHeaderCard } from "./components/client-profile/ClientHeaderCard";
 import { SectionNav, navGroups } from "./components/client-profile/SectionNav";
 import { ProfileSection, DEFAULT_PROFILE }           from "./components/client-profile/ProfileSection";
@@ -19,69 +20,87 @@ import { EquipmentSection }      from "./components/client-profile/EquipmentSect
 import { EmergencySection }      from "./components/client-profile/EmergencySection";
 import { DocumentsSection }      from "./components/client-profile/DocumentsSection";
 import { SubscriptionsSection }  from "./components/client-profile/SubscriptionsSection";
+import { CancelConfirmModal }    from "./components/client-profile/CancelConfirmModal";
 
 // ── Bottom save bar ───────────────────────────────────────────────────────────
 // Only rendered when the page is in global edit mode.
 
 function BottomBar({
+  onCancel,
   onUndoAll,
   onSaveAll,
 }: {
+  onCancel: () => void;
   onUndoAll: () => void;
   onSaveAll: () => void;
 }) {
   const isMobile = useIsMobile();
 
+  const secondaryStyle: React.CSSProperties = {
+    background: "transparent",
+    border: "1px solid rgba(161,189,198,0.35)",
+    borderRadius: "6px",
+    color: "#a1bdc6",
+    fontSize: "var(--text-base)",
+    fontFamily: "var(--font-family)",
+    padding: "8px 16px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+
   return (
     <div
-      className="flex items-center justify-end"
       style={{
         position: "fixed",
         bottom: 0,
-        left: isMobile ? 0 : 68,
+        left: isMobile ? 0 : SIDEBAR_WIDTH,
         right: 0,
         height: "56px",
         background: "#182023",
         borderTop: "1px solid rgba(161,189,198,0.2)",
         padding: "0 16px",
-        gap: "10px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
         zIndex: 50,
         fontFamily: "var(--font-family)",
       }}
     >
+      {/* Far-left: Cancel */}
       <button
-        onClick={onUndoAll}
+        onClick={onCancel}
         style={{
-          background: "transparent",
-          border: "1px solid rgba(161,189,198,0.35)",
-          borderRadius: "6px",
-          color: "#a1bdc6",
-          fontSize: "var(--text-base)",
-          fontFamily: "var(--font-family)",
-          padding: "8px 16px",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
+          ...secondaryStyle,
+          color: "#e05a5a",
+          border: "1px solid rgba(224,90,90,0.4)",
         }}
       >
-        Undo All
+        Cancel
       </button>
-      <button
-        onClick={onSaveAll}
-        style={{
-          background: "#00c4a0",
-          border: "none",
-          borderRadius: "6px",
-          color: "#0a0e0f",
-          fontSize: "var(--text-base)",
-          fontWeight: 600,
-          fontFamily: "var(--font-family)",
-          padding: "8px 16px",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        Save All
-      </button>
+
+      {/* Right side: Undo All + Save All */}
+      <div style={{ display: "flex", gap: "10px" }}>
+        <button onClick={onUndoAll} style={secondaryStyle}>
+          Undo All
+        </button>
+        <button
+          onClick={onSaveAll}
+          style={{
+            background: "#00c4a0",
+            border: "none",
+            borderRadius: "6px",
+            color: "#0a0e0f",
+            fontSize: "var(--text-base)",
+            fontWeight: 600,
+            fontFamily: "var(--font-family)",
+            padding: "8px 16px",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Save All
+        </button>
+      </div>
     </div>
   );
 }
@@ -95,6 +114,16 @@ export default function App() {
   const [activeSection, setActiveSection] = useState("Profile");
   const [avatarUrl, setAvatarUrl]         = useState<string | null>(null);
   const [globalEditMode, setGlobalEditMode] = useState(false);
+  // Tracks how many sections are locally (per-section) in edit mode.
+  const [localEditCount, setLocalEditCount] = useState(0);
+  // Modal shown when the bottom-bar Cancel is clicked with unsaved changes.
+  const [showCancelModal, setShowCancelModal] = useState(false);
+
+  function handleLocalEditingChange(editing: boolean) {
+    setLocalEditCount((prev) => editing ? prev + 1 : Math.max(0, prev - 1));
+  }
+
+  const showBottomBar = globalEditMode || localEditCount > 0;
 
   // Persistent saved data for each editable section — survives nav changes.
   const [savedProfileData,    setSavedProfileData]    = useState<ProfileData>(DEFAULT_PROFILE);
@@ -140,6 +169,19 @@ export default function App() {
     contactRef.current?.undo();
     additionalRef.current?.undo();
     setGlobalEditMode(false);
+  }
+
+  // Bottom-bar Cancel: show confirmation modal if any section has unsaved changes.
+  function handleBottomBarCancel() {
+    const anyChanges =
+      profileRef.current?.hasChanges() ||
+      contactRef.current?.hasChanges() ||
+      additionalRef.current?.hasChanges();
+    if (anyChanges) {
+      setShowCancelModal(true);
+    } else {
+      handleCancelAll();
+    }
   }
 
   // ── Breadcrumb ────────────────────────────────────────────────────────────
@@ -205,6 +247,7 @@ export default function App() {
           onCancelAll={handleCancelAll}
           initialData={savedProfileData}
           onSave={(data) => setSavedProfileData(data)}
+          onEditingChange={handleLocalEditingChange}
         />
         <ContactSection
           ref={contactRef}
@@ -212,6 +255,7 @@ export default function App() {
           onCancelAll={handleCancelAll}
           initialData={savedContactData}
           onSave={(data) => setSavedContactData(data)}
+          onEditingChange={handleLocalEditingChange}
         />
         <CustomFieldsSection />
         <AdditionalInfoSection
@@ -220,6 +264,7 @@ export default function App() {
           onCancelAll={handleCancelAll}
           initialData={savedAdditionalData}
           onSave={(data) => setSavedAdditionalData(data)}
+          onEditingChange={handleLocalEditingChange}
         />
       </>
     );
@@ -276,12 +321,18 @@ export default function App() {
   );
 
   return (
+    <>
+    {showCancelModal && (
+      <CancelConfirmModal
+        onConfirm={() => { setShowCancelModal(false); handleCancelAll(); }}
+        onKeepEditing={() => setShowCancelModal(false)}
+      />
+    )}
     <Layout
       mobileFixedContent={mobileFixedContent}
-      // BottomBar is only present while global edit mode is active.
       bottomBar={
-        globalEditMode
-          ? <BottomBar onUndoAll={handleUndoAll} onSaveAll={handleSaveAll} />
+        showBottomBar
+          ? <BottomBar onCancel={handleBottomBarCancel} onUndoAll={handleUndoAll} onSaveAll={handleSaveAll} />
           : undefined
       }
     >
@@ -310,11 +361,12 @@ export default function App() {
         <div
           className="flex flex-col gap-4"
           // Extra bottom padding when the BottomBar is present
-          style={{ paddingBottom: globalEditMode ? "56px" : "0" }}
+          style={{ paddingBottom: showBottomBar ? "56px" : "0" }}
         >
           {renderSection()}
         </div>
       )}
     </Layout>
+    </>
   );
 }

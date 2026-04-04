@@ -1,10 +1,8 @@
 /**
  * Layout — shared shell for all EZFacility pages.
  *
- * The TopNav is fixed at the top at every breakpoint. On mobile, any
- * page-specific content (breadcrumb, header card, section nav) can be
- * passed via `mobileFixedContent` and it will appear in the same fixed
- * strip directly below the TopNav.
+ * Renders the fixed TopNav, the fixed Sidebar (desktop/tablet),
+ * the optional MoreToolsDrawer, and the scrollable main content area.
  *
  * Usage:
  *   <Layout mobileFixedContent={<MyPageHeader />} bottomBar={<SaveBar />}>
@@ -15,8 +13,10 @@
 import { useRef, useState, useEffect, type ReactNode } from "react";
 import { useIsMobile } from "../ui/use-mobile";
 import { useIsTablet } from "../ui/use-tablet";
-import { TopNav } from "../client-profile/TopNav";
-import { Sidebar } from "../client-profile/Sidebar";
+import { TopNav } from "./TopNav";
+import { Sidebar, SIDEBAR_WIDTH } from "./Sidebar";
+import { MoreToolsDrawer } from "./MoreToolsDrawer";
+import { useNavMenu } from "./useNavMenu";
 
 interface LayoutProps {
   /** Main scrollable page content. */
@@ -38,6 +38,14 @@ interface LayoutProps {
 export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps) {
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
+  const nav = useNavMenu();
+
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
+
+  // Close More Tools drawer when switching to mobile
+  useEffect(() => {
+    if (isMobile) setMoreToolsOpen(false);
+  }, [isMobile]);
 
   // Measure the fixed strip height at every breakpoint so the scrollable
   // content is always padded far enough down to clear it.
@@ -54,6 +62,14 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
     setFixedStripH(el.getBoundingClientRect().height);
     return () => ro.disconnect();
   }, [isMobile]); // re-measure when layout mode changes
+
+  // Handle drag from More Tools drawer → sidebar (pin the item)
+  const handleSidebarDrop = (e: React.DragEvent) => {
+    const id = e.dataTransfer.getData("text/plain");
+    if (id && nav.moreItems.some((item) => item.id === id)) {
+      nav.pinItem(id);
+    }
+  };
 
   return (
     <div
@@ -73,7 +89,13 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
           borderBottom: "1px solid rgba(161,189,198,0.15)",
         }}
       >
-        <TopNav />
+        <TopNav
+          homeItem={nav.homeItem}
+          pinnedItems={nav.pinnedItems}
+          moreItems={nav.moreItems}
+          activeId={nav.activeId}
+          onSelect={nav.setActiveId}
+        />
         {/* Mobile-only page content (breadcrumb, header card, section nav) */}
         {isMobile && mobileFixedContent && (
           <div style={{ padding: "0 12px" }}>
@@ -82,14 +104,46 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
         )}
       </div>
 
-      {/* ── Body: sidebar + main content, pushed below fixed strip ── */}
+      {/* ── Fixed sidebar — desktop & tablet only ── */}
+      {!isMobile && (
+        <Sidebar
+          homeItem={nav.homeItem}
+          pinnedItems={nav.pinnedItems}
+          activeId={nav.activeId}
+          onSelect={nav.setActiveId}
+          onReorder={nav.reorderPinned}
+          onUnpin={nav.unpinItem}
+          onPinItem={nav.pinItem}
+          onOpenMoreTools={() => setMoreToolsOpen((v) => !v)}
+          moreToolsOpen={moreToolsOpen}
+        />
+      )}
+
+      {/* ── More Tools drawer — desktop & tablet only ── */}
+      {!isMobile && (
+        <MoreToolsDrawer
+          open={moreToolsOpen}
+          items={nav.moreItems}
+          onClose={() => setMoreToolsOpen(false)}
+          onNavigate={(id) => {
+            nav.setActiveId(id);
+            setMoreToolsOpen(false);
+          }}
+          onPinItem={nav.pinItem}
+          onUnpinItem={nav.unpinItem}
+        />
+      )}
+
+      {/* ── Body: main content, pushed below fixed strip & beside sidebar ── */}
       <div
         className="flex flex-1"
-        style={{ paddingTop: fixedStripH }}
+        style={{
+          paddingTop: fixedStripH,
+          marginLeft: isMobile ? 0 : SIDEBAR_WIDTH,
+        }}
+        onDragOver={(e) => { e.preventDefault(); }}
+        onDrop={handleSidebarDrop}
       >
-        {/* Sidebar shown on desktop and tablet only */}
-        {!isMobile && <Sidebar />}
-
         <main
           className="flex flex-col flex-1 min-w-0"
           style={{

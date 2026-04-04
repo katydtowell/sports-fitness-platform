@@ -1,6 +1,7 @@
 import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
 import { FormField, SectionCard, ReadOnlyField } from "./FormField";
 import { SectionHandle, SectionSaveButton } from "./ProfileSection";
+import { CancelConfirmModal } from "./CancelConfirmModal";
 
 export interface AdditionalData {
   referredBy: string;
@@ -23,13 +24,15 @@ export interface AdditionalInfoSectionProps {
   onCancelAll?: () => void;
   initialData?: AdditionalData;
   onSave?: (data: AdditionalData) => void;
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 export const AdditionalInfoSection = forwardRef<SectionHandle, AdditionalInfoSectionProps>(
-  ({ isEditing = false, onCancelAll, initialData, onSave }, ref) => {
+  ({ isEditing = false, onCancelAll, initialData, onSave, onEditingChange }, ref) => {
     const [savedData, setSavedData] = useState<AdditionalData>(initialData ?? DEFAULT_ADDITIONAL);
     const [draftData, setDraftData] = useState<AdditionalData>(initialData ?? DEFAULT_ADDITIONAL);
     const [localEditing, setLocalEditing] = useState(false);
+    const [showCancelModal, setShowCancelModal] = useState(false);
 
     const savedRef = useRef(savedData);
     const draftRef = useRef(draftData);
@@ -42,20 +45,30 @@ export const AdditionalInfoSection = forwardRef<SectionHandle, AdditionalInfoSec
 
     const onSaveRef = useRef(onSave);
     onSaveRef.current = onSave;
+    const onEditingChangeRef = useRef(onEditingChange);
+    onEditingChangeRef.current = onEditingChange;
+
+    function setLocalEditingAndNotify(val: boolean) {
+      setLocalEditing(val);
+      onEditingChangeRef.current?.(val);
+    }
 
     useImperativeHandle(ref, () => ({
       save() {
         const d = draftRef.current;
         setSavedData({ ...d });
-        setLocalEditing(false);
+        setLocalEditingAndNotify(false);
         onSaveRef.current?.({ ...d });
       },
       undo() {
         setDraftData({ ...savedRef.current });
-        setLocalEditing(false);
+        setLocalEditingAndNotify(false);
       },
       resetDraft() {
         setDraftData({ ...savedRef.current });
+      },
+      hasChanges() {
+        return JSON.stringify(draftRef.current) !== JSON.stringify(savedRef.current);
       },
     }), []);
 
@@ -63,19 +76,19 @@ export const AdditionalInfoSection = forwardRef<SectionHandle, AdditionalInfoSec
 
     function handleEdit() {
       setDraftData({ ...savedRef.current });
-      setLocalEditing(true);
+      setLocalEditingAndNotify(true);
     }
 
     function handleSave() {
       const d = draftRef.current;
       setSavedData({ ...d });
-      setLocalEditing(false);
+      setLocalEditingAndNotify(false);
       onSave?.({ ...d });
     }
 
     function handleCancel() {
       setDraftData({ ...savedRef.current });
-      setLocalEditing(false);
+      setLocalEditingAndNotify(false);
     }
 
     function handleUndo() {
@@ -86,13 +99,27 @@ export const AdditionalInfoSection = forwardRef<SectionHandle, AdditionalInfoSec
       setDraftData((prev) => ({ ...prev, [key]: val }));
     }
 
-    const handleHeaderCancel = isEditing ? (onCancelAll ?? handleCancel) : handleCancel;
+    function handleCancelClick() {
+      const changed = JSON.stringify(draftRef.current) !== JSON.stringify(savedRef.current);
+      if (changed) {
+        setShowCancelModal(true);
+      } else {
+        handleCancel();
+      }
+    }
 
     return (
+      <>
+      {showCancelModal && (
+        <CancelConfirmModal
+          onConfirm={() => { setShowCancelModal(false); handleCancel(); }}
+          onKeepEditing={() => setShowCancelModal(false)}
+        />
+      )}
       <SectionCard
         title="Additional Information"
         onEdit={handleEdit}
-        onCancel={handleHeaderCancel}
+        onCancel={handleCancelClick}
         isEditing={effectiveEditing}
       >
         {effectiveEditing ? (
@@ -128,6 +155,7 @@ export const AdditionalInfoSection = forwardRef<SectionHandle, AdditionalInfoSec
           </div>
         )}
       </SectionCard>
+      </>
     );
   }
 );
