@@ -7,6 +7,7 @@
 
 import { Users, Search, Plus, ChevronRight } from "lucide-react";
 import { useTheme } from "../layout/ThemeContext";
+import { PageMenu } from "../client-profile/PageMenu";
 import { CLIENTS } from "../../data/clients";
 
 interface ClientsPageProps {
@@ -18,7 +19,7 @@ export function ClientsPage({ onOpenClient }: ClientsPageProps) {
   const { palette } = useTheme();
 
   return (
-    <div style={{ fontFamily: "var(--font-family)", padding: "8px 0" }}>
+    <div style={{ fontFamily: "var(--font-family)", padding: "20px 0" }}>
       {/* Page header */}
       <div
         style={{
@@ -42,6 +43,7 @@ export function ClientsPage({ onOpenClient }: ClientsPageProps) {
           >
             Clients
           </h1>
+          <PageMenu />
         </div>
 
         <button
