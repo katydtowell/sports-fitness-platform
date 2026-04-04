@@ -21,6 +21,8 @@ import { EmergencySection }      from "./components/client-profile/EmergencySect
 import { DocumentsSection }      from "./components/client-profile/DocumentsSection";
 import { SubscriptionsSection }  from "./components/client-profile/SubscriptionsSection";
 import { CancelConfirmModal }    from "./components/client-profile/CancelConfirmModal";
+import { PaymentPanel }          from "./components/client-profile/PaymentPanel";
+import { useSidePanel }          from "./components/layout/SidePanelContext";
 
 // ── Bottom save bar ───────────────────────────────────────────────────────────
 // Only rendered when the page is in global edit mode.
@@ -110,6 +112,7 @@ function BottomBar({
 export default function App() {
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
+  const { openPanel } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Profile");
   const [avatarUrl, setAvatarUrl]         = useState<string | null>(null);
@@ -182,6 +185,11 @@ export default function App() {
     } else {
       handleCancelAll();
     }
+  }
+
+  // ── Side panel: payment ────────────────────────────────────────────────────
+  function handleDueClick() {
+    openPanel(<PaymentPanel />, { size: "quarter", title: "Payment" });
   }
 
   // ── Breadcrumb ────────────────────────────────────────────────────────────
@@ -307,7 +315,7 @@ export default function App() {
   const mobileFixedContent = (
     <>
       {breadcrumb}
-      <ClientHeaderCard avatarUrl={avatarUrl} onAvatarChange={setAvatarUrl} onEditClient={() => setGlobalEditMode(true)} onCancelEditing={handleCancelAll} isEditing={globalEditMode} displayName={clientDisplayName} displayAge={clientAge} />
+      <ClientHeaderCard avatarUrl={avatarUrl} onAvatarChange={setAvatarUrl} onEditClient={() => setGlobalEditMode(true)} onCancelEditing={handleCancelAll} isEditing={globalEditMode} displayName={clientDisplayName} displayAge={clientAge} onDueClick={handleDueClick} />
       <div style={{ paddingBottom: "8px" }}>
         <SectionNav
           activeSection={activeSection}
@@ -340,7 +348,7 @@ export default function App() {
       {!isMobile && (
         <>
           {breadcrumb}
-          <ClientHeaderCard avatarUrl={avatarUrl} onAvatarChange={setAvatarUrl} onEditClient={() => setGlobalEditMode(true)} onCancelEditing={handleCancelAll} isEditing={globalEditMode} displayName={clientDisplayName} displayAge={clientAge} />
+          <ClientHeaderCard avatarUrl={avatarUrl} onAvatarChange={setAvatarUrl} onEditClient={() => setGlobalEditMode(true)} onCancelEditing={handleCancelAll} isEditing={globalEditMode} displayName={clientDisplayName} displayAge={clientAge} onDueClick={handleDueClick} />
           <div className="flex items-start" style={{ gap: isTablet ? "10px" : "16px", marginTop: "8px" }}>
             <SectionNav
               activeSection={activeSection}

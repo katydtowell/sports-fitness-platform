@@ -9,11 +9,26 @@ interface StatChipProps {
   label: string;
   value: string;
   valueColor?: string;
+  onClick?: () => void;
 }
 
-function StatChip({ label, value, valueColor = "#dfe9ec" }: StatChipProps) {
+function StatChip({ label, value, valueColor = "#dfe9ec", onClick }: StatChipProps) {
   return (
-    <div className="flex flex-col justify-center" style={{ flex: 1, padding: "12px 20px", background: "#2D373B", borderRadius: "6px", minWidth: 0 }}>
+    <div
+      className="flex flex-col justify-center"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: "12px 20px",
+        background: "#2D373B",
+        borderRadius: "6px",
+        minWidth: 0,
+        cursor: onClick ? "pointer" : undefined,
+        transition: onClick ? "background 0.15s ease" : undefined,
+      }}
+      onMouseEnter={(e) => { if (onClick) (e.currentTarget as HTMLDivElement).style.background = "#3a474b"; }}
+      onMouseLeave={(e) => { if (onClick) (e.currentTarget as HTMLDivElement).style.background = "#2D373B"; }}
+    >
       <span style={{ color: "#a1bdc6", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "4px", whiteSpace: "nowrap" }}>{label}</span>
       <span style={{ color: valueColor, fontSize: "var(--text-xl)", fontWeight: 700, fontFamily: "var(--font-family)", whiteSpace: "nowrap" }}>{value}</span>
     </div>
@@ -21,9 +36,19 @@ function StatChip({ label, value, valueColor = "#dfe9ec" }: StatChipProps) {
 }
 
 // Mobile variant — tighter padding, smaller value text
-function StatChipMobile({ label, value, valueColor = "#dfe9ec" }: StatChipProps) {
+function StatChipMobile({ label, value, valueColor = "#dfe9ec", onClick }: StatChipProps) {
   return (
-    <div style={{ padding: "10px 12px", background: "#2D373B", borderRadius: "6px" }}>
+    <div
+      onClick={onClick}
+      style={{
+        padding: "10px 12px",
+        background: "#2D373B",
+        borderRadius: "6px",
+        cursor: onClick ? "pointer" : undefined,
+      }}
+      onMouseEnter={(e) => { if (onClick) (e.currentTarget as HTMLDivElement).style.background = "#3a474b"; }}
+      onMouseLeave={(e) => { if (onClick) (e.currentTarget as HTMLDivElement).style.background = "#2D373B"; }}
+    >
       <div style={{ color: "#a1bdc6", fontSize: "11px", fontFamily: "var(--font-family)", marginBottom: "3px" }}>{label}</div>
       <div style={{ color: valueColor, fontSize: "var(--text-base)", fontWeight: 700, fontFamily: "var(--font-family)" }}>{value}</div>
     </div>
@@ -204,9 +229,10 @@ interface ClientHeaderCardProps {
   isEditing?: boolean;
   displayName?: string;
   displayAge?: number | null;
+  onDueClick?: () => void;
 }
 
-export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCancelEditing, isEditing, displayName, displayAge }: ClientHeaderCardProps) {
+export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCancelEditing, isEditing, displayName, displayAge, onDueClick }: ClientHeaderCardProps) {
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const [modalOpen, setModalOpen]               = useState(false);
@@ -260,9 +286,9 @@ export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCa
 
   /* ── Mobile layout ─────────────────────────────────────────────────────── */
   if (isMobile) {
-    const allStats: { label: string; value: string; valueColor?: string }[] = [
+    const allStats: { label: string; value: string; valueColor?: string; onClick?: () => void }[] = [
       { label: "Balance",          value: "$275" },
-      { label: "Due",              value: "$150",       valueColor: "#e05a5a" },
+      { label: "Due",              value: "$150",       valueColor: "#e05a5a", onClick: onDueClick },
       { label: "Un-invoiced",      value: "($344.18)",  valueColor: "#e07a3a" },
       { label: "Membership No.",   value: "123456789" },
       { label: "Access Mode",      value: "Rule-based" },
@@ -328,8 +354,8 @@ export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCa
               zIndex: 80,
               boxShadow: "0 8px 20px rgba(0,0,0,0.4)",
             }}>
-              {allStats.map(({ label, value, valueColor }) => (
-                <StatChipMobile key={label} label={label} value={value} valueColor={valueColor} />
+              {allStats.map(({ label, value, valueColor, onClick }) => (
+                <StatChipMobile key={label} label={label} value={value} valueColor={valueColor} onClick={onClick} />
               ))}
             </div>
           )}
@@ -377,7 +403,7 @@ export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCa
             <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(161,189,198,0.12)" }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "10px" }}>
                 <StatChip label="Balance"        value="$275" />
-                <StatChip label="Due"            value="$150"       valueColor="#e05a5a" />
+                <StatChip label="Due"            value="$150"       valueColor="#e05a5a" onClick={onDueClick} />
                 <StatChip label="Un-invoiced"    value="($344.18)"  valueColor="#e07a3a" />
                 <StatChip label="Membership No." value="123456789" />
                 <StatChip label="Access Mode"    value="Rule-based" />
@@ -391,7 +417,7 @@ export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCa
             /* ── Desktop: single flex row ── */
             <div className="flex items-stretch gap-2" style={{ padding: "12px 16px", borderBottom: "1px solid rgba(161,189,198,0.12)" }}>
               <StatChip label="Balance"        value="$275" />
-              <StatChip label="Due"            value="$150"       valueColor="#e05a5a" />
+              <StatChip label="Due"            value="$150"       valueColor="#e05a5a" onClick={onDueClick} />
               <StatChip label="Un-invoiced"    value="($344.18)"  valueColor="#e07a3a" />
               <StatChip label="Membership No." value="123456789" />
               <StatChip label="Access Mode"    value="Rule-based" />

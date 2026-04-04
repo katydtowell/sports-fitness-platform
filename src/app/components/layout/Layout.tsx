@@ -16,7 +16,19 @@ import { useIsTablet } from "../ui/use-tablet";
 import { TopNav } from "./TopNav";
 import { Sidebar, SIDEBAR_WIDTH } from "./Sidebar";
 import { MoreToolsDrawer } from "./MoreToolsDrawer";
+import { SidePanel } from "./SidePanel";
+import { useSidePanel, type PanelSize } from "./SidePanelContext";
 import { useNavMenu } from "./useNavMenu";
+
+/** Convert a PanelSize token to a CSS calc() percentage of the main content area. */
+function panelWidthCss(size: PanelSize): string {
+  const fractions: Record<PanelSize, string> = {
+    quarter: "25%",
+    third:   "33.333%",
+    half:    "50%",
+  };
+  return fractions[size];
+}
 
 interface LayoutProps {
   /** Main scrollable page content. */
@@ -39,6 +51,7 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const nav = useNavMenu();
+  const { isOpen: panelOpen, size: panelSize } = useSidePanel();
 
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
@@ -140,6 +153,11 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
         style={{
           paddingTop: fixedStripH,
           marginLeft: isMobile ? 0 : SIDEBAR_WIDTH,
+          // Mobile & tablet: panel overlays (no push). Desktop: pushes content.
+          marginRight: panelOpen && !isMobile && !isTablet
+            ? panelWidthCss(panelSize)
+            : 0,
+          transition: "margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         }}
         onDragOver={(e) => { e.preventDefault(); }}
         onDrop={handleSidebarDrop}
@@ -157,6 +175,9 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
           {children}
         </main>
       </div>
+
+      {/* ── Side panel — slides in from the right ── */}
+      <SidePanel />
 
       {bottomBar}
     </div>
