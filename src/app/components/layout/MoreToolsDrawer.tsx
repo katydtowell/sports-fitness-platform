@@ -2,14 +2,15 @@ import { useCallback, useState, useEffect, useRef } from "react";
 import { X, GripVertical } from "lucide-react";
 import type { NavItem } from "./navTypes";
 import { SIDEBAR_WIDTH, DRAG_SOURCE_SIDEBAR, DRAG_SOURCE_DRAWER } from "./Sidebar";
+import { useTheme } from "./ThemeContext";
 
 // ── Badge chip ──────────────────────────────────────────────────────────────
-function Badge({ text }: { text: string }) {
+function Badge({ text, palette }: { text: string; palette: ReturnType<typeof useTheme>["palette"] }) {
   return (
     <span
       style={{
-        background: "#00c4a0",
-        color: "#0a0e0f",
+        background: palette.primary,
+        color: palette.surfaceBg,
         fontSize: "9px",
         fontWeight: 700,
         lineHeight: 1,
@@ -30,9 +31,10 @@ function Badge({ text }: { text: string }) {
 interface ToolRowProps {
   item: NavItem;
   onNavigate: (id: string) => void;
+  palette: ReturnType<typeof useTheme>["palette"];
 }
 
-function ToolRow({ item, onNavigate }: ToolRowProps) {
+function ToolRow({ item, onNavigate, palette }: ToolRowProps) {
   const Icon = item.icon;
   const [hover, setHover] = useState(false);
 
@@ -54,7 +56,7 @@ function ToolRow({ item, onNavigate }: ToolRowProps) {
         gap: "10px",
         padding: "10px 12px",
         borderRadius: "6px",
-        background: hover ? "rgba(161,189,198,0.08)" : "transparent",
+        background: hover ? palette.hoverBg : "transparent",
         cursor: "grab",
         transition: "background 0.1s",
         fontFamily: "var(--font-family)",
@@ -62,12 +64,12 @@ function ToolRow({ item, onNavigate }: ToolRowProps) {
     >
       <GripVertical
         size={14}
-        style={{ color: "#5a7a84", flexShrink: 0, opacity: 0.6 }}
+        style={{ color: palette.textDisabled, flexShrink: 0, opacity: 0.6 }}
       />
-      <Icon size={16} strokeWidth={1.5} style={{ color: "#a1bdc6", flexShrink: 0 }} />
+      <Icon size={16} strokeWidth={1.5} style={{ color: palette.textTertiary, flexShrink: 0 }} />
       <span
         style={{
-          color: "#dfe9ec",
+          color: palette.textPrimary,
           fontSize: "13px",
           fontWeight: 400,
           whiteSpace: "nowrap",
@@ -75,7 +77,7 @@ function ToolRow({ item, onNavigate }: ToolRowProps) {
       >
         {item.label}
       </span>
-      {item.badge && <Badge text={item.badge} />}
+      {item.badge && <Badge text={item.badge} palette={palette} />}
     </div>
   );
 }
@@ -100,6 +102,7 @@ export function MoreToolsDrawer({
   onPinItem,
   onUnpinItem,
 }: MoreToolsDrawerProps) {
+  const { palette } = useTheme();
   const drawerRef = useRef<HTMLDivElement>(null);
   const [isDropTarget, setIsDropTarget] = useState(false);
 
@@ -172,7 +175,7 @@ export function MoreToolsDrawer({
             inset: 0,
             top: 44,
             left: SIDEBAR_WIDTH,
-            background: "rgba(0,0,0,0.35)",
+            background: palette.backdrop,
             zIndex: 78,
           }}
         />
@@ -190,15 +193,15 @@ export function MoreToolsDrawer({
           left: SIDEBAR_WIDTH,
           bottom: 0,
           width: open ? DRAWER_WIDTH : 0,
-          background: "#182023",
-          borderRight: open ? "1px solid rgba(161,189,198,0.15)" : "none",
+          background: palette.surfacePrimary,
+          borderRight: open ? `1px solid ${palette.borderMedium}` : "none",
           zIndex: 79,
           overflow: "hidden",
-          transition: "width 0.2s ease",
+          transition: "width 0.2s ease, background 0.25s ease",
           display: "flex",
           flexDirection: "column",
           fontFamily: "var(--font-family)",
-          outline: isDropTarget ? "2px dashed #00c4a0" : "none",
+          outline: isDropTarget ? `2px dashed ${palette.primary}` : "none",
           outlineOffset: "-2px",
         }}
       >
@@ -209,13 +212,13 @@ export function MoreToolsDrawer({
             alignItems: "center",
             justifyContent: "space-between",
             padding: "14px 12px 10px",
-            borderBottom: "1px solid rgba(161,189,198,0.12)",
+            borderBottom: `1px solid ${palette.borderLight}`,
             flexShrink: 0,
           }}
         >
           <span
             style={{
-              color: "#dfe9ec",
+              color: palette.textPrimary,
               fontSize: "13px",
               fontWeight: 600,
               whiteSpace: "nowrap",
@@ -229,7 +232,7 @@ export function MoreToolsDrawer({
             style={{
               background: "transparent",
               border: "none",
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               cursor: "pointer",
               padding: "2px",
               display: "flex",
@@ -246,7 +249,7 @@ export function MoreToolsDrawer({
         <div
           style={{
             padding: "8px 12px 4px",
-            color: "#5a7a84",
+            color: palette.textDisabled,
             fontSize: "11px",
             lineHeight: 1.4,
             whiteSpace: "nowrap",
@@ -266,7 +269,7 @@ export function MoreToolsDrawer({
           {items.length === 0 ? (
             <div
               style={{
-                color: "#5a7a84",
+                color: palette.textDisabled,
                 fontSize: "12px",
                 padding: "16px 12px",
                 textAlign: "center",
@@ -279,6 +282,7 @@ export function MoreToolsDrawer({
               <ToolRow
                 key={item.id}
                 item={item}
+                palette={palette}
                 onNavigate={(id) => {
                   onNavigate(id);
                   onClose();

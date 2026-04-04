@@ -1,20 +1,22 @@
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 interface RelationshipRowProps {
   name: string;
   relationship: string;
   status: string;
+  palette: any;
 }
 
-function RelationshipRow({ name, relationship, status }: RelationshipRowProps) {
+function RelationshipRow({ name, relationship, status, palette }: RelationshipRowProps) {
   const isActive = status === "Active";
   return (
     <div
       className="flex items-center justify-between rounded-lg"
       style={{
         padding: "12px 16px",
-        background: "rgba(161,189,198,0.04)",
-        border: "1px solid rgba(161,189,198,0.1)",
+        background: palette.hoverBg,
+        border: `1px solid ${palette.borderLight}`,
         marginBottom: "8px",
       }}
     >
@@ -24,9 +26,9 @@ function RelationshipRow({ name, relationship, status }: RelationshipRowProps) {
           style={{
             width: "36px",
             height: "36px",
-            background: "rgba(0,196,160,0.15)",
-            border: "1px solid rgba(0,196,160,0.3)",
-            color: "#00c4a0",
+            background: `${palette.primary}1f`,
+            border: `1px solid ${palette.primary}4d`,
+            color: palette.primary,
             fontSize: "14px",
             fontWeight: 600,
             fontFamily: "var(--font-family)",
@@ -37,7 +39,7 @@ function RelationshipRow({ name, relationship, status }: RelationshipRowProps) {
         <div>
           <div
             style={{
-              color: "#dfe9ec",
+              color: palette.textPrimary,
               fontSize: "var(--text-base)",
               fontWeight: 500,
               fontFamily: "var(--font-family)",
@@ -47,7 +49,7 @@ function RelationshipRow({ name, relationship, status }: RelationshipRowProps) {
           </div>
           <div
             style={{
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               fontSize: "var(--text-sm)",
               fontFamily: "var(--font-family)",
             }}
@@ -59,7 +61,7 @@ function RelationshipRow({ name, relationship, status }: RelationshipRowProps) {
       <div className="flex items-center gap-3">
         <span
           style={{
-            color: isActive ? "#00c4a0" : "#a1bdc6",
+            color: isActive ? palette.primary : palette.textTertiary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
           }}
@@ -69,9 +71,9 @@ function RelationshipRow({ name, relationship, status }: RelationshipRowProps) {
         <button
           style={{
             background: "transparent",
-            border: "1px solid rgba(161,189,198,0.25)",
+            border: `1px solid ${palette.borderMedium}`,
             borderRadius: "4px",
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             padding: "4px 10px",
@@ -86,6 +88,7 @@ function RelationshipRow({ name, relationship, status }: RelationshipRowProps) {
 }
 
 export function RelationshipsSection() {
+  const { palette } = useTheme();
   const relationships = [
     { name: "Bob Smith", relationship: "Spouse", status: "Active" },
     { name: "Emily Smith", relationship: "Child", status: "Active" },
@@ -96,15 +99,15 @@ export function RelationshipsSection() {
     <SectionCard title="Relationships">
       <div style={{ marginBottom: "12px" }}>
         {relationships.map((r) => (
-          <RelationshipRow key={r.name} {...r} />
+          <RelationshipRow key={r.name} {...r} palette={palette} />
         ))}
       </div>
       <button
         style={{
           background: "transparent",
-          border: "1px dashed rgba(161,189,198,0.3)",
+          border: `1px dashed ${palette.borderMedium}`,
           borderRadius: "6px",
-          color: "#a1bdc6",
+          color: palette.textTertiary,
           fontSize: "var(--text-base)",
           fontFamily: "var(--font-family)",
           padding: "10px",

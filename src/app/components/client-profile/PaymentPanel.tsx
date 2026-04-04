@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { useTheme } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
 
 // ── Mock line items ──────────────────────────────────────────────────────────
@@ -29,41 +30,10 @@ const MOCK_LINE_ITEMS: LineItem[] = [
 
 const TOTAL_DUE = MOCK_LINE_ITEMS.reduce((sum, item) => sum + item.amount, 0);
 
-// ── Styles ───────────────────────────────────────────────────────────────────
-const labelStyle: React.CSSProperties = {
-  color: "#a1bdc6",
-  fontSize: "var(--text-sm)",
-  fontFamily: "var(--font-family)",
-  marginBottom: "6px",
-  display: "block",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  background: "#0a0e0f",
-  border: "1px solid rgba(161,189,198,0.25)",
-  borderRadius: "6px",
-  color: "#dfe9ec",
-  fontSize: "var(--text-base)",
-  fontFamily: "var(--font-family)",
-  padding: "10px 12px",
-  outline: "none",
-};
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  appearance: "none" as const,
-  backgroundImage:
-    "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23a1bdc6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 12px center",
-  paddingRight: "32px",
-  cursor: "pointer",
-};
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function PaymentPanel() {
+  const { palette } = useTheme();
   const { closePanel } = useSidePanel();
 
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -75,22 +45,53 @@ export function PaymentPanel() {
     closePanel();
   }
 
+  const labelStyle: React.CSSProperties = {
+    color: palette.textTertiary,
+    fontSize: "var(--text-sm)",
+    fontFamily: "var(--font-family)",
+    marginBottom: "6px",
+    display: "block",
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    background: palette.surfaceBg,
+    border: `1px solid ${palette.borderMedium}`,
+    borderRadius: "6px",
+    color: palette.textPrimary,
+    fontSize: "var(--text-base)",
+    fontFamily: "var(--font-family)",
+    padding: "10px 12px",
+    outline: "none",
+  };
+
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: "none" as const,
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23a1bdc6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 12px center",
+    paddingRight: "32px",
+    cursor: "pointer",
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* ── Amount Due banner ── */}
       <div
         style={{
-          background: "rgba(224,90,90,0.08)",
-          border: "1px solid rgba(224,90,90,0.25)",
+          background: `${palette.textError}14`,
+          border: `1px solid ${palette.textError}40`,
           borderRadius: "8px",
           padding: "16px",
           textAlign: "center",
         }}
       >
-        <div style={{ color: "#a1bdc6", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "4px" }}>
+        <div style={{ color: palette.textTertiary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "4px" }}>
           Total Amount Due
         </div>
-        <div style={{ color: "#e05a5a", fontSize: "24px", fontWeight: 700, fontFamily: "var(--font-family)" }}>
+        <div style={{ color: palette.textError, fontSize: "24px", fontWeight: 700, fontFamily: "var(--font-family)" }}>
           ${TOTAL_DUE.toFixed(2)}
         </div>
       </div>
@@ -99,7 +100,7 @@ export function PaymentPanel() {
       <div>
         <div
           style={{
-            color: "#dfe9ec",
+            color: palette.textPrimary,
             fontSize: "var(--text-base)",
             fontWeight: 600,
             fontFamily: "var(--font-family)",
@@ -117,13 +118,13 @@ export function PaymentPanel() {
                 justifyContent: "space-between",
                 alignItems: "flex-start",
                 padding: "12px 0",
-                borderBottom: "1px solid rgba(161,189,198,0.1)",
+                borderBottom: `1px solid ${palette.borderLight}`,
               }}
             >
               <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
                 <div
                   style={{
-                    color: "#dfe9ec",
+                    color: palette.textPrimary,
                     fontSize: "var(--text-base)",
                     fontFamily: "var(--font-family)",
                     lineHeight: 1.4,
@@ -133,7 +134,7 @@ export function PaymentPanel() {
                 </div>
                 <div
                   style={{
-                    color: "#a1bdc6",
+                    color: palette.textTertiary,
                     fontSize: "var(--text-sm)",
                     fontFamily: "var(--font-family)",
                     marginTop: "2px",
@@ -144,7 +145,7 @@ export function PaymentPanel() {
               </div>
               <div
                 style={{
-                  color: "#e05a5a",
+                  color: palette.textError,
                   fontSize: "var(--text-base)",
                   fontWeight: 600,
                   fontFamily: "var(--font-family)",
@@ -166,10 +167,10 @@ export function PaymentPanel() {
               marginTop: "4px",
             }}
           >
-            <div style={{ color: "#dfe9ec", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)" }}>
+            <div style={{ color: palette.textPrimary, fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)" }}>
               Total
             </div>
-            <div style={{ color: "#e05a5a", fontSize: "var(--text-base)", fontWeight: 700, fontFamily: "var(--font-family)" }}>
+            <div style={{ color: palette.textError, fontSize: "var(--text-base)", fontWeight: 700, fontFamily: "var(--font-family)" }}>
               ${TOTAL_DUE.toFixed(2)}
             </div>
           </div>
@@ -177,13 +178,13 @@ export function PaymentPanel() {
       </div>
 
       {/* ── Divider ── */}
-      <div style={{ height: "1px", background: "rgba(161,189,198,0.15)" }} />
+      <div style={{ height: "1px", background: palette.borderMedium }} />
 
       {/* ── Payment form ── */}
       <div>
         <div
           style={{
-            color: "#dfe9ec",
+            color: palette.textPrimary,
             fontSize: "var(--text-base)",
             fontWeight: 600,
             fontFamily: "var(--font-family)",
@@ -204,7 +205,7 @@ export function PaymentPanel() {
                   left: "12px",
                   top: "50%",
                   transform: "translateY(-50%)",
-                  color: "#a1bdc6",
+                  color: palette.textTertiary,
                   fontSize: "var(--text-base)",
                   fontFamily: "var(--font-family)",
                   pointerEvents: "none",
@@ -262,9 +263,9 @@ export function PaymentPanel() {
           style={{
             flex: 1,
             background: "transparent",
-            border: "1px solid rgba(161,189,198,0.35)",
+            border: `1px solid ${palette.outlineAction}`,
             borderRadius: "6px",
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-base)",
             fontFamily: "var(--font-family)",
             padding: "10px",
@@ -277,15 +278,16 @@ export function PaymentPanel() {
           onClick={handleSave}
           style={{
             flex: 1,
-            background: "#00c4a0",
+            background: palette.primary,
             border: "none",
             borderRadius: "6px",
-            color: "#0a0e0f",
+            color: palette.surfaceBg,
             fontSize: "var(--text-base)",
             fontWeight: 600,
             fontFamily: "var(--font-family)",
             padding: "10px",
             cursor: "pointer",
+            transition: "background 0.25s ease",
           }}
         >
           Save Payment

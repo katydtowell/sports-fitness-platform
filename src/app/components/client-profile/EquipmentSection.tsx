@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -80,16 +81,22 @@ const RENTALS: RentalItem[] = [
 
 // ── Style maps ────────────────────────────────────────────────────────────────
 
-const STATUS_STYLES: Record<FeeStatus, { color: string; background: string; border: string }> = {
-  Paid:     { color: "#00c4a0", background: "rgba(0,196,160,0.10)",  border: "1px solid rgba(0,196,160,0.28)"  },
-  Due:      { color: "#e8a020", background: "rgba(232,160,32,0.10)", border: "1px solid rgba(232,160,32,0.28)" },
-  Refunded: { color: "#8fa8b8", background: "rgba(143,168,184,0.10)",border: "1px solid rgba(143,168,184,0.25)"},
-};
+function getStatusStyles(status: FeeStatus, palette: any) {
+  const styleMap: Record<FeeStatus, { color: string; background: string; border: string }> = {
+    Paid:     { color: palette.primary, background: `${palette.primary}1a`, border: `1px solid ${palette.primary}47` },
+    Due:      { color: "#e8a020", background: "#e8a02019", border: "1px solid #e8a02047" },
+    Refunded: { color: palette.iconTertiary, background: `${palette.iconTertiary}19`, border: `1px solid ${palette.iconTertiary}40` },
+  };
+  return styleMap[status];
+}
 
-const KIND_STYLES: Record<ItemKind, { color: string; background: string; border: string; icon: string }> = {
-  Locker:    { color: "#e8a020", background: "rgba(232,160,32,0.10)",  border: "1px solid rgba(232,160,32,0.28)",  icon: "⊟" },
-  Equipment: { color: "#00c4a0", background: "rgba(0,196,160,0.10)",   border: "1px solid rgba(0,196,160,0.28)",   icon: "⊞" },
-};
+function getKindStyles(kind: ItemKind, palette: any) {
+  const styleMap: Record<ItemKind, { color: string; background: string; border: string; icon: string }> = {
+    Locker:    { color: "#e8a020", background: "#e8a02019", border: "1px solid #e8a02047", icon: "⊟" },
+    Equipment: { color: palette.primary, background: `${palette.primary}1a`, border: `1px solid ${palette.primary}47`, icon: "⊞" },
+  };
+  return styleMap[kind];
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -105,22 +112,22 @@ function formatMoney(n: number): string {
 
 // ── FeeRow ────────────────────────────────────────────────────────────────────
 
-function FeeRow({ fee }: { fee: FeeEntry }) {
-  const ss = STATUS_STYLES[fee.status];
+function FeeRow({ fee, palette }: { fee: FeeEntry; palette: any }) {
+  const ss = getStatusStyles(fee.status, palette);
   return (
     <div
       className="flex items-center justify-between"
       style={{
         padding: "7px 12px",
-        background: "rgba(161,189,198,0.03)",
-        borderBottom: "1px solid rgba(161,189,198,0.07)",
+        background: `${palette.surfaceSecondary}0d`,
+        borderBottom: `1px solid ${palette.borderLight}`,
       }}
     >
-      <span style={{ color: "#a1bdc6", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>
+      <span style={{ color: palette.textTertiary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>
         {fee.date}
       </span>
       <div className="flex items-center gap-3">
-        <span style={{ color: "#dfe9ec", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", fontWeight: 500 }}>
+        <span style={{ color: palette.textPrimary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", fontWeight: 500 }}>
           {formatMoney(fee.amount)}
         </span>
         <span
@@ -141,9 +148,9 @@ function FeeRow({ fee }: { fee: FeeEntry }) {
 
 // ── RentalCard ────────────────────────────────────────────────────────────────
 
-function RentalCard({ item }: { item: RentalItem }) {
+function RentalCard({ item, palette }: { item: RentalItem; palette: any }) {
   const [expanded, setExpanded] = useState(false);
-  const ks    = KIND_STYLES[item.kind];
+  const ks    = getKindStyles(item.kind, palette);
   const owed  = totalOwed(item.fees);
   const sorted = [...item.fees].sort((a, b) => {
     const [am, ad, ay] = a.date.split("/").map(Number);
@@ -155,15 +162,15 @@ function RentalCard({ item }: { item: RentalItem }) {
     <div
       className="rounded-lg overflow-hidden"
       style={{
-        background: "rgba(161,189,198,0.04)",
-        border: "1px solid rgba(161,189,198,0.1)",
+        background: palette.hoverBg,
+        border: `1px solid ${palette.borderLight}`,
         marginBottom: "8px",
       }}
     >
       {/* Header row */}
       <div
         className="flex items-start justify-between"
-        style={{ padding: "14px 16px", borderBottom: expanded ? "1px solid rgba(161,189,198,0.1)" : "none" }}
+        style={{ padding: "14px 16px", borderBottom: expanded ? `1px solid ${palette.borderLight}` : "none" }}
       >
         <div className="flex items-start gap-3">
           {/* Kind icon */}
@@ -180,10 +187,10 @@ function RentalCard({ item }: { item: RentalItem }) {
           </div>
 
           <div>
-            <div style={{ color: "#dfe9ec", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", marginBottom: "2px" }}>
+            <div style={{ color: palette.textPrimary, fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", marginBottom: "2px" }}>
               {item.name}
             </div>
-            <div style={{ color: "#a1bdc6", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "6px" }}>
+            <div style={{ color: palette.textTertiary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "6px" }}>
               {item.detail}
             </div>
             <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
@@ -202,7 +209,7 @@ function RentalCard({ item }: { item: RentalItem }) {
                 style={{
                   display: "inline-flex", alignItems: "center", padding: "2px 9px",
                   borderRadius: "999px", fontSize: "11px", fontFamily: "var(--font-family)", fontWeight: 500,
-                  color: "#a1bdc6", background: "rgba(161,189,198,0.08)", border: "1px solid rgba(161,189,198,0.2)",
+                  color: palette.textTertiary, background: palette.borderLight, border: `1px solid ${palette.borderMedium}`,
                 }}
               >
                 {formatMoney(item.rate)}&nbsp;/&nbsp;{item.rateType}
@@ -214,12 +221,12 @@ function RentalCard({ item }: { item: RentalItem }) {
         {/* Right: total owed + expand */}
         <div className="flex flex-col items-end gap-2" style={{ flexShrink: 0, marginLeft: "12px" }}>
           <div style={{ textAlign: "right" }}>
-            <div style={{ color: "#a1bdc6", fontSize: "11px", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "2px" }}>
+            <div style={{ color: palette.textTertiary, fontSize: "11px", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "2px" }}>
               Total due
             </div>
             <div
               style={{
-                color: owed > 0 ? "#e8a020" : "#00c4a0",
+                color: owed > 0 ? "#e8a020" : palette.primary,
                 fontSize: "var(--text-base)",
                 fontWeight: 700,
                 fontFamily: "var(--font-family)",
@@ -231,10 +238,10 @@ function RentalCard({ item }: { item: RentalItem }) {
           <button
             onClick={() => setExpanded((v) => !v)}
             style={{
-              background: "rgba(161,189,198,0.08)",
-              border: "1px solid rgba(161,189,198,0.2)",
+              background: palette.borderLight,
+              border: `1px solid ${palette.borderMedium}`,
               borderRadius: "4px",
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               fontSize: "11px",
               fontFamily: "var(--font-family)",
               padding: "3px 10px",
@@ -252,13 +259,13 @@ function RentalCard({ item }: { item: RentalItem }) {
         <div>
           <div
             className="flex items-center justify-between"
-            style={{ padding: "6px 12px", background: "rgba(161,189,198,0.06)" }}
+            style={{ padding: "6px 12px", background: palette.hoverBg }}
           >
-            <span style={{ color: "#a1bdc6", fontSize: "11px", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Date</span>
-            <span style={{ color: "#a1bdc6", fontSize: "11px", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Amount · Status</span>
+            <span style={{ color: palette.textTertiary, fontSize: "11px", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Date</span>
+            <span style={{ color: palette.textTertiary, fontSize: "11px", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Amount · Status</span>
           </div>
           {sorted.map((fee, i) => (
-            <FeeRow key={i} fee={fee} />
+            <FeeRow key={i} fee={fee} palette={palette} />
           ))}
         </div>
       )}
@@ -271,6 +278,7 @@ function RentalCard({ item }: { item: RentalItem }) {
 type KindFilter = "All" | ItemKind;
 
 export function EquipmentSection() {
+  const { palette } = useTheme();
   const [filter, setFilter] = useState<KindFilter>("All");
 
   const filters: KindFilter[] = ["All", "Equipment", "Locker"];
@@ -290,13 +298,13 @@ export function EquipmentSection() {
                 onClick={() => setFilter(f)}
                 style={{
                   padding: "5px 14px", borderRadius: "999px",
-                  border: active ? "1px solid rgba(0,196,160,0.35)" : "1px solid rgba(161,189,198,0.2)",
-                  background: active ? "rgba(0,196,160,0.12)" : "transparent",
-                  color: active ? "#00c4a0" : "#a1bdc6",
+                  border: active ? `1px solid ${palette.primary}59` : `1px solid ${palette.borderMedium}`,
+                  background: active ? `${palette.primary}1f` : "transparent",
+                  color: active ? palette.primary : palette.textTertiary,
                   fontSize: "var(--text-sm)", fontFamily: "var(--font-family)",
                   fontWeight: active ? 600 : 400, cursor: "pointer",
                 }}
-                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(161,189,198,0.06)"; }}
+                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = palette.hoverBg; }}
                 onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
               >
                 {f}
@@ -307,10 +315,10 @@ export function EquipmentSection() {
 
         {/* Grand total due */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span style={{ color: "#a1bdc6", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>Total due:</span>
+          <span style={{ color: palette.textTertiary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>Total due:</span>
           <span
             style={{
-              color: grandTotal > 0 ? "#e8a020" : "#00c4a0",
+              color: grandTotal > 0 ? "#e8a020" : palette.primary,
               fontSize: "var(--text-base)", fontWeight: 700,
               fontFamily: "var(--font-family)",
             }}
@@ -323,15 +331,15 @@ export function EquipmentSection() {
       {/* Rental cards */}
       <div>
         {filtered.map((item) => (
-          <RentalCard key={item.name} item={item} />
+          <RentalCard key={item.name} item={item} palette={palette} />
         ))}
       </div>
 
       <button
         style={{
           background: "transparent",
-          border: "1px dashed rgba(161,189,198,0.3)",
-          borderRadius: "6px", color: "#a1bdc6",
+          border: `1px dashed ${palette.borderMedium}`,
+          borderRadius: "6px", color: palette.textTertiary,
           fontSize: "var(--text-base)", fontFamily: "var(--font-family)",
           padding: "10px", cursor: "pointer",
           width: "100%", textAlign: "center", marginTop: "4px",

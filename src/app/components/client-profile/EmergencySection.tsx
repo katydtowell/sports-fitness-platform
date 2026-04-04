@@ -1,3 +1,4 @@
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,14 +19,14 @@ const CONTACTS: EmergencyContact[] = [
 
 // ── ContactRow ────────────────────────────────────────────────────────────────
 
-function ContactRow({ contact }: { contact: EmergencyContact }) {
+function ContactRow({ contact, palette }: { contact: EmergencyContact; palette: any }) {
   return (
     <div
       className="flex items-center justify-between rounded-lg"
       style={{
         padding: "12px 16px",
-        background: "rgba(161,189,198,0.04)",
-        border: "1px solid rgba(161,189,198,0.1)",
+        background: palette.hoverBg,
+        border: `1px solid ${palette.borderLight}`,
         marginBottom: "8px",
       }}
     >
@@ -36,9 +37,9 @@ function ContactRow({ contact }: { contact: EmergencyContact }) {
           style={{
             width: "36px",
             height: "36px",
-            background: "rgba(224,90,90,0.12)",
-            border: "1px solid rgba(224,90,90,0.28)",
-            color: "#e05a5a",
+            background: `${palette.textError}1f`,
+            border: `1px solid ${palette.textError}47`,
+            color: palette.textError,
             fontSize: "14px",
             fontWeight: 600,
             fontFamily: "var(--font-family)",
@@ -50,7 +51,7 @@ function ContactRow({ contact }: { contact: EmergencyContact }) {
         <div>
           <div
             style={{
-              color: "#dfe9ec",
+              color: palette.textPrimary,
               fontSize: "var(--text-base)",
               fontWeight: 500,
               fontFamily: "var(--font-family)",
@@ -61,7 +62,7 @@ function ContactRow({ contact }: { contact: EmergencyContact }) {
           </div>
           <div
             style={{
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               fontSize: "var(--text-sm)",
               fontFamily: "var(--font-family)",
             }}
@@ -75,7 +76,7 @@ function ContactRow({ contact }: { contact: EmergencyContact }) {
       <div className="flex items-center gap-3">
         <span
           style={{
-            color: "#dfe9ec",
+            color: palette.textPrimary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             fontWeight: 500,
@@ -86,9 +87,9 @@ function ContactRow({ contact }: { contact: EmergencyContact }) {
         <button
           style={{
             background: "transparent",
-            border: "1px solid rgba(161,189,198,0.25)",
+            border: `1px solid ${palette.borderMedium}`,
             borderRadius: "4px",
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             padding: "4px 10px",
@@ -107,19 +108,20 @@ function ContactRow({ contact }: { contact: EmergencyContact }) {
 // ── EmergencySection ──────────────────────────────────────────────────────────
 
 export function EmergencySection() {
+  const { palette } = useTheme();
   return (
     <SectionCard title="Emergency Contacts">
       <div style={{ marginBottom: "12px" }}>
         {CONTACTS.map((c) => (
-          <ContactRow key={c.name} contact={c} />
+          <ContactRow key={c.name} contact={c} palette={palette} />
         ))}
       </div>
       <button
         style={{
           background: "transparent",
-          border: "1px dashed rgba(161,189,198,0.3)",
+          border: `1px dashed ${palette.borderMedium}`,
           borderRadius: "6px",
-          color: "#a1bdc6",
+          color: palette.textTertiary,
           fontSize: "var(--text-base)",
           fontFamily: "var(--font-family)",
           padding: "10px",

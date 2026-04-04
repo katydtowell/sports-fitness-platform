@@ -18,7 +18,8 @@ import { Sidebar, SIDEBAR_WIDTH } from "./Sidebar";
 import { MoreToolsDrawer } from "./MoreToolsDrawer";
 import { SidePanel } from "./SidePanel";
 import { useSidePanel, type PanelSize } from "./SidePanelContext";
-import { useNavMenu } from "./useNavMenu";
+import { useNav } from "./NavContext";
+import { useTheme } from "./ThemeContext";
 
 /** Convert a PanelSize token to a CSS calc() percentage of the main content area. */
 function panelWidthCss(size: PanelSize): string {
@@ -50,8 +51,9 @@ interface LayoutProps {
 export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps) {
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
-  const nav = useNavMenu();
+  const nav = useNav();
   const { isOpen: panelOpen, size: panelSize } = useSidePanel();
+  const { palette } = useTheme();
 
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
@@ -87,7 +89,12 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
   return (
     <div
       className="flex flex-col"
-      style={{ minHeight: "100vh", background: "#0a0e0f", fontFamily: "var(--font-family)" }}
+      style={{
+        minHeight: "100vh",
+        background: palette.surfaceBg,
+        fontFamily: "var(--font-family)",
+        transition: "background 0.25s ease"
+      }}
     >
       {/* ── Fixed top strip — all breakpoints ── */}
       <div
@@ -98,8 +105,9 @@ export function Layout({ children, mobileFixedContent, bottomBar }: LayoutProps)
           left: 0,
           right: 0,
           zIndex: 90,
-          background: "#0a0e0f",
-          borderBottom: "1px solid rgba(161,189,198,0.15)",
+          background: palette.surfaceBg,
+          borderBottom: `1px solid ${palette.borderMedium}`,
+          transition: "background 0.25s ease"
         }}
       >
         <TopNav

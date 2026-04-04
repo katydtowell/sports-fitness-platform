@@ -1,4 +1,5 @@
 import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
+import { useTheme } from "../layout/ThemeContext";
 import { FormField, SectionCard, ReadOnlyField, formatDateDisplay } from "./FormField";
 import { CancelConfirmModal } from "./CancelConfirmModal";
 
@@ -23,11 +24,12 @@ interface SectionSaveButtonProps {
 }
 
 export function SectionSaveButton({ onSave, onUndo, saveDisabled = false }: SectionSaveButtonProps) {
+  const { palette } = useTheme();
   const secondaryStyle: React.CSSProperties = {
     background: "transparent",
-    border: "1px solid rgba(161,189,198,0.35)",
+    border: `1px solid ${palette.outlineAction}`,
     borderRadius: "6px",
-    color: "#a1bdc6",
+    color: palette.textTertiary,
     fontSize: "var(--text-base)",
     fontFamily: "var(--font-family)",
     padding: "8px 20px",
@@ -43,10 +45,10 @@ export function SectionSaveButton({ onSave, onUndo, saveDisabled = false }: Sect
         onClick={saveDisabled ? undefined : onSave}
         disabled={saveDisabled}
         style={{
-          background: saveDisabled ? "rgba(0,196,160,0.35)" : "#00c4a0",
+          background: saveDisabled ? `${palette.primary}55` : palette.primary,
           border: "none",
           borderRadius: "6px",
-          color: "#0a0e0f",
+          color: saveDisabled ? palette.textPrimary : palette.surfaceBg,
           fontSize: "var(--text-base)",
           fontWeight: 600,
           fontFamily: "var(--font-family)",

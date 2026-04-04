@@ -15,7 +15,7 @@ import { X } from "lucide-react";
 import { useIsMobile } from "../ui/use-mobile";
 import { useIsTablet } from "../ui/use-tablet";
 import { useSidePanel, type PanelSize } from "./SidePanelContext";
-import { SIDEBAR_WIDTH } from "./Sidebar";
+import { useTheme } from "./ThemeContext";
 
 const SIZE_TO_PERCENT: Record<PanelSize, string> = {
   quarter: "25%",
@@ -28,6 +28,7 @@ export function SidePanel() {
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const panelRef = useRef<HTMLDivElement>(null);
+  const { palette } = useTheme();
 
   // Close on Escape key
   useEffect(() => {
@@ -57,15 +58,15 @@ export function SidePanel() {
         top: 44, // below TopNav
         left: isMobile && isOpen ? 0 : undefined,
         right: isMobile ? undefined : 0,
-        bottom: 0,
+        bottom: isMobile ? 52 : 0, // above MobileUtilityBar on mobile
         width: isOpen ? openWidth : "0px",
         overflow: "hidden",
-        background: "#182023",
-        borderLeft: isOpen && !isMobile ? "1px solid rgba(161,189,198,0.15)" : "none",
+        background: palette.surfacePrimary,
+        borderLeft: isOpen && !isMobile ? `1px solid ${palette.borderMedium}` : "none",
         zIndex: isMobile ? 95 : 85, // above sidebar on mobile
         transition: isMobile
-          ? "width 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
-          : "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          ? "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s ease"
+          : "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s ease",
         display: "flex",
         flexDirection: "column",
         fontFamily: "var(--font-family)",
@@ -78,13 +79,13 @@ export function SidePanel() {
           alignItems: "center",
           justifyContent: "space-between",
           padding: "16px 20px",
-          borderBottom: "1px solid rgba(161,189,198,0.15)",
+          borderBottom: `1px solid ${palette.borderMedium}`,
           flexShrink: 0,
         }}
       >
         <span
           style={{
-            color: "#dfe9ec",
+            color: palette.textPrimary,
             fontSize: "var(--text-lg)",
             fontWeight: 600,
             fontFamily: "var(--font-family)",
@@ -96,10 +97,10 @@ export function SidePanel() {
           onClick={closePanel}
           aria-label="Close panel"
           style={{
-            background: "rgba(161,189,198,0.08)",
-            border: "1px solid rgba(161,189,198,0.2)",
+            background: palette.hoverBg,
+            border: `1px solid ${palette.borderMedium}`,
             borderRadius: "6px",
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             width: "30px",
             height: "30px",
             cursor: "pointer",

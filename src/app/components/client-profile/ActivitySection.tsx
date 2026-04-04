@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,38 +32,42 @@ const ACTIVITY: ActivityEntry[] = [
 
 // ── Style maps ────────────────────────────────────────────────────────────────
 
-const KIND_STYLES: Record<ActivityKind, { color: string; background: string; border: string; icon: string }> = {
-  "Check-in": { color: "#8fa8b8", background: "rgba(143,168,184,0.10)", border: "1px solid rgba(143,168,184,0.25)", icon: "✓" },
-  "Class":    { color: "#00c4a0", background: "rgba(0,196,160,0.10)",   border: "1px solid rgba(0,196,160,0.28)",   icon: "◈" },
-  "Booking":  { color: "#e8a020", background: "rgba(232,160,32,0.10)",  border: "1px solid rgba(232,160,32,0.28)",  icon: "⊙" },
-};
+function getKindStyles(palette: any): Record<ActivityKind, { color: string; background: string; border: string; icon: string }> {
+  return {
+    "Check-in": { color: palette.iconTertiary, background: `${palette.iconTertiary}1a`, border: `1px solid ${palette.iconTertiary}40`, icon: "✓" },
+    "Class":    { color: palette.primary, background: `${palette.primary}1a`, border: `1px solid ${palette.primary}47`, icon: "◈" },
+    "Booking":  { color: "#e8a020", background: "#e8a02019", border: "1px solid #e8a02047", icon: "⊙" },
+  };
+}
 
-const STATUS_STYLES: Record<BookingStatus, { color: string; background: string; border: string }> = {
-  Upcoming: { color: "#00c4a0", background: "rgba(0,196,160,0.10)",  border: "1px solid rgba(0,196,160,0.28)"  },
-  Pending:  { color: "#e8a020", background: "rgba(232,160,32,0.10)", border: "1px solid rgba(232,160,32,0.28)" },
-  Canceled: { color: "#e05a5a", background: "rgba(224,90,90,0.10)",  border: "1px solid rgba(224,90,90,0.28)"  },
-};
+function getStatusStyles(palette: any): Record<BookingStatus, { color: string; background: string; border: string }> {
+  return {
+    Upcoming: { color: palette.primary, background: `${palette.primary}1a`, border: `1px solid ${palette.primary}47` },
+    Pending:  { color: "#e8a020", background: "#e8a02019", border: "1px solid #e8a02047" },
+    Canceled: { color: palette.textError, background: `${palette.textError}1a`, border: `1px solid ${palette.textError}47` },
+  };
+}
 
 // ── Filter tabs ───────────────────────────────────────────────────────────────
 
 const FILTERS: (ActivityKind | "All")[] = ["All", "Check-in", "Class", "Booking"];
 
-function FilterTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function FilterTab({ label, active, onClick, palette }: { label: string; active: boolean; onClick: () => void; palette: any }) {
   return (
     <button
       onClick={onClick}
       style={{
         padding: "5px 14px",
         borderRadius: "999px",
-        border: active ? "1px solid rgba(0,196,160,0.35)" : "1px solid rgba(161,189,198,0.2)",
-        background: active ? "rgba(0,196,160,0.12)" : "transparent",
-        color: active ? "#00c4a0" : "#a1bdc6",
+        border: active ? `1px solid ${palette.primary}59` : `1px solid ${palette.borderMedium}`,
+        background: active ? `${palette.primary}1f` : "transparent",
+        color: active ? palette.primary : palette.textTertiary,
         fontSize: "var(--text-sm)",
         fontFamily: "var(--font-family)",
         fontWeight: active ? 600 : 400,
         cursor: "pointer",
       }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(161,189,198,0.06)"; }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = palette.hoverBg; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
     >
       {label}
@@ -72,17 +77,17 @@ function FilterTab({ label, active, onClick }: { label: string; active: boolean;
 
 // ── ActivityRow ───────────────────────────────────────────────────────────────
 
-function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const ks = KIND_STYLES[entry.kind];
-  const ss = entry.status ? STATUS_STYLES[entry.status] : null;
+function ActivityRow({ entry, palette }: { entry: ActivityEntry; palette: any }) {
+  const ks = getKindStyles(palette)[entry.kind];
+  const ss = entry.status ? getStatusStyles(palette)[entry.status] : null;
 
   return (
     <div
       className="flex items-start gap-3 rounded-lg"
       style={{
         padding: "12px 16px",
-        background: "rgba(161,189,198,0.04)",
-        border: "1px solid rgba(161,189,198,0.1)",
+        background: palette.hoverBg,
+        border: `1px solid ${palette.borderLight}`,
         marginBottom: "8px",
       }}
     >
@@ -110,7 +115,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           <div>
             <div
               style={{
-                color: "#dfe9ec",
+                color: palette.textPrimary,
                 fontSize: "var(--text-base)",
                 fontWeight: 600,
                 fontFamily: "var(--font-family)",
@@ -121,7 +126,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
             </div>
             <div
               style={{
-                color: "#a1bdc6",
+                color: palette.textTertiary,
                 fontSize: "var(--text-sm)",
                 fontFamily: "var(--font-family)",
               }}
@@ -132,11 +137,11 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
 
           {/* Date + time */}
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ color: "#a1bdc6", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>
+            <div style={{ color: palette.textTertiary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>
               {entry.date}
             </div>
             {entry.time && (
-              <div style={{ color: "#a1bdc6", fontSize: "11px", fontFamily: "var(--font-family)", marginTop: "1px" }}>
+              <div style={{ color: palette.textTertiary, fontSize: "11px", fontFamily: "var(--font-family)", marginTop: "1px" }}>
                 {entry.time}
               </div>
             )}
@@ -178,6 +183,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
 // ── ActivitySection ───────────────────────────────────────────────────────────
 
 export function ActivitySection() {
+  const { palette } = useTheme();
   const [activeFilter, setActiveFilter] = useState<ActivityKind | "All">("All");
 
   const filtered = activeFilter === "All"
@@ -194,6 +200,7 @@ export function ActivitySection() {
             label={f}
             active={activeFilter === f}
             onClick={() => setActiveFilter(f)}
+            palette={palette}
           />
         ))}
       </div>
@@ -202,12 +209,12 @@ export function ActivitySection() {
       <div>
         {filtered.length > 0 ? (
           filtered.map((entry) => (
-            <ActivityRow key={`${entry.date}-${entry.title}`} entry={entry} />
+            <ActivityRow key={`${entry.date}-${entry.title}`} entry={entry} palette={palette} />
           ))
         ) : (
           <div
             style={{
-              textAlign: "center", color: "#a1bdc6",
+              textAlign: "center", color: palette.textTertiary,
               fontSize: "var(--text-base)", fontFamily: "var(--font-family)",
               padding: "24px 0",
             }}

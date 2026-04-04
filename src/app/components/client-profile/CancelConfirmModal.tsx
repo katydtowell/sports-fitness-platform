@@ -1,6 +1,4 @@
-// ── CancelConfirmModal ────────────────────────────────────────────────────────
-// Shown when the user clicks Cancel (section or bottom bar) while there are
-// unsaved changes. Lets them confirm or keep editing.
+import { useTheme } from "../layout/ThemeContext";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -38,19 +36,20 @@ interface ChoiceButtonProps {
   sublabel: string;
   onClick: () => void;
   variant?: "primary" | "secondary";
+  palette: any;
 }
 
-function ChoiceButton({ icon, label, sublabel, onClick, variant = "primary" }: ChoiceButtonProps) {
+function ChoiceButton({ icon, label, sublabel, onClick, variant = "primary", palette }: ChoiceButtonProps) {
   const RADIUS = "6px";
   const isPrimary = variant === "primary";
 
   const buttonColors = isPrimary
-    ? { background: "#00c4a0", border: "none",                              color: "#0a0e0f" }
-    : { background: "transparent", border: "1px solid rgba(161,189,198,0.35)", color: "#a1bdc6" };
+    ? { background: palette.primary, border: "none", color: palette.surfaceBg }
+    : { background: "transparent", border: `1px solid ${palette.outlineAction}`, color: palette.textTertiary };
 
   const iconBandBackground = isPrimary
     ? "rgba(255,255,255,0.18)"
-    : "rgba(161,189,198,0.08)";
+    : palette.borderLight;
 
   return (
     <button
@@ -79,6 +78,7 @@ function ChoiceButton({ icon, label, sublabel, onClick, variant = "primary" }: C
           justifyContent: "center",
           padding: "0 14px",
           flexShrink: 0,
+          color: isPrimary ? palette.surfaceBg : palette.textTertiary,
         }}
       >
         {icon === "pencil" ? <PencilIcon /> : <XIcon />}
@@ -116,12 +116,14 @@ interface CancelConfirmModalProps {
 }
 
 export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmModalProps) {
+  const { palette } = useTheme();
+
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.65)",
+        background: palette.backdrop,
         zIndex: 300,
         display: "flex",
         alignItems: "center",
@@ -132,8 +134,8 @@ export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmMo
     >
       <div
         style={{
-          background: "#182023",
-          border: "1px solid rgba(161,189,198,0.2)",
+          background: palette.surfacePrimary,
+          border: `1px solid ${palette.borderMedium}`,
           borderRadius: "10px",
           overflow: "hidden",
           width: "100%",
@@ -143,10 +145,10 @@ export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmMo
         onClick={(e) => e.stopPropagation()}
       >
         {/* Heading band */}
-        <div style={{ background: "#1f2d31", padding: "20px 24px 18px" }}>
+        <div style={{ background: palette.surfaceSecondary, padding: "20px 24px 18px" }}>
           <h2
             style={{
-              color: "#dfe9ec",
+              color: palette.textPrimary,
               fontSize: "var(--text-xl)",
               fontWeight: 700,
               fontFamily: "var(--font-family)",
@@ -161,7 +163,7 @@ export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmMo
         <div style={{ padding: "16px 24px 24px" }}>
           <p
             style={{
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               fontSize: "var(--text-base)",
               fontFamily: "var(--font-family)",
               lineHeight: 1.6,
@@ -177,6 +179,7 @@ export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmMo
               label="Keep Editing"
               sublabel="I'm not ready to exit."
               onClick={onKeepEditing}
+              palette={palette}
             />
             <ChoiceButton
               icon="x"
@@ -184,6 +187,7 @@ export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmMo
               sublabel="I understand my changes will be lost."
               onClick={onConfirm}
               variant="secondary"
+              palette={palette}
             />
           </div>
         </div>

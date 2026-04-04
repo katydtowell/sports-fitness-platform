@@ -1,3 +1,4 @@
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -38,13 +39,13 @@ const GROUPS: GroupEntry[] = [
 
 // ── Fee pill ──────────────────────────────────────────────────────────────────
 
-function FeePill({ label, amount, variant }: { label: string; amount: number; variant: "paid" | "owed" }) {
+function FeePill({ label, amount, variant, palette }: { label: string; amount: number; variant: "paid" | "owed"; palette: any }) {
   const isPaid = variant === "paid";
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px" }}>
       <span
         style={{
-          color: "#a1bdc6",
+          color: palette.textTertiary,
           fontSize: "11px",
           fontFamily: "var(--font-family)",
           textTransform: "uppercase",
@@ -63,20 +64,20 @@ function FeePill({ label, amount, variant }: { label: string; amount: number; va
           fontFamily: "var(--font-family)",
           fontWeight: 600,
           background: isPaid
-            ? "rgba(0,196,160,0.12)"
+            ? `${palette.primary}1f`
             : amount > 0
-              ? "rgba(232,160,32,0.12)"
-              : "rgba(161,189,198,0.08)",
+              ? "#e8a02014"
+              : palette.borderLight,
           border: isPaid
-            ? "1px solid rgba(0,196,160,0.3)"
+            ? `1px solid ${palette.primary}4d`
             : amount > 0
-              ? "1px solid rgba(232,160,32,0.3)"
-              : "1px solid rgba(161,189,198,0.15)",
+              ? "1px solid #e8a02047"
+              : `1px solid ${palette.borderMedium}`,
           color: isPaid
-            ? "#00c4a0"
+            ? palette.primary
             : amount > 0
               ? "#e8a020"
-              : "#a1bdc6",
+              : palette.textTertiary,
         }}
       >
         ${amount.toFixed(2)}
@@ -87,14 +88,14 @@ function FeePill({ label, amount, variant }: { label: string; amount: number; va
 
 // ── GroupRow ──────────────────────────────────────────────────────────────────
 
-function GroupRow({ entry }: { entry: GroupEntry }) {
+function GroupRow({ entry, palette }: { entry: GroupEntry; palette: any }) {
   return (
     <div
       className="rounded-lg"
       style={{
         padding: "14px 16px",
-        background: "rgba(161,189,198,0.04)",
-        border: "1px solid rgba(161,189,198,0.1)",
+        background: palette.hoverBg,
+        border: `1px solid ${palette.borderLight}`,
         marginBottom: "8px",
       }}
     >
@@ -103,7 +104,7 @@ function GroupRow({ entry }: { entry: GroupEntry }) {
         <div>
           <div
             style={{
-              color: "#dfe9ec",
+              color: palette.textPrimary,
               fontSize: "var(--text-base)",
               fontWeight: 600,
               fontFamily: "var(--font-family)",
@@ -114,18 +115,18 @@ function GroupRow({ entry }: { entry: GroupEntry }) {
           </div>
           <div
             style={{
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               fontSize: "var(--text-sm)",
               fontFamily: "var(--font-family)",
             }}
           >
-            Team: <span style={{ color: "#dfe9ec", fontWeight: 500 }}>{entry.team}</span>
+            Team: <span style={{ color: palette.textPrimary, fontWeight: 500 }}>{entry.team}</span>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: "12px", flexShrink: 0, marginLeft: "12px" }}>
-          <FeePill label="Paid"  amount={entry.feesPaid} variant="paid" />
-          <FeePill label="Owed"  amount={entry.feesOwed} variant="owed" />
+          <FeePill label="Paid"  amount={entry.feesPaid} variant="paid" palette={palette} />
+          <FeePill label="Owed"  amount={entry.feesOwed} variant="owed" palette={palette} />
         </div>
       </div>
 
@@ -137,9 +138,9 @@ function GroupRow({ entry }: { entry: GroupEntry }) {
             style={{
               width: "28px",
               height: "28px",
-              background: "rgba(143,168,184,0.12)",
-              border: "1px solid rgba(143,168,184,0.25)",
-              color: "#8fa8b8",
+              background: `${palette.iconTertiary}19`,
+              border: `1px solid ${palette.iconTertiary}40`,
+              color: palette.iconTertiary,
               fontSize: "12px",
               fontWeight: 600,
               fontFamily: "var(--font-family)",
@@ -147,17 +148,17 @@ function GroupRow({ entry }: { entry: GroupEntry }) {
           >
             {entry.captain.charAt(0)}
           </div>
-          <span style={{ color: "#a1bdc6", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>
-            Captain: <span style={{ color: "#dfe9ec" }}>{entry.captain}</span>
+          <span style={{ color: palette.textTertiary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>
+            Captain: <span style={{ color: palette.textPrimary }}>{entry.captain}</span>
           </span>
         </div>
 
         <button
           style={{
             background: "transparent",
-            border: "1px solid rgba(161,189,198,0.25)",
+            border: `1px solid ${palette.borderMedium}`,
             borderRadius: "4px",
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             padding: "4px 10px",
@@ -174,19 +175,20 @@ function GroupRow({ entry }: { entry: GroupEntry }) {
 // ── GroupsSection ─────────────────────────────────────────────────────────────
 
 export function GroupsSection() {
+  const { palette } = useTheme();
   return (
     <SectionCard title="Groups">
       <div style={{ marginBottom: "12px" }}>
         {GROUPS.map((g) => (
-          <GroupRow key={g.league} entry={g} />
+          <GroupRow key={g.league} entry={g} palette={palette} />
         ))}
       </div>
       <button
         style={{
           background: "transparent",
-          border: "1px dashed rgba(161,189,198,0.3)",
+          border: `1px dashed ${palette.borderMedium}`,
           borderRadius: "6px",
-          color: "#a1bdc6",
+          color: palette.textTertiary,
           fontSize: "var(--text-base)",
           fontFamily: "var(--font-family)",
           padding: "10px",

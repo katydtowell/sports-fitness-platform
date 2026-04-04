@@ -1,19 +1,21 @@
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 export function CustomFieldsSection() {
+  const { palette } = useTheme();
   return (
     <SectionCard title="Custom Fields">
       <div
         className="flex items-center justify-center rounded-lg"
         style={{
-          background: "rgba(161,189,198,0.06)",
-          border: "1px solid rgba(161,189,198,0.12)",
+          background: palette.hoverBg,
+          border: `1px solid ${palette.borderLight}`,
           height: "64px",
         }}
       >
         <span
           style={{
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-base)",
             fontFamily: "var(--font-family)",
           }}

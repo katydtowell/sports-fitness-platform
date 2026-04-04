@@ -1,16 +1,20 @@
 import { useState } from "react";
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 // ── Badge color definitions ───────────────────────────────────────────────────
 
 type DocStatus = "Signed" | "Pending" | "Declined" | "Deleted";
 
-const BADGE_STYLES: Record<DocStatus, { color: string; background: string; border: string }> = {
-  Signed:   { color: "#00c4a0", background: "rgba(0,196,160,0.12)",   border: "1px solid rgba(0,196,160,0.35)"   },
-  Pending:  { color: "#e8a020", background: "rgba(232,160,32,0.12)",  border: "1px solid rgba(232,160,32,0.35)"  },
-  Declined: { color: "#e05a5a", background: "rgba(224,90,90,0.12)",   border: "1px solid rgba(224,90,90,0.35)"   },
-  Deleted:  { color: "#8fa8b8", background: "rgba(143,168,184,0.10)", border: "1px solid rgba(143,168,184,0.25)" },
-};
+function getBadgeStyles(status: DocStatus, palette: any) {
+  const styleMap: Record<DocStatus, { color: string; background: string; border: string }> = {
+    Signed:   { color: palette.primary, background: `${palette.primary}1f`, border: `1px solid ${palette.primary}59` },
+    Pending:  { color: "#e8a020", background: "#e8a02014", border: "1px solid #e8a02059" },
+    Declined: { color: palette.textError, background: `${palette.textError}1f`, border: `1px solid ${palette.textError}59` },
+    Deleted:  { color: palette.iconTertiary, background: `${palette.iconTertiary}19`, border: `1px solid ${palette.iconTertiary}40` },
+  };
+  return styleMap[status];
+}
 
 // ── Sample document data ──────────────────────────────────────────────────────
 
@@ -34,10 +38,11 @@ interface StatusBadgeProps {
   status: DocStatus;
   active: boolean;
   onClick: () => void;
+  palette: any;
 }
 
-function StatusBadge({ status, active, onClick }: StatusBadgeProps) {
-  const { color, background, border } = BADGE_STYLES[status];
+function StatusBadge({ status, active, onClick, palette }: StatusBadgeProps) {
+  const { color, background, border } = getBadgeStyles(status, palette);
   return (
     <button
       onClick={onClick}
@@ -49,7 +54,7 @@ function StatusBadge({ status, active, onClick }: StatusBadgeProps) {
         borderRadius: "999px",
         border,
         background: active ? background : "transparent",
-        color: active ? color : "#a1bdc6",
+        color: active ? color : palette.textTertiary,
         fontSize: "var(--text-sm)",
         fontFamily: "var(--font-family)",
         fontWeight: active ? 600 : 400,
@@ -76,15 +81,15 @@ function StatusBadge({ status, active, onClick }: StatusBadgeProps) {
 
 // ── DocumentRow ───────────────────────────────────────────────────────────────
 
-function DocumentRow({ doc }: { doc: Document }) {
-  const { color, background, border } = BADGE_STYLES[doc.status];
+function DocumentRow({ doc, palette }: { doc: Document; palette: any }) {
+  const { color, background, border } = getBadgeStyles(doc.status, palette);
   return (
     <div
       className="flex items-center justify-between rounded-lg"
       style={{
         padding: "12px 16px",
-        background: "rgba(161,189,198,0.04)",
-        border: "1px solid rgba(161,189,198,0.1)",
+        background: palette.hoverBg,
+        border: `1px solid ${palette.borderLight}`,
         marginBottom: "8px",
       }}
     >
@@ -95,9 +100,9 @@ function DocumentRow({ doc }: { doc: Document }) {
           style={{
             width: "36px",
             height: "36px",
-            background: "rgba(161,189,198,0.08)",
-            border: "1px solid rgba(161,189,198,0.15)",
-            color: "#a1bdc6",
+            background: palette.borderLight,
+            border: `1px solid ${palette.borderMedium}`,
+            color: palette.textTertiary,
             fontSize: "16px",
           }}
         >
@@ -106,7 +111,7 @@ function DocumentRow({ doc }: { doc: Document }) {
         <div>
           <div
             style={{
-              color: "#dfe9ec",
+              color: palette.textPrimary,
               fontSize: "var(--text-base)",
               fontWeight: 500,
               fontFamily: "var(--font-family)",
@@ -116,7 +121,7 @@ function DocumentRow({ doc }: { doc: Document }) {
           </div>
           <div
             style={{
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               fontSize: "var(--text-sm)",
               fontFamily: "var(--font-family)",
             }}
@@ -149,9 +154,9 @@ function DocumentRow({ doc }: { doc: Document }) {
         <button
           style={{
             background: "transparent",
-            border: "1px solid rgba(161,189,198,0.25)",
+            border: `1px solid ${palette.borderMedium}`,
             borderRadius: "4px",
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             padding: "4px 10px",
@@ -168,6 +173,7 @@ function DocumentRow({ doc }: { doc: Document }) {
 // ── DocumentsSection ──────────────────────────────────────────────────────────
 
 export function DocumentsSection() {
+  const { palette } = useTheme();
   const [activeFilter, setActiveFilter] = useState<DocStatus | null>(null);
 
   const statuses: DocStatus[] = ["Signed", "Pending", "Declined", "Deleted"];
@@ -193,6 +199,7 @@ export function DocumentsSection() {
             status={s}
             active={activeFilter === s}
             onClick={() => handleBadgeClick(s)}
+            palette={palette}
           />
         ))}
       </div>
@@ -200,12 +207,12 @@ export function DocumentsSection() {
       {/* Document rows */}
       <div>
         {filtered.length > 0 ? (
-          filtered.map((doc) => <DocumentRow key={doc.name} doc={doc} />)
+          filtered.map((doc) => <DocumentRow key={doc.name} doc={doc} palette={palette} />)
         ) : (
           <div
             style={{
               textAlign: "center",
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               fontSize: "var(--text-base)",
               fontFamily: "var(--font-family)",
               padding: "24px 0",
@@ -219,9 +226,9 @@ export function DocumentsSection() {
       <button
         style={{
           background: "transparent",
-          border: "1px dashed rgba(161,189,198,0.3)",
+          border: `1px dashed ${palette.borderMedium}`,
           borderRadius: "6px",
-          color: "#a1bdc6",
+          color: palette.textTertiary,
           fontSize: "var(--text-base)",
           fontFamily: "var(--font-family)",
           padding: "10px",

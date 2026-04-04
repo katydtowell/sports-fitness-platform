@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "../layout/ThemeContext";
 
 // ── Date formatting utility ───────────────────────────────────────────────────
 // Converts a YYYY-MM-DD string (HTML date input format) to MM/DD/YYYY for display.
@@ -20,11 +21,12 @@ interface ReadOnlyFieldProps {
 }
 
 export function ReadOnlyField({ label, value }: ReadOnlyFieldProps) {
+  const { palette } = useTheme();
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       <span
         style={{
-          color: "#a1bdc6",
+          color: palette.textTertiary,
           fontSize: "var(--text-sm)",
           fontFamily: "var(--font-family)",
           marginBottom: "4px",
@@ -34,7 +36,7 @@ export function ReadOnlyField({ label, value }: ReadOnlyFieldProps) {
       </span>
       <span
         style={{
-          color: value ? "#dfe9ec" : "rgba(161,189,198,0.35)",
+          color: value ? palette.textPrimary : `${palette.textTertiary}59`,
           fontSize: "var(--text-base)",
           fontFamily: "var(--font-family)",
           lineHeight: "1.5",
@@ -78,6 +80,7 @@ export function FormField({
   type = "text",
   error = false,
 }: FormFieldProps) {
+  const { palette } = useTheme();
   const controlled = onChange !== undefined;
   const [internalValue, setInternalValue] = useState(value);
 
@@ -87,12 +90,12 @@ export function FormField({
     : (v: string) => setInternalValue(v);
 
   const inputStyle: React.CSSProperties = {
-    background: "#121a1d",
-    border: error ? "1px solid #e05a5a" : "1px solid rgba(161,189,198,0.35)",
+    background: palette.surfaceBg,
+    border: error ? `1px solid ${palette.textError}` : `1px solid ${palette.borderMedium}`,
     borderRadius: "6px",
     height: "36px",
     padding: "0 11px",
-    color: displayValue ? "#dfe9ec" : "rgba(161,189,198,0.5)",
+    color: displayValue ? palette.textPrimary : `${palette.textTertiary}80`,
     fontSize: "var(--text-base)",
     fontFamily: "var(--font-family)",
     width: "100%",
@@ -101,7 +104,7 @@ export function FormField({
 
   const labelStyle: React.CSSProperties = {
     display: "block",
-    color: "#a1bdc6",
+    color: palette.textTertiary,
     fontSize: "var(--text-sm)",
     fontFamily: "var(--font-family)",
     marginBottom: "6px",
@@ -111,7 +114,7 @@ export function FormField({
     <div style={{ display: "flex", flexDirection: "column" }}>
       <label style={labelStyle}>
         {label}
-        {required && <span style={{ color: "#e05a5a", marginLeft: "2px" }}>*</span>}
+        {required && <span style={{ color: palette.textError, marginLeft: "2px" }}>*</span>}
       </label>
       {isDropdown ? (
         <select
@@ -149,7 +152,7 @@ export function FormField({
         />
       )}
       {error && (
-        <span style={{ color: "#e05a5a", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginTop: "4px" }}>
+        <span style={{ color: palette.textError, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginTop: "4px" }}>
           This field is required
         </span>
       )}
@@ -179,23 +182,25 @@ export function SectionCard({
   onCancel,
   isEditing = false,
 }: SectionCardProps) {
+  const { palette } = useTheme();
   const [isOpen, setIsOpen] = useState(true);
 
   return (
     <div
       className="rounded-lg"
       style={{
-        background: "#182023",
-        border: "1px solid rgba(161,189,198,0.15)",
+        background: palette.surfacePrimary,
+        border: `1px solid ${palette.borderMedium}`,
         padding: "20px 24px",
         fontFamily: "var(--font-family)",
+        transition: "background 0.25s ease",
       }}
     >
       <div
         className="flex items-center justify-between"
         style={{ marginBottom: isOpen ? "18px" : "0" }}
       >
-        <span style={{ color: "#dfe9ec", fontSize: "var(--text-lg)", fontWeight: 600 }}>
+        <span style={{ color: palette.textPrimary, fontSize: "var(--text-lg)", fontWeight: 600 }}>
           {title}
         </span>
 
@@ -211,7 +216,7 @@ export function SectionCard({
                 gap: "5px",
                 background: "transparent",
                 border: "none",
-                color: "#00c4a0",
+                color: palette.primary,
                 fontSize: "var(--text-sm)",
                 fontFamily: "var(--font-family)",
                 cursor: "pointer",
@@ -236,7 +241,7 @@ export function SectionCard({
                 alignItems: "center",
                 background: "transparent",
                 border: "none",
-                color: "#e05a5a",
+                color: palette.textError,
                 fontSize: "var(--text-sm)",
                 fontFamily: "var(--font-family)",
                 cursor: "pointer",
@@ -254,10 +259,10 @@ export function SectionCard({
           <button
             onClick={() => setIsOpen((o) => !o)}
             style={{
-              background: "rgba(161,189,198,0.08)",
-              border: "1px solid rgba(161,189,198,0.2)",
+              background: palette.borderLight,
+              border: `1px solid ${palette.borderMedium}`,
               borderRadius: "4px",
-              color: "#a1bdc6",
+              color: palette.textTertiary,
               width: "24px",
               height: "24px",
               cursor: "pointer",

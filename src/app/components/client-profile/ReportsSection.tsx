@@ -1,3 +1,4 @@
+import { useTheme } from "../layout/ThemeContext";
 import { SectionCard } from "./FormField";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -46,28 +47,27 @@ const REPORTS: Report[] = [
 
 // ── Category color map ────────────────────────────────────────────────────────
 
-const CATEGORY_STYLES: Record<string, { color: string; background: string; border: string }> = {
-  "Quarterly Assessment": { color: "#00c4a0", background: "rgba(0,196,160,0.10)",   border: "1px solid rgba(0,196,160,0.28)"   },
-  "Monthly Report":       { color: "#8fa8b8", background: "rgba(143,168,184,0.10)", border: "1px solid rgba(143,168,184,0.25)" },
-  "Baseline Assessment":  { color: "#e8a020", background: "rgba(232,160,32,0.10)",  border: "1px solid rgba(232,160,32,0.28)"  },
-};
-
-function categoryStyle(category: string) {
-  return CATEGORY_STYLES[category] ?? CATEGORY_STYLES["Monthly Report"];
+function getCategoryStyle(category: string, palette: any) {
+  const styleMap: Record<string, { color: string; background: string; border: string }> = {
+    "Quarterly Assessment": { color: palette.primary, background: `${palette.primary}1a`, border: `1px solid ${palette.primary}47` },
+    "Monthly Report":       { color: palette.iconTertiary, background: `${palette.iconTertiary}19`, border: `1px solid ${palette.iconTertiary}40` },
+    "Baseline Assessment":  { color: "#e8a020", background: "#e8a02019", border: "1px solid #e8a02047" },
+  };
+  return styleMap[category] ?? styleMap["Monthly Report"];
 }
 
 // ── ReportRow ─────────────────────────────────────────────────────────────────
 
-function ReportRow({ report }: { report: Report }) {
-  const cs = categoryStyle(report.category);
+function ReportRow({ report, palette }: { report: Report; palette: any }) {
+  const cs = getCategoryStyle(report.category, palette);
 
   return (
     <div
       className="rounded-lg"
       style={{
         padding: "14px 16px",
-        background: "rgba(161,189,198,0.04)",
-        border: "1px solid rgba(161,189,198,0.1)",
+        background: palette.hoverBg,
+        border: `1px solid ${palette.borderLight}`,
         marginBottom: "8px",
       }}
     >
@@ -76,7 +76,7 @@ function ReportRow({ report }: { report: Report }) {
         <div style={{ flex: 1, marginRight: "12px" }}>
           <div
             style={{
-              color: "#dfe9ec",
+              color: palette.textPrimary,
               fontSize: "var(--text-base)",
               fontWeight: 600,
               fontFamily: "var(--font-family)",
@@ -103,7 +103,7 @@ function ReportRow({ report }: { report: Report }) {
         </div>
         <span
           style={{
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             whiteSpace: "nowrap",
@@ -117,7 +117,7 @@ function ReportRow({ report }: { report: Report }) {
       {/* Summary */}
       <div
         style={{
-          color: "#a1bdc6",
+          color: palette.textTertiary,
           fontSize: "var(--text-sm)",
           fontFamily: "var(--font-family)",
           lineHeight: "1.5",
@@ -132,9 +132,9 @@ function ReportRow({ report }: { report: Report }) {
         <button
           style={{
             background: "transparent",
-            border: "1px solid rgba(161,189,198,0.25)",
+            border: `1px solid ${palette.borderMedium}`,
             borderRadius: "4px",
-            color: "#a1bdc6",
+            color: palette.textTertiary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             padding: "4px 12px",
@@ -151,9 +151,9 @@ function ReportRow({ report }: { report: Report }) {
         <button
           style={{
             background: "transparent",
-            border: "1px solid rgba(0,196,160,0.35)",
+            border: `1px solid ${palette.primary}59`,
             borderRadius: "4px",
-            color: "#00c4a0",
+            color: palette.primary,
             fontSize: "var(--text-sm)",
             fontFamily: "var(--font-family)",
             padding: "4px 12px",
@@ -175,11 +175,12 @@ function ReportRow({ report }: { report: Report }) {
 // ── ReportsSection ────────────────────────────────────────────────────────────
 
 export function ReportsSection() {
+  const { palette } = useTheme();
   return (
     <SectionCard title="Reports">
       <div>
         {REPORTS.map((r) => (
-          <ReportRow key={r.title} report={r} />
+          <ReportRow key={r.title} report={r} palette={palette} />
         ))}
       </div>
     </SectionCard>

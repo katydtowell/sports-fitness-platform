@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Ellipsis } from "lucide-react";
 import type { NavItem } from "./navTypes";
+import { useTheme } from "./ThemeContext";
 
 /** Width of the sidebar in pixels — exported so Layout can use it for spacing. */
 export const SIDEBAR_WIDTH = 68;
@@ -17,15 +18,15 @@ export const DRAG_SOURCE_SIDEBAR = "application/x-sidebar-item";
 export const DRAG_SOURCE_DRAWER  = "application/x-drawer-item";
 
 // ── Badge chip ──────────────────────────────────────────────────────────────
-function Badge({ text }: { text: string }) {
+function Badge({ text, palette }: { text: string; palette: ReturnType<typeof useTheme>["palette"] }) {
   return (
     <span
       style={{
         position: "absolute",
         top: 2,
         right: 2,
-        background: "#00c4a0",
-        color: "#0a0e0f",
+        background: palette.primary,
+        color: palette.surfaceBg,
         fontSize: "8px",
         fontWeight: 700,
         lineHeight: 1,
@@ -49,6 +50,7 @@ interface NavButtonProps {
   onClick: (id: string) => void;
   isDragTarget: boolean;
   isExternalDragTarget: boolean;
+  palette: ReturnType<typeof useTheme>["palette"];
 }
 
 function NavButton({
@@ -58,6 +60,7 @@ function NavButton({
   onClick,
   isDragTarget,
   isExternalDragTarget,
+  palette,
 }: NavButtonProps) {
   const Icon = item.icon;
   const showDropIndicator = isDragTarget || isExternalDragTarget;
@@ -84,15 +87,15 @@ function NavButton({
         gap: "3px",
         padding: "10px 4px",
         background: isActive
-          ? "rgba(0,196,160,0.12)"
+          ? `rgba(0,196,160,0.12)`
           : showDropIndicator
-          ? "rgba(0,196,160,0.06)"
+          ? `rgba(0,196,160,0.06)`
           : "transparent",
-        borderLeft: isActive ? "3px solid #00c4a0" : "3px solid transparent",
-        borderTop: showDropIndicator ? "2px solid #00c4a0" : "2px solid transparent",
+        borderLeft: isActive ? `3px solid ${palette.primary}` : "3px solid transparent",
+        borderTop: showDropIndicator ? `2px solid ${palette.primary}` : "2px solid transparent",
         borderRight: "none",
         borderBottom: "none",
-        color: isActive ? "#00c4a0" : "#a1bdc6",
+        color: isActive ? palette.primary : palette.textTertiary,
         fontSize: "9px",
         fontWeight: isActive ? 600 : 400,
         fontFamily: "var(--font-family)",
@@ -104,19 +107,19 @@ function NavButton({
     >
       <Icon size={18} strokeWidth={isActive ? 2 : 1.5} />
       <span>{item.label}</span>
-      {item.badge && <Badge text={item.badge} />}
+      {item.badge && <Badge text={item.badge} palette={palette} />}
     </button>
   );
 }
 
 // ── Drop zone at the bottom of the pinned list ─────────────────────────────
-function BottomDropZone({ visible }: { visible: boolean }) {
+function BottomDropZone({ visible, palette }: { visible: boolean; palette: ReturnType<typeof useTheme>["palette"] }) {
   return (
     <div
       style={{
         height: visible ? "36px" : "8px",
-        borderTop: visible ? "2px solid #00c4a0" : "2px solid transparent",
-        background: visible ? "rgba(0,196,160,0.06)" : "transparent",
+        borderTop: visible ? `2px solid ${palette.primary}` : "2px solid transparent",
+        background: visible ? `rgba(0,196,160,0.06)` : "transparent",
         transition: "all 0.12s",
         flexShrink: 0,
       }}
@@ -129,10 +132,12 @@ function HomeButton({
   item,
   isActive,
   onClick,
+  palette,
 }: {
   item: NavItem;
   isActive: boolean;
   onClick: (id: string) => void;
+  palette: ReturnType<typeof useTheme>["palette"];
 }) {
   const Icon = item.icon;
   return (
@@ -147,12 +152,12 @@ function HomeButton({
         justifyContent: "center",
         gap: "3px",
         padding: "10px 4px",
-        background: isActive ? "rgba(0,196,160,0.12)" : "transparent",
-        borderLeft: isActive ? "3px solid #00c4a0" : "3px solid transparent",
+        background: isActive ? `rgba(0,196,160,0.12)` : "transparent",
+        borderLeft: isActive ? `3px solid ${palette.primary}` : "3px solid transparent",
         borderTop: "none",
         borderRight: "none",
-        borderBottom: "1px solid rgba(161,189,198,0.10)",
-        color: isActive ? "#00c4a0" : "#a1bdc6",
+        borderBottom: `1px solid ${palette.borderLight}`,
+        color: isActive ? palette.primary : palette.textTertiary,
         fontSize: "9px",
         fontWeight: isActive ? 600 : 400,
         fontFamily: "var(--font-family)",
@@ -192,6 +197,7 @@ export function Sidebar({
   onOpenMoreTools,
   moreToolsOpen,
 }: SidebarProps) {
+  const { palette } = useTheme();
   // Which pinned-item index is the cursor hovering over?
   const [overIndex, setOverIndex] = useState<number | null>(null);
   // Is the drag from the sidebar (internal reorder) or from the drawer?
@@ -318,18 +324,19 @@ export function Sidebar({
         left: 0,
         bottom: 0,
         width: `${SIDEBAR_WIDTH}px`,
-        background: "#182023",
-        borderRight: "1px solid rgba(161,189,198,0.15)",
+        background: palette.surfacePrimary,
+        borderRight: `1px solid ${palette.borderMedium}`,
         fontFamily: "var(--font-family)",
         overflowY: "auto",
         overflowX: "hidden",
         zIndex: 80,
         display: "flex",
         flexDirection: "column",
+        transition: "background 0.25s ease"
       }}
     >
       {/* ── Fixed Home item (not draggable / removable) ── */}
-      <HomeButton item={homeItem} isActive={activeId === homeItem.id} onClick={onSelect} />
+      <HomeButton item={homeItem} isActive={activeId === homeItem.id} onClick={onSelect} palette={palette} />
 
       {/* ── Pinned nav items ── */}
       <div className="flex flex-col flex-1" style={{ minHeight: 0 }}>
@@ -352,6 +359,7 @@ export function Sidebar({
                 dragIndexRef.current !== i
               }
               isExternalDragTarget={overIndex === i && dragSource === "drawer"}
+              palette={palette}
             />
           </div>
         ))}
@@ -362,7 +370,7 @@ export function Sidebar({
           onDrop={handleBottomDrop}
           onDragLeave={() => setOverBottom(false)}
         >
-          <BottomDropZone visible={overBottom && dragSource !== null} />
+          <BottomDropZone visible={overBottom && dragSource !== null} palette={palette} />
         </div>
       </div>
 
@@ -376,12 +384,12 @@ export function Sidebar({
           justifyContent: "center",
           gap: "3px",
           padding: "12px 4px",
-          background: moreToolsOpen ? "rgba(0,196,160,0.12)" : "transparent",
-          borderLeft: moreToolsOpen ? "3px solid #00c4a0" : "3px solid transparent",
-          borderTop: "1px solid rgba(161,189,198,0.12)",
+          background: moreToolsOpen ? `rgba(0,196,160,0.12)` : "transparent",
+          borderLeft: moreToolsOpen ? `3px solid ${palette.primary}` : "3px solid transparent",
+          borderTop: `1px solid ${palette.borderLight}`,
           borderRight: "none",
           borderBottom: "none",
-          color: moreToolsOpen ? "#00c4a0" : "#a1bdc6",
+          color: moreToolsOpen ? palette.primary : palette.textTertiary,
           fontSize: "9px",
           fontWeight: moreToolsOpen ? 600 : 400,
           fontFamily: "var(--font-family)",

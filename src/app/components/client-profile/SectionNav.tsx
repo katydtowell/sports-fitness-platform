@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useTheme } from "../layout/ThemeContext";
 import { useIsMobile } from "../ui/use-mobile";
 
 interface SectionNavProps {
@@ -25,6 +26,7 @@ function triggerLabel(activeSection: string): string {
 }
 
 export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEditing, isEditing }: SectionNavProps) {
+  const { palette } = useTheme();
   const isMobile    = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -53,18 +55,18 @@ export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEdit
             onClick={() => setIsOpen((v) => !v)}
             style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
-              width: "100%", padding: "10px 14px", background: "#182023",
-              border: "1px solid rgba(161,189,198,0.15)", borderTop: "none",
+              width: "100%", padding: "10px 14px", background: palette.surfacePrimary,
+              border: `1px solid ${palette.borderMedium}`, borderTop: "none",
               borderRadius: isOpen ? "0" : "0 0 8px 8px",
-              color: "#dfe9ec", fontSize: "var(--text-base)",
+              color: palette.textPrimary, fontSize: "var(--text-base)",
               fontFamily: "var(--font-family)", cursor: "pointer",
             }}
           >
             <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#00c4a0", display: "inline-block", flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, color: "#00c4a0" }}>{label}</span>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: palette.primary, display: "inline-block", flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: palette.primary }}>{label}</span>
             </span>
-            <span style={{ color: "#a1bdc6", fontSize: "12px", transition: "transform 0.2s", transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
+            <span style={{ color: palette.textTertiary, fontSize: "12px", transition: "transform 0.2s", transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
           </button>
 
           {/* Dropdown panel */}
@@ -72,10 +74,10 @@ export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEdit
             <div
               style={{
                 position: "absolute", top: "100%", left: 0, right: 0,
-                background: "#182023", border: "1px solid rgba(161,189,198,0.25)",
+                background: palette.surfacePrimary, border: `1px solid ${palette.borderMedium}`,
                 borderTop: "none", borderRadius: "0 0 8px 8px",
                 zIndex: 50, maxHeight: "260px", overflowY: "auto",
-                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                boxShadow: `0 8px 24px ${palette.shadow}`,
               }}
             >
               {navGroups.map((group, gi) => {
@@ -92,20 +94,20 @@ export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEdit
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         width: "100%", padding: "8px 14px 4px",
                         marginTop: gi > 0 ? "4px" : 0,
-                        borderTop: gi > 0 ? "1px solid rgba(161,189,198,0.1)" : "none",
-                        background: isGroupActive ? "rgba(0,196,160,0.08)" : "transparent",
+                        borderTop: gi > 0 ? `1px solid ${palette.borderLight}` : "none",
+                        background: isGroupActive ? `${palette.primary}14` : "transparent",
                         border: "none", cursor: "pointer",
                       }}
                     >
                       <span style={{
-                        color: isGroupActive ? "#00c4a0" : "#a1bdc6",
+                        color: isGroupActive ? palette.primary : palette.textTertiary,
                         fontSize: "10px", fontWeight: 700,
                         letterSpacing: "0.1em", textTransform: "uppercase",
                         fontFamily: "var(--font-family)",
                       }}>
                         {group.group}
                       </span>
-                      {isGroupActive && <span style={{ color: "#00c4a0", fontSize: "12px" }}>✓</span>}
+                      {isGroupActive && <span style={{ color: palette.primary, fontSize: "12px" }}>✓</span>}
                     </button>
 
                     {/* Items */}
@@ -121,17 +123,17 @@ export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEdit
                           style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between",
                             width: "100%", padding: "10px 14px",
-                            background: isActive ? "rgba(0,196,160,0.12)" : "transparent",
-                            color: isActive ? "#00c4a0" : "#dfe9ec",
+                            background: isActive ? `${palette.primary}1f` : "transparent",
+                            color: isActive ? palette.primary : palette.textPrimary,
                             fontSize: "var(--text-base)", fontWeight: isActive ? 600 : 400,
                             fontFamily: "var(--font-family)", cursor: "pointer",
                             border: "none",
-                            borderLeft: isActive ? "3px solid #00c4a0" : "3px solid transparent",
+                            borderLeft: isActive ? `3px solid ${palette.primary}` : "3px solid transparent",
                             textAlign: "left",
                           }}
                         >
                           <span>{item}</span>
-                          {isActive && <span style={{ color: "#00c4a0", fontSize: "12px" }}>✓</span>}
+                          {isActive && <span style={{ color: palette.primary, fontSize: "12px" }}>✓</span>}
                         </button>
                       );
                     })}
@@ -150,8 +152,8 @@ export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEdit
     <nav
       className="shrink-0 rounded-lg overflow-hidden"
       style={{
-        width: "192px", background: "#182023",
-        border: "1px solid rgba(161,189,198,0.15)",
+        width: "192px", background: palette.surfacePrimary,
+        border: `1px solid ${palette.borderMedium}`,
         fontFamily: "var(--font-family)", alignSelf: "flex-start",
         position: "sticky", top: "60px",
       }}
@@ -167,19 +169,19 @@ export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEdit
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "8px 16px",
-                background: isGroupActive ? "rgba(0,196,160,0.08)" : "transparent",
+                background: isGroupActive ? `${palette.primary}14` : "transparent",
                 border: "none", cursor: "pointer", width: "100%",
               }}
-              onMouseEnter={(e) => { if (!isGroupActive) e.currentTarget.style.background = "rgba(161,189,198,0.05)"; }}
+              onMouseEnter={(e) => { if (!isGroupActive) e.currentTarget.style.background = palette.hoverBg; }}
               onMouseLeave={(e) => { if (!isGroupActive) e.currentTarget.style.background = "transparent"; }}
             >
               <span style={{
-                color: isGroupActive ? "#00c4a0" : "#a1bdc6",
+                color: isGroupActive ? palette.primary : palette.textTertiary,
                 fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em",
               }}>
                 {group.group}
               </span>
-              {isGroupActive && <span style={{ color: "#00c4a0", fontSize: "11px" }}>✓</span>}
+              {isGroupActive && <span style={{ color: palette.primary, fontSize: "11px" }}>✓</span>}
             </button>
 
             {/* Items */}
@@ -192,17 +194,17 @@ export function SectionNav({ activeSection, onSelect, onEditClient, onCancelEdit
                   className="w-full text-left flex items-center justify-between"
                   style={{
                     padding: "10px 16px",
-                    background: isActive ? "rgba(0,196,160,0.15)" : "transparent",
-                    color: isActive ? "#00c4a0" : "#dfe9ec",
+                    background: isActive ? `${palette.primary}26` : "transparent",
+                    color: isActive ? palette.primary : palette.textPrimary,
                     fontSize: "var(--text-base)", fontWeight: isActive ? 600 : 400,
                     fontFamily: "var(--font-family)", cursor: "pointer",
                     border: "none",
-                    borderLeft: isActive ? "3px solid #00c4a0" : "3px solid transparent",
+                    borderLeft: isActive ? `3px solid ${palette.primary}` : "3px solid transparent",
                     width: "100%",
                   }}
                 >
                   <span>{item}</span>
-                  {!isActive && <span style={{ color: "#a1bdc6", fontSize: "12px" }}>›</span>}
+                  {!isActive && <span style={{ color: palette.textTertiary, fontSize: "12px" }}>›</span>}
                 </button>
               );
             })}

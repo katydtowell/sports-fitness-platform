@@ -18,10 +18,27 @@ body {
   color: #dfe9ec;
   font-family: var(--font-family);
   font-size: var(--text-base);
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
-/* Match calendar icon colour to placeholder text: rgba(161,189,198,0.5) */
-input[type="date"]::-webkit-calendar-picker-indicator {
+/* Match calendar icon colour to placeholder text */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1) sepia(0.15) saturate(0.8) hue-rotate(155deg) opacity(0.5);
   cursor: pointer;
+}
+[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: none;
+  cursor: pointer;
+}
+
+/* Scrollbar styling per theme */
+[data-theme="light"] ::-webkit-scrollbar {
+  width: 6px;
+}
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #dfe9ec;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #a1bdc6;
+  border-radius: 3px;
 }
