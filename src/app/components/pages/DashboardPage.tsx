@@ -429,7 +429,7 @@ function RevenueWidget({ palette }: { palette: ThemePalette }) {
               color: palette.textPrimary,
               fontFamily: "var(--font-family)",
             }}
-            formatter={(v: number) => [`$${v.toLocaleString()}`, "Revenue"]}
+            formatter={(v) => [`$${Number(v).toLocaleString()}`, "Revenue"] as [string, string]}
           />
           <Bar dataKey="amount" fill={palette.containerInfo} radius={[4, 4, 0, 0]} />
         </BarChart>
@@ -570,7 +570,9 @@ export function DashboardPage() {
 
   const flatWidgets = widgets.flat();
   const usedTypes = new Set(flatWidgets.map((w) => w.type));
-  const availableTypes = ALL_WIDGET_DEFS.filter((d) => !usedTypes.has(d.type));
+  // Available for the "Add Widget" panel — used later when panel is wired up.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const availableTypes = ALL_WIDGET_DEFS.filter((d) => !usedTypes.has(d.type)); void availableTypes;
 
   /* drag helpers */
   const handleDragStart = (rowIdx: number, colIdx: number) => {
@@ -715,7 +717,7 @@ export function DashboardPage() {
           <div style={{ position: "relative" }}>
             {/* carousel track */}
             <div style={{ display: "flex", gap: 20, overflow: "hidden" }}>
-              {ANNOUNCEMENTS.map((a, i) => {
+              {ANNOUNCEMENTS.map((a) => {
                 const cardWidth = isMobile ? "100%" : "calc(50% - 10px)";
                 const shift = isMobile
                   ? `translateX(calc(${-safeIndex * 100}% - ${safeIndex * 20}px))`

@@ -15,6 +15,13 @@ import {
   BarChart2,
   Clock,
   FileText,
+  CreditCard,
+  UserCog,
+  MapPin,
+  BadgeCheck,
+  Package,
+  Server,
+  Globe,
 } from "lucide-react";
 import type { NavItem } from "./navTypes";
 
@@ -48,6 +55,24 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { id: "point-of-sale",   label: "Point of Sale",   icon: ShoppingCart },
   { id: "reports",         label: "Reports",         icon: BarChart2 },
   { id: "time-clock",      label: "Time Clock",      icon: Clock },
+];
+
+/**
+ * Admin subpage items — shown as children of Admin in Manage Pins,
+ * page menus, and search results.  These are not top-level sidebar items.
+ */
+export const ADMIN_SUBPAGE_ITEMS: NavItem[] = [
+  { id: "admin/billing",           label: "Billing",           icon: CreditCard },
+  { id: "admin/client-settings",   label: "Client Settings",   icon: UserCog },
+  { id: "admin/documents",         label: "Documents",         icon: FileText },
+  { id: "admin/location-settings", label: "Location Settings", icon: MapPin },
+  { id: "admin/memberships",       label: "Memberships",       icon: BadgeCheck },
+  { id: "admin/packages",          label: "Packages",          icon: Package },
+  { id: "admin/rentals",           label: "Rentals",           icon: KeyRound },
+  { id: "admin/resources",         label: "Resources",         icon: Server },
+  { id: "admin/pos-settings",      label: "POS Settings",      icon: ShoppingCart },
+  { id: "admin/self-service",      label: "Self Service",      icon: Globe },
+  { id: "admin/timeclock",         label: "Time Clock",        icon: Clock },
 ];
 
 /** IDs that appear in the main sidebar by default. */

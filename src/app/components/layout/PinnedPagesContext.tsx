@@ -13,7 +13,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { ALL_NAV_ITEMS, HOME_ITEM } from "./navItems";
+import { ALL_NAV_ITEMS, ADMIN_SUBPAGE_ITEMS, HOME_ITEM } from "./navItems";
 
 export const MAX_PINS = 10;
 const STORAGE_KEY = "ezf_pinned_pages";
@@ -21,7 +21,9 @@ const STORAGE_KEY = "ezf_pinned_pages";
 const DEFAULT_PINS = ["schedule"];
 
 /** Valid page IDs — used to discard stale values from localStorage. */
-const VALID_PAGE_IDS = new Set([HOME_ITEM, ...ALL_NAV_ITEMS].map((i) => i.id));
+const VALID_PAGE_IDS = new Set(
+  [HOME_ITEM, ...ALL_NAV_ITEMS, ...ADMIN_SUBPAGE_ITEMS].map((i) => i.id)
+);
 
 interface PinnedPagesContextValue {
   pinnedPages: string[];

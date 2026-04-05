@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { useTheme } from "../layout/ThemeContext";
 import { usePinnedPages, MAX_PINS } from "../layout/PinnedPagesContext";
-import { ALL_NAV_ITEMS, HOME_ITEM } from "../layout/navItems";
+import { ALL_NAV_ITEMS, ADMIN_SUBPAGE_ITEMS, HOME_ITEM } from "../layout/navItems";
 
 // ── Page hierarchy ─────────────────────────────────────────────────────────────
 // Each entry is a parent page (must match an id in ALL_NAV_ITEMS or HOME_ITEM).
@@ -27,7 +27,10 @@ interface PageNode {
 }
 
 const PAGE_HIERARCHY: PageNode[] = [
-  { id: "admin" },
+  {
+    id: "admin",
+    children: ADMIN_SUBPAGE_ITEMS.map((item) => ({ id: item.id })),
+  },
   { id: "check-in" },
   { id: "clients" },       // future: children: [{ id: "client-profile" }]
   { id: "dashboard" },
@@ -45,8 +48,8 @@ const PAGE_HIERARCHY: PageNode[] = [
   { id: "time-clock" },
 ];
 
-// Build a label lookup from all nav items
-const ALL_ITEMS = [HOME_ITEM, ...ALL_NAV_ITEMS];
+// Build a label lookup from all nav items (including admin subpages)
+const ALL_ITEMS = [HOME_ITEM, ...ALL_NAV_ITEMS, ...ADMIN_SUBPAGE_ITEMS];
 const LABEL_MAP = Object.fromEntries(ALL_ITEMS.map((item) => [item.id, item.label]));
 
 // ── Icons ─────────────────────────────────────────────────────────────────────

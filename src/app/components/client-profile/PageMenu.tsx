@@ -22,7 +22,7 @@ import { useTheme } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
 import { usePinnedPages } from "../layout/PinnedPagesContext";
 import { ManagePinsPanel } from "./ManagePinsPanel";
-import { ALL_NAV_ITEMS } from "../layout/navItems";
+import { ALL_NAV_ITEMS, ADMIN_SUBPAGE_ITEMS } from "../layout/navItems";
 
 export interface ContextualPage {
   id: string;
@@ -71,9 +71,9 @@ export function PageMenu({ onNavigateToPage, contextualPages = [] }: PageMenuPro
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Build a label lookup map from ALL_NAV_ITEMS
+  // Build a label lookup map from ALL_NAV_ITEMS + admin subpages
   const labelMap = Object.fromEntries(
-    ALL_NAV_ITEMS.map((item) => [item.id, item.label])
+    [...ALL_NAV_ITEMS, ...ADMIN_SUBPAGE_ITEMS].map((item) => [item.id, item.label])
   );
 
   // Close dropdown on outside click

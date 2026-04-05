@@ -15,6 +15,8 @@ import { getClientById, getClientBySlug, clientSlug } from "./data/clients";
 
 // ── Page components ──────────────────────────────────────────────────────────
 import { AdminPage } from "./components/pages/AdminPage";
+import { PlaceholderPage } from "./components/pages/PlaceholderPage";
+import { ADMIN_SUBPAGE_ITEMS } from "./components/layout/navItems";
 import { CheckInPage } from "./components/pages/CheckInPage";
 import { ClientsPage } from "./components/pages/ClientsPage";
 import { ClientProfilePage } from "./components/pages/ClientProfilePage";
@@ -81,8 +83,34 @@ function AppRouter() {
       );
     }
 
+    // Admin has subpages: /admin/billing, /admin/client-settings, etc.
+    if (id === "admin") {
+      if (nav.subpage) {
+        const subItem = ADMIN_SUBPAGE_ITEMS.find(
+          (s) => s.id === `admin/${nav.subpage}`
+        );
+        if (subItem) {
+          return (
+            <PlaceholderPage
+              key={subItem.id}
+              title={subItem.label}
+              icon={subItem.icon}
+              description={`Admin › ${subItem.label} — coming soon.`}
+            />
+          );
+        }
+        // Unknown slug — fall back to admin dashboard
+      }
+      return (
+        <AdminPage
+          onNavigateToSubpage={(subpageId) => {
+            nav.setSubpage(subpageId);
+          }}
+        />
+      );
+    }
+
     switch (id) {
-      case "admin":           return <AdminPage />;
       case "check-in":        return <CheckInPage />;
       case "dashboard":       return <DashboardPage />;
       case "documents":       return <DocumentsPage />;

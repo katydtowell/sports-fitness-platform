@@ -9,6 +9,7 @@ import { useNotifications } from "./NotificationsContext";
 import { useTheme } from "./ThemeContext";
 import type { NavItem } from "./navTypes";
 import { HOME_ITEM, ALL_NAV_ITEMS } from "./navItems";
+import { OnboardingModal } from "./OnboardingModal";
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
@@ -342,7 +343,7 @@ function AvatarButton({ isMobile, isOpen, onClick }: { isMobile: boolean; isOpen
   );
 }
 
-function UserDropdown({ onClose }: { onClose: () => void }) {
+function UserDropdown({ onClose, onShowOnboarding }: { onClose: () => void; onShowOnboarding: () => void }) {
   const { palette } = useTheme();
   return (
     <div style={{
@@ -355,13 +356,50 @@ function UserDropdown({ onClose }: { onClose: () => void }) {
       overflow: "hidden",
       boxShadow: `0 8px 24px ${palette.shadow}`,
       zIndex: 300,
-      minWidth: "180px",
+      minWidth: "220px",
       fontFamily: "var(--font-family)",
     }}>
       <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${palette.borderLight}` }}>
         <div style={{ color: palette.textPrimary, fontSize: "13px", fontWeight: 600 }}>Joe Smith</div>
         <div style={{ color: palette.textTertiary, fontSize: "11px", marginTop: "2px" }}>Administrator</div>
       </div>
+      {/* Show the onboarding modal — prototype-only link */}
+      <button
+        onClick={() => { onShowOnboarding(); onClose(); }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          width: "100%",
+          padding: "11px 16px",
+          background: "transparent",
+          border: "none",
+          borderBottom: `1px solid ${palette.borderLight}`,
+          color: palette.textPrimary,
+          fontSize: "13px",
+          fontFamily: "var(--font-family)",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: "14px", opacity: 0.7 }}>▶</span>
+        <span style={{ flex: 1 }}>Show the onboarding modal</span>
+        <span
+          style={{
+            fontSize: "9px",
+            fontWeight: 700,
+            color: "#f59e0b",
+            background: "rgba(245,158,11,0.15)",
+            padding: "2px 6px",
+            borderRadius: "4px",
+            letterSpacing: "0.5px",
+            textTransform: "uppercase",
+            flexShrink: 0,
+          }}
+        >
+          Prototype
+        </span>
+      </button>
       {[
         { label: "Edit profile", icon: "✎" },
         { label: "Log out",      icon: "⇥" },
@@ -635,6 +673,7 @@ export function TopNav({ homeItem, pinnedItems, moreItems, activeId, onSelect }:
   const hasNotifications = unreadCount > 0;
   const { mode, palette, toggleTheme } = useTheme();
   const isDarkMode = mode === "dark";
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Complete list of navigable pages for search
   const allNavItems = [HOME_ITEM, ...ALL_NAV_ITEMS];
@@ -735,7 +774,7 @@ export function TopNav({ homeItem, pinnedItems, moreItems, activeId, onSelect }:
             {/* ── Right: avatar ── */}
             <div ref={userMenuRef} style={{ position: "relative", flexShrink: 0 }}>
               <AvatarButton isMobile={true} isOpen={userMenuOpen} onClick={() => setUserMenuOpen(v => !v)} />
-              {userMenuOpen && <UserDropdown onClose={() => setUserMenuOpen(false)} />}
+              {userMenuOpen && <UserDropdown onClose={() => setUserMenuOpen(false)} onShowOnboarding={() => setShowOnboarding(true)} />}
             </div>
           </>
         ) : (
@@ -784,7 +823,7 @@ export function TopNav({ homeItem, pinnedItems, moreItems, activeId, onSelect }:
                 >
                   <AvatarButton isMobile={false} isOpen={userMenuOpen} onClick={() => {}} />
                 </button>
-                {userMenuOpen && <UserDropdown onClose={() => setUserMenuOpen(false)} />}
+                {userMenuOpen && <UserDropdown onClose={() => setUserMenuOpen(false)} onShowOnboarding={() => setShowOnboarding(true)} />}
               </div>
             </div>
           </>
@@ -898,6 +937,9 @@ export function TopNav({ homeItem, pinnedItems, moreItems, activeId, onSelect }:
           </div>
         </>
       )}
+
+      {/* ── Onboarding Modal (prototype only) ──────────────────────────── */}
+      <OnboardingModal isOpen={showOnboarding} onClose={() => setShowOnboarding(false)} onNavigate={onSelect} />
     </>
   );
 }
