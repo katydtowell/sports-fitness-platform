@@ -13,7 +13,7 @@
  * Matches the Figma design: Flowbite_Calendar_EZLeagues
  */
 
-import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -396,6 +396,51 @@ function generateMockEvents(): DayEvents {
 
 const MOCK_EVENTS = generateMockEvents();
 
+/**
+ * Filter a DayEvents map by a free-text search term.
+ * Matches against event title, instructor, venue, and type (case-insensitive).
+ * "closed" placeholder events are always preserved so blocked-off days remain visible.
+ * An empty / whitespace-only query returns the original map unchanged.
+ */
+function filterEventsByQuery(eventsByDay: DayEvents, query: string): DayEvents {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return eventsByDay;
+
+  const result: DayEvents = {};
+  for (const dayKey of Object.keys(eventsByDay)) {
+    const day = Number(dayKey);
+    const events: CalendarEvent[] = eventsByDay[day] ?? [];
+    const matches = events.filter((e: CalendarEvent) => {
+      if (e.type === "closed") return true;
+      return (
+        e.title.toLowerCase().includes(trimmed) ||
+        e.instructor.toLowerCase().includes(trimmed) ||
+        e.venue.toLowerCase().includes(trimmed) ||
+        e.type.toLowerCase().includes(trimmed)
+      );
+    });
+    // Only keep the day if it has at least one non-closed match
+    const hasRealMatch = matches.some((e: CalendarEvent) => e.type !== "closed");
+    if (hasRealMatch) result[day] = matches;
+  }
+  return result;
+}
+
+/**
+ * Parse an event time string (e.g. "11am", "12:30pm", "2pm") into minutes since
+ * midnight. Returns -1 for an unrecognized format so callers can defensively skip.
+ */
+function parseEventTimeToMinutes(time: string): number {
+  const match = time.trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+  if (!match) return -1;
+  let hour = parseInt(match[1], 10);
+  const minute = match[2] ? parseInt(match[2], 10) : 0;
+  const meridiem = match[3];
+  if (meridiem === "pm" && hour !== 12) hour += 12;
+  if (meridiem === "am" && hour === 12) hour = 0;
+  return hour * 60 + minute;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════════════ */
@@ -591,8 +636,11 @@ function DateCell({
     return (
       <div
         style={{
+          // `flex` is harmless inside a grid (a grid parent ignores it); kept
+          // so this cell still works if reused inside a flex container.
           flex: "1 1 0",
           minWidth: 0,
+          minHeight: "149px",
           borderBottom: `1px solid ${sc.border}`,
           borderLeft: `1px solid ${sc.border}`,
           background: isDark ? sc.cellBg : "#fafafa",
@@ -629,6 +677,7 @@ function DateCell({
       style={{
         flex: "1 1 0",
         minWidth: 0,
+        minHeight: "149px",
         display: "flex",
         flexDirection: "column",
         background: sc.cellBg,
@@ -1243,6 +1292,13 @@ interface MobileToolbarProps {
   setShowViewDropdown: (show: boolean) => void;
   currentView: string;
   onChangeView: (view: string) => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  /** Whether the user has navigated away from today (different month, year,
+   *  or selected day). When true, the Today button is rendered. */
+  showTodayButton: boolean;
+  /** Resets the calendar to the real-world current date. */
+  onGoToToday: () => void;
 }
 
 function MobileToolbar({
@@ -1258,6 +1314,10 @@ function MobileToolbar({
   setShowViewDropdown,
   currentView,
   onChangeView,
+  searchQuery,
+  setSearchQuery,
+  showTodayButton,
+  onGoToToday,
 }: MobileToolbarProps) {
   const viewDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1286,65 +1346,91 @@ function MobileToolbar({
           borderBottom: `1px solid ${sc.border}`,
         }}
       >
-        {/* View dropdown trigger — mirrors desktop "Month view" button */}
-        <div ref={viewDropdownRef} style={{ position: "relative" }}>
-          <button
-            onClick={() => setShowViewDropdown(!showViewDropdown)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "10px 16px",
-              borderRadius: "8px",
-              border: `1px solid ${sc.border}`,
-              background: sc.controlBg,
-              fontSize: "15px",
-              fontWeight: 500,
-              color: sc.body,
-              cursor: "pointer",
-              boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
-            }}
-          >
-            {currentView} <ChevronDown size={15} />
-          </button>
-
-          {/* Dropdown options */}
-          {showViewDropdown && (
-            <div
+        {/* View dropdown trigger + Today button */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {/* View dropdown trigger — mirrors desktop "Month view" button */}
+          <div ref={viewDropdownRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowViewDropdown(!showViewDropdown)}
               style={{
-                position: "absolute",
-                top: "calc(100% + 4px)",
-                left: 0,
-                minWidth: "160px",
-                background: sc.cellBg,
-                border: `1px solid ${sc.border}`,
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "10px 16px",
                 borderRadius: "8px",
-                boxShadow: `0px 8px 16px -4px ${sc.shadow}`,
-                padding: "4px",
-                zIndex: 100,
+                border: `1px solid ${sc.border}`,
+                background: sc.controlBg,
+                fontSize: "15px",
+                fontWeight: 500,
+                color: sc.body,
+                cursor: "pointer",
+                boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
               }}
             >
-              {["Monthly", "Weekly", "Daily", "Resources"].map((view) => (
-                <div
-                  key={view}
-                  onClick={() => {
-                    onChangeView(view);
-                    setShowViewDropdown(false);
-                  }}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    background: view === currentView ? `${sc.brand}20` : "transparent",
-                    color: view === currentView ? sc.brand : sc.body,
-                  }}
-                >
-                  {view}
-                </div>
-              ))}
-            </div>
+              {currentView} <ChevronDown size={15} />
+            </button>
+
+            {/* Dropdown options */}
+            {showViewDropdown && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  left: 0,
+                  minWidth: "160px",
+                  background: sc.cellBg,
+                  border: `1px solid ${sc.border}`,
+                  borderRadius: "8px",
+                  boxShadow: `0px 8px 16px -4px ${sc.shadow}`,
+                  padding: "4px",
+                  zIndex: 100,
+                }}
+              >
+                {["Monthly", "Weekly", "Daily", "Resources"].map((view) => (
+                  <div
+                    key={view}
+                    onClick={() => {
+                      onChangeView(view);
+                      setShowViewDropdown(false);
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      background: view === currentView ? `${sc.brand}20` : "transparent",
+                      color: view === currentView ? sc.brand : sc.body,
+                    }}
+                  >
+                    {view}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* "Today" — only shown when the calendar isn't already on the
+              real-world current month/year/day. Clicking returns to today. */}
+          {showTodayButton && (
+            <button
+              onClick={onGoToToday}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "10px 16px",
+                borderRadius: "8px",
+                border: `1px solid ${sc.border}`,
+                background: sc.controlBg,
+                fontSize: "15px",
+                fontWeight: 500,
+                color: sc.body,
+                cursor: "pointer",
+                boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
+              }}
+            >
+              Today
+            </button>
           )}
         </div>
 
@@ -1427,7 +1513,10 @@ function MobileToolbar({
             <Search size={16} style={{ color: sc.muted, flexShrink: 0 }} />
             <input
               type="text"
-              placeholder="Search events..."
+              placeholder="Search schedule"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
               style={{
                 border: "none",
                 outline: "none",
@@ -1851,6 +1940,8 @@ interface MobileEventListProps {
   isDark: boolean;
   onSelectEvent: (event: CalendarEvent) => void;
   onAddReservation?: () => void;
+  eventsByDay?: DayEvents;
+  searchQuery?: string;
 }
 
 function MobileEventList({
@@ -1860,9 +1951,13 @@ function MobileEventList({
   isDark,
   onSelectEvent,
   onAddReservation,
+  eventsByDay,
+  searchQuery,
 }: MobileEventListProps) {
-  const events = MOCK_EVENTS[selectedDate] || [];
+  const source = eventsByDay ?? MOCK_EVENTS;
+  const events = source[selectedDate] || [];
   const nonClosedEvents = events.filter((e) => e.type !== "closed");
+  const isFiltering = !!(searchQuery && searchQuery.trim());
 
   return (
     <div
@@ -1942,7 +2037,7 @@ function MobileEventList({
               fontSize: "14px",
             }}
           >
-            No events on this date
+            {isFiltering ? "No events match your search" : "No events on this date"}
           </div>
         )}
       </div>
@@ -1971,6 +2066,13 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
   const [showCalendar, setShowCalendar] = useState(true);
   const [showViewDropdown, setShowViewDropdown] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter events by the search query (matches title, instructor, venue, type).
+  const filteredEvents = useMemo(
+    () => filterEventsByQuery(MOCK_EVENTS, searchQuery),
+    [searchQuery]
+  );
 
   const handleToggleCalendar = useCallback(() => {
     setShowCalendar((v) => !v);
@@ -1995,6 +2097,25 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
       return m + 1;
     });
   }, []);
+
+  // "Today" — jumps the calendar back to the real-world current month/year
+  // AND sets the selected day to today's date. Mobile selects a specific day
+  // (unlike desktop, which only navigates by month), so we sync all three.
+  const handleGoToToday = useCallback(() => {
+    const now = new Date();
+    setCurrentMonth(now.getMonth());
+    setCurrentYear(now.getFullYear());
+    setSelectedDate(now.getDate());
+  }, []);
+
+  // The Today button shows whenever the user has navigated away from today —
+  // either to a different month/year or to a different day within the
+  // current month.
+  const today = new Date();
+  const isViewingToday =
+    currentMonth === today.getMonth() &&
+    currentYear === today.getFullYear() &&
+    selectedDate === today.getDate();
 
   const handleSelectEvent = useCallback((event: CalendarEvent) => {
     openPanel(
@@ -2034,6 +2155,10 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
         setShowViewDropdown={setShowViewDropdown}
         currentView={currentView}
         onChangeView={setCurrentView}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        showTodayButton={!isViewingToday}
+        onGoToToday={handleGoToToday}
       />
 
       {/* Mini Calendar — toggleable via toolbar button */}
@@ -2056,6 +2181,8 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
         isDark={isDark}
         onSelectEvent={handleSelectEvent}
         onAddReservation={onAddReservation}
+        eventsByDay={filteredEvents}
+        searchQuery={searchQuery}
       />
 
       {/* Full-page reservation detail */}
@@ -2534,7 +2661,16 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   // Filter toggles for registered clients
   const [clientFilters, setClientFilters] = useState<Record<string, boolean>>({ Booked: false, Reserved: false, Waitlisted: false });
   const isAllActive = !clientFilters.Booked && !clientFilters.Reserved && !clientFilters.Waitlisted;
-  const toggleFilter = (status: string) => setClientFilters((prev) => ({ ...prev, [status]: !prev[status] }));
+  const toggleFilter = (status: string) =>
+    setClientFilters((prev) => {
+      const next = { ...prev, [status]: !prev[status] };
+      // If toggling this status causes every individual filter to be ON,
+      // collapse back to "All" (i.e. clear every toggle so isAllActive becomes true).
+      if (next.Booked && next.Reserved && next.Waitlisted) {
+        return { Booked: false, Reserved: false, Waitlisted: false };
+      }
+      return next;
+    });
   const toggleAll = () => setClientFilters({ Booked: false, Reserved: false, Waitlisted: false });
   const filteredClients = isAllActive ? bookedClients : bookedClients.filter((c) => clientFilters[c.status]);
 
@@ -2658,14 +2794,14 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
       {/* ── Registered clients list ── */}
       {bookedClients.length > 0 && (
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
             <Users size={14} style={{ opacity: 0.5, color: palette.textTertiary }} />
             <span style={{ flex: 1, fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>Registered Clients ({bookedClients.length})</span>
             <span onClick={() => { setActiveSection("Registered Clients"); }} style={{ fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span>
           </div>
           {/* Filter toggles */}
-          <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
-            <button onClick={toggleAll} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "14px", border: `1px solid ${isAllActive ? palette.textPrimary : palette.borderMedium}`, background: isAllActive ? (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent", color: isAllActive ? palette.textPrimary : palette.textTertiary, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isAllActive ? 1 : 0.5, transition: "all 0.15s ease" }}>
+          <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
+            <button onClick={toggleAll} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${isAllActive ? palette.textPrimary : palette.borderMedium}`, background: isAllActive ? (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent", color: isAllActive ? palette.textPrimary : palette.textTertiary, fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isAllActive ? 1 : 0.5, transition: "all 0.15s ease", lineHeight: "16px" }}>
               All ({bookedClients.length})
             </button>
             {(["Booked", "Reserved", "Waitlisted"] as const).map((status) => {
@@ -2673,14 +2809,14 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
               const isActive = clientFilters[status];
               const count = bookedClients.filter((c) => c.status === status).length;
               return (
-                <button key={status} onClick={() => toggleFilter(status)} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "14px", border: `1px solid ${isActive ? sc.text : palette.borderMedium}`, background: isActive ? sc.bg : "transparent", color: isActive ? sc.text : palette.textTertiary, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isActive ? 1 : 0.5, transition: "all 0.15s ease" }}>
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: isActive ? sc.text : palette.textTertiary, flexShrink: 0 }} />
+                <button key={status} onClick={() => toggleFilter(status)} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${isActive ? sc.text : palette.borderMedium}`, background: isActive ? sc.bg : "transparent", color: isActive ? sc.text : palette.textTertiary, fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isActive ? 1 : 0.5, transition: "all 0.15s ease", lineHeight: "16px" }}>
+                  <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: isActive ? sc.text : palette.textTertiary, flexShrink: 0 }} />
                   {status} ({count})
                 </button>
               );
             })}
           </div>
-          <div style={{ maxHeight: "200px", overflowY: "auto", border: `1px solid ${palette.borderLight}`, borderRadius: "8px" }}>
+          <div className="always-show-scrollbar" style={{ maxHeight: "200px", border: `1px solid ${palette.borderLight}`, borderRadius: "8px", background: palette.surfaceSecondary }}>
             {filteredClients.length === 0 ? (
               <div style={{ padding: "16px 12px", textAlign: "center", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, opacity: 0.6 }}>No clients match the selected filters</div>
             ) : filteredClients.map((client, i) => {
@@ -3243,6 +3379,210 @@ function AddReservationPanelContent() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — UpcomingTodayPanel (desktop side-rail)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+interface UpcomingTodayPanelProps {
+  events: CalendarEvent[];
+  sc: SemanticColors;
+  colors: Record<ReservationType, BadgeColors>;
+  isDark: boolean;
+  onSelectEvent: (event: CalendarEvent) => void;
+}
+
+function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: UpcomingTodayPanelProps) {
+  const today = new Date();
+  const dateLabel = today.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <aside
+      style={{
+        flex: "1 1 0",
+        minWidth: 0,
+        alignSelf: "flex-start",
+        borderRadius: "12px",
+        border: `1px solid ${sc.border}`,
+        background: sc.cellBg,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        // Cap height so the list scrolls instead of stretching the calendar row.
+        maxHeight: "calc(100vh - 180px)",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: "20px",
+          background: sc.headerBg,
+          borderBottom: `1px solid ${sc.border}`,
+          display: "flex",
+          flexDirection: "column",
+          gap: "4px",
+        }}
+      >
+        <span style={{ fontSize: "16px", fontWeight: 600, color: sc.heading, lineHeight: "20px" }}>
+          Upcoming Today
+        </span>
+        <span style={{ fontSize: "13px", color: sc.muted, lineHeight: "16px" }}>
+          {dateLabel} · {events.length} event{events.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {/* List */}
+      <div
+        className="always-show-scrollbar"
+        style={{
+          flex: 1,
+          padding: "8px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+          minHeight: 0,
+        }}
+      >
+        {events.length === 0 ? (
+          <div
+            style={{
+              padding: "32px 16px",
+              textAlign: "center",
+              color: sc.muted,
+              fontSize: "13px",
+              lineHeight: "18px",
+            }}
+          >
+            Nothing left on today's schedule.
+          </div>
+        ) : (
+          events.map((event) => {
+            const ec = colors[event.type];
+            const remaining = Math.max(0, event.capacity - event.booked);
+            const isFull = remaining === 0;
+            return (
+              <button
+                key={event.id}
+                onClick={() => onSelectEvent(event)}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: `1px solid ${sc.border}`,
+                  background: "transparent",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  width: "100%",
+                  fontFamily: "var(--font-family)",
+                  color: sc.body,
+                  transition: "background 0.15s ease, border-color 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
+                  e.currentTarget.style.borderColor = sc.brand;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.borderColor = sc.border;
+                }}
+              >
+                {/* Color-coded dot */}
+                <span
+                  style={{
+                    width: "10px",
+                    height: "10px",
+                    marginTop: "5px",
+                    borderRadius: "50%",
+                    background: ec.text,
+                    flexShrink: 0,
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {/* Title + time */}
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
+                    <span
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: sc.heading,
+                        lineHeight: "18px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {event.title}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        color: sc.body,
+                        lineHeight: "16px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {event.time}
+                    </span>
+                  </div>
+                  {/* Instructor + venue */}
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: sc.muted,
+                      lineHeight: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <User size={12} /> {event.instructor}
+                    </span>
+                    <span style={{ opacity: 0.5 }}>·</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <MapPin size={12} /> {event.venue}
+                    </span>
+                  </div>
+                  {/* Booked / availability */}
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      color: sc.body,
+                    }}
+                  >
+                    <Users size={12} style={{ color: sc.muted }} />
+                    <span style={{ fontWeight: 600 }}>
+                      {event.booked}/{event.capacity}
+                    </span>
+                    <span style={{ color: sc.muted }}>
+                      {isFull
+                        ? event.waitlistEnabled
+                          ? "(Waitlist open)"
+                          : "(Full)"
+                        : `(${remaining} available)`}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </aside>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — SchedulePage (main export)
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -3283,7 +3623,7 @@ export function SchedulePage() {
   const isInsidePopoverRef = useRef(false);
 
   // Add Reservation — uses the shared SidePanel system
-  const { openPanel } = useSidePanel();
+  const { openPanel, isOpen: isSidePanelOpen } = useSidePanel();
   const handleOpenAddReservation = useCallback(
     () => openPanel(<AddReservationPanelContent />, { size: "third", title: "Create Reservation: Session" }),
     [openPanel]
@@ -3378,9 +3718,60 @@ export function SchedulePage() {
     });
   }, []);
 
+  // "Today" button — jumps the calendar back to the real-world current month/year.
+  // The button itself is only rendered when the user is viewing a different
+  // month/year (see `isCurrentMonth` further down).
+  const handleGoToToday = useCallback(() => {
+    setHoveredEvent(null);
+    const now = new Date();
+    setCurrentMonth(now.getMonth());
+    setCurrentYear(now.getFullYear());
+  }, []);
+
+  // Filter events by the search query (matches title, instructor, venue, type).
+  // NOTE: Defined here — before any conditional early return — so React's hook
+  // ordering stays stable across the mobile / desktop branches.
+  const filteredEvents = useMemo(
+    () => filterEventsByQuery(MOCK_EVENTS, searchQuery),
+    [searchQuery]
+  );
+
+  // Today's not-yet-started events for the "Upcoming Today" side panel.
+  // Uses the real-world "today" so the rail stays useful regardless of which
+  // month the calendar is currently showing. Mock events are indexed by
+  // day-of-month, so we look up by today's date.
+  const upcomingToday = useMemo(() => {
+    const now = new Date();
+    const todayDay = now.getDate();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const todays: CalendarEvent[] = MOCK_EVENTS[todayDay] ?? [];
+    return todays
+      .filter((e: CalendarEvent) => e.type !== "closed")
+      .filter((e: CalendarEvent) => {
+        const m = parseEventTimeToMinutes(e.time);
+        return m === -1 ? true : m >= nowMinutes;
+      })
+      .sort((a: CalendarEvent, b: CalendarEvent) => {
+        const am = parseEventTimeToMinutes(a.time);
+        const bm = parseEventTimeToMinutes(b.time);
+        return am - bm;
+      });
+  }, []);
+
+  // Click handler for an Upcoming Today row — opens the same details panel
+  // as clicking an event in the calendar grid.
+  const handleSelectUpcomingEvent = useCallback(
+    (event: CalendarEvent) => {
+      openPanel(
+        <ReservationDetailsPanelContent event={event} />,
+        { size: "third", title: `Reservation Details: ${event.title}` }
+      );
+    },
+    [openPanel]
+  );
+
   // If mobile, render mobile layout (after all hooks)
   if (isMobile) {
-    const sc = semanticColors(palette, isDark);
     return (
       <MobileScheduleView palette={palette} mode={mode} onAddReservation={handleOpenAddReservation} />
     );
@@ -3413,8 +3804,9 @@ export function SchedulePage() {
   const isCurrentMonth = today.getMonth() === currentMonth && today.getFullYear() === currentYear;
   const todayDate = isCurrentMonth ? today.getDate() : -1;
 
-  const totalReservations = Object.values(MOCK_EVENTS).reduce(
-    (sum, evts) => sum + evts.filter((e) => e.type !== "closed").length,
+  const totalReservations = Object.values(filteredEvents).reduce(
+    (sum: number, evts: CalendarEvent[]) =>
+      sum + evts.filter((e: CalendarEvent) => e.type !== "closed").length,
     0
   );
 
@@ -3431,74 +3823,136 @@ export function SchedulePage() {
     color: sc.body,
   };
 
+  // The "+ Add Reservation" button appears in two places depending on layout
+  // state: inside the calendar zone's right slot when the side panel is open
+  // (calendar = 100% width, no side rail), or in the side-rail zone when the
+  // rail is visible. Extracted so the JSX stays in sync.
+  const addReservationBtn = (
+    <button
+      onClick={handleOpenAddReservation}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "12px 20px",
+        borderRadius: "8px",
+        border: "none",
+        background: sc.brand,
+        fontSize: "16px",
+        fontWeight: 500,
+        color: isDark ? "#0a0e0f" : "#101828",
+        cursor: "pointer",
+        boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
+      }}
+    >
+      <Plus size={16} /> Add Reservation
+    </button>
+  );
+
   return (
     <div style={{ fontFamily: "var(--font-family)", padding: "0" }}>
-      {/* ── Top toolbar ────────────────────────────────────────────── */}
+      {/* ── Top toolbar ──────────────────────────────────────────────
+          Mirrors the calendar + side-rail flex split below so the month
+          navigation can be centered over the calendar's 3/4 column. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          gap: "20px",
           padding: "12px 0",
         }}
       >
-        {/* View dropdown */}
-        <div ref={desktopViewRef} style={{ position: "relative" }}>
-          <button
-            onClick={() => setShowDesktopViewDropdown(!showDesktopViewDropdown)}
-            style={{
-              ...controlBtn,
-              gap: "6px",
-              padding: "12px 20px",
-              fontSize: "16px",
-              fontWeight: 500,
-              color: sc.body,
-            }}
-          >
-            {desktopView} <ChevronDown size={16} />
-          </button>
-
-          {showDesktopViewDropdown && (
-            <div
+        {/* Calendar zone — same flex basis as the calendar container below.
+            Internally a 3-column grid: [View+Today | DatePicker centered |
+            right-slot]. The right slot stays empty when the side rail is
+            visible (because AddReservation lives there), and holds
+            AddReservation when the side panel is open and the calendar
+            expands to full width. */}
+        <div
+          style={{
+            flex: "3 1 0",
+            minWidth: 0,
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            alignItems: "center",
+          }}
+        >
+        {/* View dropdown + Today button */}
+        <div style={{ justifySelf: "start", display: "flex", alignItems: "center", gap: "8px" }}>
+          <div ref={desktopViewRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowDesktopViewDropdown(!showDesktopViewDropdown)}
               style={{
-                position: "absolute",
-                top: "calc(100% + 4px)",
-                left: 0,
-                minWidth: "180px",
-                background: sc.cellBg,
-                border: `1px solid ${sc.border}`,
-                borderRadius: "8px",
-                boxShadow: `0px 8px 16px -4px ${sc.shadow}`,
-                padding: "4px",
-                zIndex: 100,
+                ...controlBtn,
+                gap: "6px",
+                padding: "12px 20px",
+                fontSize: "16px",
+                fontWeight: 500,
+                color: sc.body,
               }}
             >
-              {["Monthly", "Weekly", "Daily", "Resources"].map((view) => (
-                <div
-                  key={view}
-                  onClick={() => {
-                    setDesktopView(view);
-                    setShowDesktopViewDropdown(false);
-                  }}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    background: view === desktopView ? `${sc.brand}20` : "transparent",
-                    color: view === desktopView ? sc.brand : sc.body,
-                  }}
-                >
-                  {view}
-                </div>
-              ))}
-            </div>
+              {desktopView} <ChevronDown size={16} />
+            </button>
+
+            {showDesktopViewDropdown && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  left: 0,
+                  minWidth: "180px",
+                  background: sc.cellBg,
+                  border: `1px solid ${sc.border}`,
+                  borderRadius: "8px",
+                  boxShadow: `0px 8px 16px -4px ${sc.shadow}`,
+                  padding: "4px",
+                  zIndex: 100,
+                }}
+              >
+                {["Monthly", "Weekly", "Daily", "Resources"].map((view) => (
+                  <div
+                    key={view}
+                    onClick={() => {
+                      setDesktopView(view);
+                      setShowDesktopViewDropdown(false);
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      background: view === desktopView ? `${sc.brand}20` : "transparent",
+                      color: view === desktopView ? sc.brand : sc.body,
+                    }}
+                  >
+                    {view}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* "Today" — only shown when the calendar isn't already on the
+              real-world current month/year. Clicking jumps back to today. */}
+          {!isCurrentMonth && (
+            <button
+              onClick={handleGoToToday}
+              style={{
+                ...controlBtn,
+                padding: "12px 20px",
+                fontSize: "16px",
+                fontWeight: 500,
+                color: sc.body,
+              }}
+            >
+              Today
+            </button>
           )}
         </div>
 
-        {/* Date picker */}
-        <div style={{ display: "flex", alignItems: "center", padding: "8px" }}>
+        {/* Date picker — centered within the calendar zone */}
+        <div style={{ justifySelf: "center", display: "flex", alignItems: "center", padding: "8px" }}>
           <button onClick={handlePrevMonth} style={{ ...controlBtn, width: "32px", height: "32px" }}>
             <ChevronLeft size={14} />
           </button>
@@ -3519,31 +3973,44 @@ export function SchedulePage() {
           </button>
         </div>
 
-        {/* + Add Reservation */}
-        <button
-          onClick={handleOpenAddReservation}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "12px 20px",
-            borderRadius: "8px",
-            border: "none",
-            background: sc.brand,
-            fontSize: "16px",
-            fontWeight: 500,
-            color: isDark ? "#0a0e0f" : "#101828",
-            cursor: "pointer",
-            boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
-          }}
-        >
-          <Plus size={16} /> Add Reservation
-        </button>
+        {/* Calendar-zone right slot. Holds AddReservation only when the side
+            rail is hidden (i.e. side panel is open and calendar takes 100%).
+            Otherwise stays empty so the date picker remains centered. */}
+        <div style={{ justifySelf: "end", display: "flex", alignItems: "center" }}>
+          {isSidePanelOpen && addReservationBtn}
+        </div>
+        </div>
+
+        {/* Side-rail zone — same flex basis as the UpcomingTodayPanel below.
+            Holds AddReservation right-aligned so it stays at the page's right
+            edge when the side rail is visible. */}
+        {!isSidePanelOpen && (
+          <div
+            style={{
+              flex: "1 1 0",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+            }}
+          >
+            {addReservationBtn}
+          </div>
+        )}
       </div>
 
+      {/* ── Calendar + Upcoming Today side rail ─────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "stretch",
+          gap: "20px",
+        }}
+      >
       {/* ── Calendar container ─────────────────────────────────────── */}
       <div
         style={{
+          flex: "3 1 0",
+          minWidth: 0,
           borderRadius: "12px",
           border: `1px solid ${sc.border}`,
           overflow: "hidden",
@@ -3584,7 +4051,7 @@ export function SchedulePage() {
               <Search size={16} style={{ color: sc.muted, flexShrink: 0 }} />
               <input
                 type="text"
-                placeholder="Search"
+                placeholder="Search schedule"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
@@ -3613,13 +4080,22 @@ export function SchedulePage() {
           </div>
         </div>
 
-        {/* Day headers */}
-        <div style={{ display: "flex" }}>
+        {/* Calendar grid — headers + weeks share one grid so all column
+            boundaries land on the exact same x-positions. (When each week was
+            its own flex row, sub-pixel rounding could shift the 1px column
+            borders by a fraction of a pixel between rows, which read as
+            misaligned grid lines — most visible on the first/last weeks.) */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+          }}
+        >
+          {/* Day headers */}
           {DAYS_OF_WEEK.map((day) => (
             <div
               key={day}
               style={{
-                flex: "1 1 0",
                 minWidth: 0,
                 display: "flex",
                 alignItems: "center",
@@ -3638,17 +4114,16 @@ export function SchedulePage() {
               {day}
             </div>
           ))}
-        </div>
 
-        {/* Calendar grid */}
-        {weeks.map((week, wi) => (
-          <div key={wi} style={{ display: "flex", minHeight: "149px" }}>
-            {week.map((day, di) => (
+          {/* Week cells, flattened. Each DateCell has its own minHeight: 149px
+              so each week-row stays the same minimum height. */}
+          {weeks.flatMap((week, wi) =>
+            week.map((day, di) => (
               <DateCell
                 key={`${wi}-${di}`}
                 day={day}
                 isToday={day === todayDate}
-                events={day ? MOCK_EVENTS[day] || [] : []}
+                events={day ? filteredEvents[day] || [] : []}
                 selectedEventId={hoveredEvent?.event.id ?? null}
                 onSelectEvent={(event, e) => {
                   if (day) handleClickEvent(event, day, e);
@@ -3661,9 +4136,25 @@ export function SchedulePage() {
                 colors={colors}
                 isDark={isDark}
               />
-            ))}
-          </div>
-        ))}
+            ))
+          )}
+        </div>
+      </div>
+      {/* ── Upcoming Today side rail (1/4 width) ───────────────────
+         Hidden whenever the side panel is open (i.e. an event has been
+         selected from the calendar or from this rail), so the calendar
+         can expand into the freed-up space. Mobile breakpoint is also
+         handled — MobileScheduleView is rendered above for isMobile,
+         so this rail never appears below 768px. */}
+      {!isSidePanelOpen && (
+        <UpcomingTodayPanel
+          events={upcomingToday}
+          sc={sc}
+          colors={colors}
+          isDark={isDark}
+          onSelectEvent={handleSelectUpcomingEvent}
+        />
+      )}
       </div>
 
       {/* ── Hover Popover ──────────────────────────────────────────── */}

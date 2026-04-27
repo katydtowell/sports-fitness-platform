@@ -34,6 +34,7 @@ body {
 /* Scrollbar styling per theme */
 [data-theme="light"] ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 [data-theme="light"] ::-webkit-scrollbar-track {
   background: #dfe9ec;
@@ -41,4 +42,64 @@ body {
 [data-theme="light"] ::-webkit-scrollbar-thumb {
   background: #a1bdc6;
   border-radius: 3px;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #597179;
+}
+[data-theme="light"] {
+  scrollbar-color: #a1bdc6 #dfe9ec;
+  scrollbar-width: thin;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #29373d;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #6e8b94;
+  border-radius: 3px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #a1bdc6;
+}
+[data-theme="dark"] {
+  scrollbar-color: #6e8b94 #29373d;
+  scrollbar-width: thin;
+}
+
+/* Always-visible scrollbar — opts out of macOS overlay auto-hide.
+   Apply this class to any scroll container that should never hide its scrollbar. */
+.always-show-scrollbar {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+.always-show-scrollbar::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 8px;
+  height: 8px;
+}
+.always-show-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  min-height: 30px;
+}
+[data-theme="light"] .always-show-scrollbar::-webkit-scrollbar-track {
+  background: #dfe9ec;
+}
+[data-theme="light"] .always-show-scrollbar::-webkit-scrollbar-thumb {
+  background: #a1bdc6;
+}
+[data-theme="light"] .always-show-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #597179;
+}
+[data-theme="dark"] .always-show-scrollbar::-webkit-scrollbar-track {
+  background: #29373d;
+}
+[data-theme="dark"] .always-show-scrollbar::-webkit-scrollbar-thumb {
+  background: #6e8b94;
+}
+[data-theme="dark"] .always-show-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a1bdc6;
 }
