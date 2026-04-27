@@ -30,10 +30,13 @@ import {
   List,
   Calendar as CalendarViewIcon,
   X,
+  Pencil,
+  Users,
 } from "lucide-react";
 import { useTheme, type ThemePalette } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
 import { useIsMobile } from "../ui/use-mobile";
+import { CancelConfirmModal } from "../client-profile/CancelConfirmModal";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -430,12 +433,16 @@ function EventBadge({
   event,
   isSelected,
   onClick,
+  onHoverEnter,
+  onHoverLeave,
   colors,
   isDark,
 }: {
   event: CalendarEvent;
   isSelected: boolean;
   onClick: (e: React.MouseEvent) => void;
+  onHoverEnter?: (e: React.MouseEvent) => void;
+  onHoverLeave?: () => void;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
 }) {
@@ -477,7 +484,12 @@ function EventBadge({
   }
 
   return (
-    <div style={badgeStyle} onClick={event.type !== "closed" ? onClick : undefined}>
+    <div
+      style={badgeStyle}
+      onClick={event.type !== "closed" ? onClick : undefined}
+      onMouseEnter={event.type !== "closed" ? onHoverEnter : undefined}
+      onMouseLeave={event.type !== "closed" ? onHoverLeave : undefined}
+    >
       {event.type === "league" && (
         <span style={{ fontSize: "10px", flexShrink: 0 }}>&#9917;</span>
       )}
@@ -517,12 +529,16 @@ function EventRow({
   events,
   selectedId,
   onSelect,
+  onHoverEvent,
+  onHoverLeave,
   colors,
   isDark,
 }: {
   events: CalendarEvent[];
   selectedId: string | null;
   onSelect: (event: CalendarEvent, e: React.MouseEvent) => void;
+  onHoverEvent?: (event: CalendarEvent, e: React.MouseEvent) => void;
+  onHoverLeave?: () => void;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
 }) {
@@ -534,6 +550,8 @@ function EventRow({
           event={ev}
           isSelected={selectedId === ev.id}
           onClick={(e) => onSelect(ev, e)}
+          onHoverEnter={onHoverEvent ? (e) => onHoverEvent(ev, e) : undefined}
+          onHoverLeave={onHoverLeave}
           colors={colors}
           isDark={isDark}
         />
@@ -552,6 +570,8 @@ function DateCell({
   events,
   selectedEventId,
   onSelectEvent,
+  onHoverEvent,
+  onHoverLeave,
   sc,
   colors,
   isDark,
@@ -561,6 +581,8 @@ function DateCell({
   events: CalendarEvent[];
   selectedEventId: string | null;
   onSelectEvent: (event: CalendarEvent, e: React.MouseEvent) => void;
+  onHoverEvent?: (event: CalendarEvent, e: React.MouseEvent) => void;
+  onHoverLeave?: () => void;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
@@ -642,6 +664,8 @@ function DateCell({
           events={row}
           selectedId={selectedEventId}
           onSelect={onSelectEvent}
+          onHoverEvent={onHoverEvent}
+          onHoverLeave={onHoverLeave}
           colors={colors}
           isDark={isDark}
         />
@@ -674,7 +698,11 @@ function ReservationDetailsPopover({
   month,
   year,
   position,
+  badgeRect,
   onClose,
+  onMouseEnter,
+  onMouseLeave,
+  onOpenDetails,
   sc,
   colors,
   isDark,
@@ -684,37 +712,56 @@ function ReservationDetailsPopover({
   month: number;
   year: number;
   position: { top: number; left: number };
+  badgeRect?: { top: number; bottom: number; left: number; right: number };
   onClose: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+  onOpenDetails: () => void;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const dotColor = (colors[event.type] || colors.yoga).text;
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
+  const POPOVER_WIDTH = 320;
+  const GAP = 8;
 
   const [adjusted, setAdjusted] = useState(position);
   useEffect(() => {
     if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    let { top, left } = position;
-    if (rect.right > window.innerWidth - 20) {
-      left = Math.max(20, left - (rect.right - window.innerWidth + 40));
+    const popoverRect = ref.current.getBoundingClientRect();
+    let top = position.top;
+    let left = position.left;
+
+    if (badgeRect) {
+      // Try right of badge first
+      const rightOfBadge = badgeRect.right + GAP;
+      const leftOfBadge = badgeRect.left - POPOVER_WIDTH - GAP;
+
+      if (rightOfBadge + POPOVER_WIDTH <= window.innerWidth - 20) {
+        // Fits to the right — use it
+        left = rightOfBadge;
+      } else if (leftOfBadge >= 20) {
+        // Fits to the left — use it
+        left = leftOfBadge;
+      } else {
+        // Neither side fits cleanly — position to right but clamp
+        left = Math.max(20, Math.min(rightOfBadge, window.innerWidth - POPOVER_WIDTH - 20));
+      }
+    } else {
+      // Fallback: original right-overflow adjustment
+      if (left + POPOVER_WIDTH > window.innerWidth - 20) {
+        left = Math.max(20, window.innerWidth - POPOVER_WIDTH - 20);
+      }
     }
-    if (rect.bottom > window.innerHeight - 20) {
-      top = Math.max(20, top - (rect.bottom - window.innerHeight + 40));
+
+    // Vertical: keep top-aligned with badge, adjust if overflows bottom
+    if (popoverRect.height + top > window.innerHeight - 20) {
+      top = Math.max(20, window.innerHeight - popoverRect.height - 20);
     }
+
     setAdjusted({ top, left });
-  }, [position]);
+  }, [position, badgeRect]);
 
   const dateStr = formatEventDate(day, month, year);
   const bookedPct = event.capacity > 0 ? (event.booked / event.capacity) * 100 : 0;
@@ -751,6 +798,8 @@ function ReservationDetailsPopover({
   return (
     <div
       ref={ref}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
         position: "fixed",
         top: adjusted.top,
@@ -821,7 +870,7 @@ function ReservationDetailsPopover({
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <div style={{ display: "flex", alignItems: "center" }}>
               <span style={{ flex: 1, fontSize: "12px", fontWeight: 500, color: sc.body }}>
-                Booked
+                Registered
               </span>
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
                 <span style={{ fontSize: "16px", fontWeight: 700, color: sc.heading, letterSpacing: "-0.4px" }}>
@@ -887,6 +936,7 @@ function ReservationDetailsPopover({
 
       {/* Primary CTA */}
       <button
+        onClick={onOpenDetails}
         style={{
           display: "flex",
           alignItems: "center",
@@ -1078,7 +1128,7 @@ function MobileReservationDetail({
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <div style={{ display: "flex", alignItems: "center" }}>
               <span style={{ flex: 1, fontSize: "14px", fontWeight: 500, color: sc.body }}>
-                Booked
+                Registered
               </span>
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
                 <span style={{ fontSize: "20px", fontWeight: 700, color: sc.heading, letterSpacing: "-0.4px" }}>
@@ -1910,6 +1960,7 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
   const isDark = mode === "dark";
   const sc = semanticColors(palette, isDark);
   const colors = getEventStyles(isDark);
+  const { openPanel } = useSidePanel();
 
   const [currentMonth, setCurrentMonth] = useState(1);
   const [currentYear, setCurrentYear] = useState(2026);
@@ -1946,8 +1997,11 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
   }, []);
 
   const handleSelectEvent = useCallback((event: CalendarEvent) => {
-    setSelectedEvent(event);
-  }, []);
+    openPanel(
+      <ReservationDetailsPanelContent event={event} />,
+      { size: "full", title: `Reservation Details: ${event.title}` }
+    );
+  }, [openPanel]);
 
   const handleCloseDetail = useCallback(() => {
     setSelectedEvent(null);
@@ -2296,6 +2350,438 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — ReservationDetailsPanelContent
+   Read-only view of a reservation, opened when clicking an event.
+   Compact layout inspired by the hover popover, with booking meter and
+   scrollable clients list. Edit pencil toggles into full form mode.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// Mock booked clients data for the scrollable list
+const MOCK_BOOKED_CLIENTS: { name: string; status: "Booked" | "Waitlisted" | "Reserved" }[] = [
+  { name: "Emma Rodriguez", status: "Booked" },
+  { name: "James Wilson", status: "Booked" },
+  { name: "Sophia Lee", status: "Booked" },
+  { name: "Liam Martinez", status: "Booked" },
+  { name: "Olivia Chen", status: "Reserved" },
+  { name: "Noah Thompson", status: "Booked" },
+  { name: "Ava Patel", status: "Booked" },
+  { name: "Mason Brown", status: "Waitlisted" },
+  { name: "Isabella Garcia", status: "Booked" },
+  { name: "Ethan Davis", status: "Booked" },
+  { name: "Mia Johnson", status: "Booked" },
+  { name: "Lucas Anderson", status: "Reserved" },
+  { name: "Charlotte Taylor", status: "Booked" },
+  { name: "Aiden Moore", status: "Booked" },
+  { name: "Amelia Jackson", status: "Waitlisted" },
+  { name: "Harper White", status: "Booked" },
+  { name: "Elijah Harris", status: "Booked" },
+  { name: "Abigail Martin", status: "Booked" },
+  { name: "Benjamin Clark", status: "Booked" },
+  { name: "Emily Lewis", status: "Booked" },
+  { name: "Daniel Walker", status: "Booked" },
+  { name: "Elizabeth Hall", status: "Booked" },
+];
+
+function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
+  const { closePanel } = useSidePanel();
+
+  const [activeSection, setActiveSection] = useState("Details");
+  const [showSectionDropdown, setShowSectionDropdown] = useState(false);
+  const sectionDropdownRef = useRef<HTMLDivElement>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // Editable state — initialized from the event data
+  const initScheduleType = "session";
+  const initRecurring = "no";
+  const initVenues = event.venue ? [event.venue] : [];
+  const initInstructors = event.instructor ? [event.instructor] : [];
+  const initReservationType = event.type === "league" ? "League Game" : "Group Class";
+  const initTitle = event.title;
+  const initStartDate = "2026-02-03";
+  const initEndDate = "2026-02-03";
+  const initStartTime = event.time ? `${event.time.replace(/[ap]m/, "").padStart(2, "0")}:00` : "09:00";
+  const initEndTime = event.time ? `${String(parseInt(event.time) + 1).padStart(2, "0")}:00` : "10:00";
+  const initAllDay = false;
+  const initUseDefaultBuffer = true;
+  const initPreBuffer = "15";
+  const initPostBuffer = "15";
+  const initNotes = "";
+
+  const [scheduleType, setScheduleType] = useState<"session" | "rental">(initScheduleType);
+  const [recurring, setRecurring] = useState<"yes" | "no">(initRecurring);
+  const [selectedVenues, setSelectedVenues] = useState<string[]>(initVenues);
+  const [selectedInstructors, setSelectedInstructors] = useState<string[]>(initInstructors);
+  const [reservationType, setReservationType] = useState(initReservationType);
+  const [title, setTitle] = useState(initTitle);
+  const [startDate, setStartDate] = useState(initStartDate);
+  const [endDate, setEndDate] = useState(initEndDate);
+  const [startTime, setStartTime] = useState(initStartTime);
+  const [endTime, setEndTime] = useState(initEndTime);
+  const [allDay, setAllDay] = useState(initAllDay);
+  const [useDefaultBuffer, setUseDefaultBuffer] = useState(initUseDefaultBuffer);
+  const [preBuffer, setPreBuffer] = useState(initPreBuffer);
+  const [postBuffer, setPostBuffer] = useState(initPostBuffer);
+  const [notes, setNotes] = useState(initNotes);
+
+  // Track whether any field has been modified
+  const hasChanges =
+    scheduleType !== initScheduleType ||
+    recurring !== initRecurring ||
+    JSON.stringify(selectedVenues) !== JSON.stringify(initVenues) ||
+    JSON.stringify(selectedInstructors) !== JSON.stringify(initInstructors) ||
+    reservationType !== initReservationType ||
+    title !== initTitle ||
+    startDate !== initStartDate ||
+    endDate !== initEndDate ||
+    startTime !== initStartTime ||
+    endTime !== initEndTime ||
+    allDay !== initAllDay ||
+    useDefaultBuffer !== initUseDefaultBuffer ||
+    preBuffer !== initPreBuffer ||
+    postBuffer !== initPostBuffer ||
+    notes !== initNotes;
+
+  // Attempt to exit editing — shows confirmation if there are unsaved changes
+  const handleCancelEditing = () => {
+    if (hasChanges) {
+      setShowCancelConfirm(true);
+    } else {
+      setIsEditing(false);
+    }
+  };
+
+  // Confirmed discard — reset all fields to initial values and exit editing
+  const handleConfirmDiscard = () => {
+    setScheduleType(initScheduleType);
+    setRecurring(initRecurring);
+    setSelectedVenues(initVenues);
+    setSelectedInstructors(initInstructors);
+    setReservationType(initReservationType);
+    setTitle(initTitle);
+    setStartDate(initStartDate);
+    setEndDate(initEndDate);
+    setStartTime(initStartTime);
+    setEndTime(initEndTime);
+    setAllDay(initAllDay);
+    setUseDefaultBuffer(initUseDefaultBuffer);
+    setPreBuffer(initPreBuffer);
+    setPostBuffer(initPostBuffer);
+    setNotes(initNotes);
+    setShowCancelConfirm(false);
+    setIsEditing(false);
+  };
+
+  const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
+
+  useEffect(() => {
+    if (!showSectionDropdown) return;
+    function handleClick(e: MouseEvent) {
+      if (sectionDropdownRef.current && !sectionDropdownRef.current.contains(e.target as Node)) {
+        setShowSectionDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showSectionDropdown]);
+
+  // Shared styles for edit mode
+  const labelStyle: CSSProperties = { color: palette.textPrimary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "6px", display: "block" };
+  const labelBoldStyle: CSSProperties = { ...labelStyle, fontWeight: 600 };
+  const fieldDescStyle: CSSProperties = { color: palette.textTertiary, fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", marginBottom: "6px", opacity: 0.7, lineHeight: 1.4 };
+  const inputStyle: CSSProperties = { width: "100%", backgroundColor: palette.surfaceBg, border: `1px solid ${palette.borderMedium}`, borderRadius: "6px", color: palette.textPrimary, fontSize: "var(--text-base)", fontFamily: "var(--font-family)", padding: "10px 12px", outline: "none", colorScheme: isDark ? "dark" : "light" };
+  const chevronColor = encodeURIComponent(isDark ? "#a1bdc6" : "#475467");
+  const selectStyle: CSSProperties = { ...inputStyle, appearance: "none" as const, backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='${chevronColor}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", paddingRight: "32px", cursor: "pointer" };
+  const disabledInputStyle: CSSProperties = { ...selectStyle, backgroundColor: palette.surfaceSecondary, opacity: 0.5 };
+  const primaryBtnStyle: CSSProperties = { padding: "10px 20px", borderRadius: "6px", border: "none", background: palette.primary, color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" };
+  const secondaryBtnStyle: CSSProperties = { ...primaryBtnStyle, background: "transparent", border: `1px solid ${palette.borderMedium}`, color: palette.textTertiary };
+
+  const currentSectionIndex = sections.indexOf(activeSection);
+  const isLastSection = currentSectionIndex === sections.length - 1;
+  const nextSectionName = isLastSection ? null : sections[currentSectionIndex + 1];
+  const goToNextSection = () => { if (nextSectionName) setActiveSection(nextSectionName); };
+
+  const formatDisplayTime = (t: string) => {
+    if (!t) return "—";
+    const [h, m] = t.split(":").map(Number);
+    const ampm = h >= 12 ? "pm" : "am";
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
+  };
+
+  // Compact read-only styles
+  const iconStyle: CSSProperties = { opacity: 0.45, flexShrink: 0 };
+  const detailLabel: CSSProperties = { fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", color: palette.textTertiary, fontWeight: 500, lineHeight: 1 };
+  const detailValue: CSSProperties = { fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary, fontWeight: 500, lineHeight: 1.3 };
+
+  const bookedPct = event.capacity > 0 ? (event.booked / event.capacity) * 100 : 0;
+  const available = event.capacity - event.booked;
+  const bookedClients = MOCK_BOOKED_CLIENTS.slice(0, event.booked || 0);
+
+  const statusColors: Record<string, { bg: string; text: string }> = {
+    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.1)", text: isDark ? "#00c4a0" : "#0a8a6a" },
+    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.1)", text: isDark ? "#ffb432" : "#b07a10" },
+    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.1)", text: isDark ? "#78a0c8" : "#4a7aaa" },
+  };
+
+  // Filter toggles for registered clients
+  const [clientFilters, setClientFilters] = useState<Record<string, boolean>>({ Booked: false, Reserved: false, Waitlisted: false });
+  const isAllActive = !clientFilters.Booked && !clientFilters.Reserved && !clientFilters.Waitlisted;
+  const toggleFilter = (status: string) => setClientFilters((prev) => ({ ...prev, [status]: !prev[status] }));
+  const toggleAll = () => setClientFilters({ Booked: false, Reserved: false, Waitlisted: false });
+  const filteredClients = isAllActive ? bookedClients : bookedClients.filter((c) => clientFilters[c.status]);
+
+  // ─── Edit mode renders the full form (same as before) ───
+  if (isEditing) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        {showCancelConfirm && (
+          <CancelConfirmModal
+            onConfirm={handleConfirmDiscard}
+            onKeepEditing={() => setShowCancelConfirm(false)}
+          />
+        )}
+        {/* Section selector */}
+        <div ref={sectionDropdownRef} style={{ position: "relative" }}>
+          <button onClick={() => setShowSectionDropdown(!showSectionDropdown)} style={{ display: "flex", alignItems: "center", width: "100%", gap: "8px", padding: "10px 16px", background: palette.primary, border: "none", borderRadius: "8px", color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", outline: "none", letterSpacing: "0.01em" }}>
+            <List size={16} style={{ opacity: 0.85 }} />
+            <span style={{ flex: 1, textAlign: "left" }}>{activeSection}</span>
+            <ChevronDown size={16} style={{ opacity: 0.85, transition: "transform 0.2s ease", transform: showSectionDropdown ? "rotate(180deg)" : "rotate(0deg)" }} />
+          </button>
+          {showSectionDropdown && (
+            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: palette.surfacePrimary, border: `1px solid ${palette.borderLight}`, borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.2)", zIndex: 10, overflow: "hidden", padding: "4px" }}>
+              {sections.map((section) => { const isActive = section === activeSection; return (
+                <button key={section} onClick={() => { setActiveSection(section); setShowSectionDropdown(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", borderRadius: "6px", background: isActive ? `${palette.primary}20` : "transparent", color: isActive ? palette.primary : palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: isActive ? 600 : 400, fontFamily: "var(--font-family)", cursor: "pointer", textAlign: "left" }}>{section}</button>
+              ); })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Availability + Editing indicator + Book action ── */}
+        {event.capacity > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: "8px", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", border: `1px solid ${palette.borderLight}` }}>
+            <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, fontWeight: 500 }}>{available > 0 ? <><span style={{ fontWeight: 700, fontSize: "var(--text-base)", color: palette.primary }}>{available}</span> spot{available !== 1 ? "s" : ""} available</> : <span style={{ color: isDark ? "#ff6b6b" : "#d32f2f", fontWeight: 600 }}>Fully booked</span>}</span>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button onClick={handleCancelEditing} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", borderRadius: "6px", border: `1px solid ${palette.primary}`, background: `${palette.primary}15`, color: palette.primary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Pencil size={13} /> Editing</button>
+              {available > 0 ? (
+                <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
+              ) : (
+                <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: isDark ? "rgba(255,180,50,0.2)" : "rgba(220,150,20,0.15)", color: isDark ? "#ffb432" : "#b07a10", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Waitlist</button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Full edit form — same fields as AddReservationPanelContent */}
+        <div><div style={labelBoldStyle}>Schedule type*</div><div style={{ display: "flex", gap: "16px", alignItems: "center", marginTop: "4px" }}><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailScheduleType" checked={scheduleType === "session"} onChange={() => setScheduleType("session")} style={{ accentColor: palette.primary }} /> Session</label><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailScheduleType" checked={scheduleType === "rental"} onChange={() => setScheduleType("rental")} style={{ accentColor: palette.primary }} /> Rental</label></div></div>
+
+        <div style={{ borderTop: `1px solid ${palette.borderLight}`, borderBottom: `1px solid ${palette.borderLight}`, padding: "20px 0", display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div><div style={labelBoldStyle}>Resource(s)*</div><div style={{ ...labelStyle, color: palette.textTertiary, marginBottom: 0 }}>Select at least one.</div></div>
+          <div><div style={labelStyle}>Venue(s)</div><SearchableMultiSelect options={VENUE_OPTIONS} selected={selectedVenues} onChange={setSelectedVenues} placeholder="—Select venue(s)—" palette={palette} /></div>
+          <div><div style={labelStyle}>Instructor(s)</div><SearchableMultiSelect options={INSTRUCTOR_OPTIONS} selected={selectedInstructors} onChange={setSelectedInstructors} placeholder="—Select instructor(s)—" palette={palette} /></div>
+        </div>
+
+        <div><div style={labelBoldStyle}>Reservation type*</div><select style={selectStyle} value={reservationType} onChange={(e) => setReservationType(e.target.value)}><option value="" disabled>—Select reservation type—</option>{RESERVATION_TYPE_OPTIONS.map((rt) => <option key={rt} value={rt}>{rt}</option>)}</select></div>
+
+        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: "100px" }}><div style={labelStyle}>Pre-buffer</div><div style={fieldDescStyle}>Blocks transitional time prior to session</div><select style={useDefaultBuffer ? disabledInputStyle : selectStyle} disabled={useDefaultBuffer} value={preBuffer} onChange={(e) => setPreBuffer(e.target.value)}><option value="">None</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></div>
+          <span style={{ fontSize: "var(--text-sm)", color: palette.textTertiary, paddingBottom: "10px", fontFamily: "var(--font-family)" }}>and/or</span>
+          <div style={{ flex: 1, minWidth: "100px" }}><div style={labelStyle}>Post-buffer</div><div style={fieldDescStyle}>Blocks transitional time after session</div><select style={useDefaultBuffer ? disabledInputStyle : selectStyle} disabled={useDefaultBuffer} value={postBuffer} onChange={(e) => setPostBuffer(e.target.value)}><option value="">None</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></div>
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={useDefaultBuffer} onChange={(e) => setUseDefaultBuffer(e.target.checked)} style={{ accentColor: palette.primary }} /> Use default</label>
+        </div>
+
+        <div><div style={labelBoldStyle}>Title*</div><input type="text" placeholder="Enter a title" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></div>
+        <div><div style={labelStyle}>Class size</div><input type="text" placeholder="e.g. 1, 10, 30, etc." style={inputStyle} defaultValue={event.capacity > 0 ? String(event.capacity) : ""} /></div>
+        <div style={{ display: "flex", gap: "12px" }}><div style={{ flex: 1 }}><div style={labelBoldStyle}>Start date*</div><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} /></div><div style={{ flex: 1 }}><div style={labelBoldStyle}>End date*</div><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} /></div></div>
+        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}><div style={{ flex: 1 }}><div style={labelBoldStyle}>Start time*</div><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={inputStyle} disabled={allDay} /></div><label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} /> All day</label><div style={{ flex: 1 }}><div style={labelBoldStyle}>End time*</div><input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={inputStyle} disabled={allDay} /></div></div>
+
+        <div><div style={labelBoldStyle}>Recurring*</div><div style={{ display: "flex", gap: "16px", alignItems: "center", marginTop: "4px" }}><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailRecurring" checked={recurring === "yes"} onChange={() => setRecurring("yes")} style={{ accentColor: palette.primary }} /> Yes</label><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailRecurring" checked={recurring === "no"} onChange={() => setRecurring("no")} style={{ accentColor: palette.primary }} /> No</label></div></div>
+        <div style={{ opacity: 0.5 }}><div style={labelStyle}>Split session</div><select style={disabledInputStyle} disabled defaultValue=""><option value="" disabled>—Set the session length before selecting split increments—</option></select></div>
+        <div><div style={labelStyle}>Notes</div><input type="text" placeholder="Enter notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={inputStyle} /></div>
+        <div><div style={{ ...labelBoldStyle, marginBottom: "2px" }}>Scheduled on</div><span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>02/26/2021 <span style={{ fontWeight: 600, color: palette.primary, cursor: "pointer" }}>Update?</span></span></div>
+        <div><div style={{ ...labelBoldStyle, marginBottom: "8px" }}>Additional options</div><div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><span>Online description: Yoga</span><span>Allow self booking</span><span>Allow free bookings</span><span>Show on EZ Leagues</span></div><span style={{ display: "inline-block", marginTop: "8px", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span></div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: `1px solid ${palette.borderLight}` }}>
+          <button onClick={handleCancelEditing} style={secondaryBtnStyle}>Cancel</button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button style={primaryBtnStyle} onClick={() => setIsEditing(false)}>Save &amp; Close</button>
+            {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>Next: {nextSectionName} <ArrowRight size={14} /></button>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Compact read-only view ───
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* Section selector + Edit Reservation button — inline row */}
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div ref={sectionDropdownRef} style={{ position: "relative", flex: 1 }}>
+          <button onClick={() => setShowSectionDropdown(!showSectionDropdown)} style={{ display: "flex", alignItems: "center", width: "100%", gap: "8px", padding: "10px 16px", background: palette.primary, border: "none", borderRadius: "8px", color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", outline: "none", letterSpacing: "0.01em" }}>
+            <List size={16} style={{ opacity: 0.85 }} />
+            <span style={{ flex: 1, textAlign: "left" }}>{activeSection}</span>
+            <ChevronDown size={16} style={{ opacity: 0.85, transition: "transform 0.2s ease", transform: showSectionDropdown ? "rotate(180deg)" : "rotate(0deg)" }} />
+          </button>
+          {showSectionDropdown && (
+            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: palette.surfacePrimary, border: `1px solid ${palette.borderLight}`, borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.2)", zIndex: 10, overflow: "hidden", padding: "4px" }}>
+              {sections.map((section) => { const isActive = section === activeSection; return (
+                <button key={section} onClick={() => { setActiveSection(section); setShowSectionDropdown(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", borderRadius: "6px", background: isActive ? `${palette.primary}20` : "transparent", color: isActive ? palette.primary : palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: isActive ? 600 : 400, fontFamily: "var(--font-family)", cursor: "pointer", textAlign: "left" }}>{section}</button>
+              ); })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Availability + Edit Reservation + Book action ── */}
+      {event.capacity > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: "8px", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", border: `1px solid ${palette.borderLight}` }}>
+          <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, fontWeight: 500 }}>{available > 0 ? <><span style={{ fontWeight: 700, fontSize: "var(--text-base)", color: palette.primary }}>{available}</span> spot{available !== 1 ? "s" : ""} available</> : <span style={{ color: isDark ? "#ff6b6b" : "#d32f2f", fontWeight: 600 }}>Fully booked</span>}</span>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <button onClick={() => setIsEditing(true)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: "transparent", color: palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", whiteSpace: "nowrap" }}><Pencil size={13} /> Edit Reservation</button>
+            {available > 0 ? (
+              <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
+            ) : (
+              <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: isDark ? "rgba(255,180,50,0.2)" : "rgba(220,150,20,0.15)", color: isDark ? "#ffb432" : "#b07a10", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Waitlist</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Registered clients list ── */}
+      {bookedClients.length > 0 && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+            <Users size={14} style={{ opacity: 0.5, color: palette.textTertiary }} />
+            <span style={{ flex: 1, fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>Registered Clients ({bookedClients.length})</span>
+            <span onClick={() => { setActiveSection("Registered Clients"); }} style={{ fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span>
+          </div>
+          {/* Filter toggles */}
+          <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+            <button onClick={toggleAll} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "14px", border: `1px solid ${isAllActive ? palette.textPrimary : palette.borderMedium}`, background: isAllActive ? (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent", color: isAllActive ? palette.textPrimary : palette.textTertiary, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isAllActive ? 1 : 0.5, transition: "all 0.15s ease" }}>
+              All ({bookedClients.length})
+            </button>
+            {(["Booked", "Reserved", "Waitlisted"] as const).map((status) => {
+              const sc = statusColors[status];
+              const isActive = clientFilters[status];
+              const count = bookedClients.filter((c) => c.status === status).length;
+              return (
+                <button key={status} onClick={() => toggleFilter(status)} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "14px", border: `1px solid ${isActive ? sc.text : palette.borderMedium}`, background: isActive ? sc.bg : "transparent", color: isActive ? sc.text : palette.textTertiary, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isActive ? 1 : 0.5, transition: "all 0.15s ease" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: isActive ? sc.text : palette.textTertiary, flexShrink: 0 }} />
+                  {status} ({count})
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ maxHeight: "200px", overflowY: "auto", border: `1px solid ${palette.borderLight}`, borderRadius: "8px" }}>
+            {filteredClients.length === 0 ? (
+              <div style={{ padding: "16px 12px", textAlign: "center", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, opacity: 0.6 }}>No clients match the selected filters</div>
+            ) : filteredClients.map((client, i) => {
+              const sc = statusColors[client.status] || statusColors.Booked;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: i < filteredClients.length - 1 ? `1px solid ${palette.borderLight}` : "none" }}>
+                  <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary, fontWeight: 500 }}>{client.name}</span>
+                  <span style={{ fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", padding: "2px 8px", borderRadius: "10px", background: sc.bg, color: sc.text, flexShrink: 0 }}>{client.status}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Separator ── */}
+      <div style={{ height: "1px", background: palette.borderLight }} />
+
+      {/* ── Compact detail rows (popover-style with icons) ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <CalendarIcon size={18} style={iconStyle} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+            <span style={detailLabel}>Date</span>
+            <span style={detailValue}>{startDate ? new Date(startDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" }) : "—"}</span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <Clock size={18} style={iconStyle} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+            <span style={detailLabel}>Time</span>
+            <span style={detailValue}>{allDay ? "All day" : `${formatDisplayTime(startTime)} – ${formatDisplayTime(endTime)}`}</span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <User size={18} style={iconStyle} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+            <span style={detailLabel}>Instructor</span>
+            <span style={detailValue}>{selectedInstructors.length > 0 ? selectedInstructors.join(", ") : "—"}</span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <MapPin size={18} style={iconStyle} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+            <span style={detailLabel}>Venue</span>
+            <span style={detailValue}>{selectedVenues.length > 0 ? selectedVenues.join(", ") : "—"}</span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <Grid3x3 size={18} style={iconStyle} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+            <span style={detailLabel}>Type</span>
+            <span style={detailValue}>{reservationType} · {scheduleType === "session" ? "Session" : "Rental"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Separator ── */}
+      <div style={{ height: "1px", background: palette.borderLight }} />
+
+      {/* ── Additional compact details ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 16px" }}>
+        <div><span style={detailLabel}>Recurring</span><div style={{ ...detailValue, marginTop: "2px" }}>{recurring === "yes" ? "Yes" : "No"}</div></div>
+        <div><span style={detailLabel}>Class size</span><div style={{ ...detailValue, marginTop: "2px" }}>{event.capacity > 0 ? event.capacity : "—"}</div></div>
+        <div><span style={detailLabel}>Pre-buffer</span><div style={{ ...detailValue, marginTop: "2px" }}>{preBuffer ? `${preBuffer} min` : "None"}</div></div>
+        <div><span style={detailLabel}>Post-buffer</span><div style={{ ...detailValue, marginTop: "2px" }}>{postBuffer ? `${postBuffer} min` : "None"}</div></div>
+      </div>
+
+      {/* ── Notes ── */}
+      {notes && (
+        <>
+          <div style={{ height: "1px", background: palette.borderLight }} />
+          <div><span style={detailLabel}>Notes</span><div style={{ ...detailValue, marginTop: "4px" }}>{notes}</div></div>
+        </>
+      )}
+
+      {/* ── Scheduled on & Additional options ── */}
+      <div style={{ height: "1px", background: palette.borderLight }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div><span style={detailLabel}>Scheduled on</span><div style={{ ...detailValue, marginTop: "2px" }}>02/26/2021</div></div>
+        <div>
+          <span style={detailLabel}>Additional options</span>
+          <div style={{ marginTop: "4px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {["Online description: Yoga", "Allow self booking", "Allow free bookings", "Show on EZ Leagues"].map((opt) => (
+              <span key={opt} style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", padding: "3px 8px", borderRadius: "4px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", color: palette.textTertiary }}>{opt}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: `1px solid ${palette.borderLight}` }}>
+        <button onClick={closePanel} style={secondaryBtnStyle}>Close</button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>Next: {nextSectionName} <ArrowRight size={14} /></button>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2786,12 +3272,15 @@ export function SchedulePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showDesktopViewDropdown]);
 
-  // Selection state
-  const [selectedEvent, setSelectedEvent] = useState<{
+  // Hover popover state (with 300ms delay)
+  const [hoveredEvent, setHoveredEvent] = useState<{
     event: CalendarEvent;
     day: number;
     position: { top: number; left: number };
+    badgeRect?: { top: number; bottom: number; left: number; right: number };
   } | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInsidePopoverRef = useRef(false);
 
   // Add Reservation — uses the shared SidePanel system
   const { openPanel } = useSidePanel();
@@ -2800,8 +3289,75 @@ export function SchedulePage() {
     [openPanel]
   );
 
+  // Open Reservation Details side panel on click
+  const handleClickEvent = useCallback(
+    (event: CalendarEvent, _day: number, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setHoveredEvent(null);
+      if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+      openPanel(
+        <ReservationDetailsPanelContent event={event} />,
+        { size: "third", title: `Reservation Details: ${event.title}` }
+      );
+    },
+    [openPanel]
+  );
+
+  // Hover handlers with 300ms delay
+  const handleHoverEvent = useCallback(
+    (event: CalendarEvent, day: number, e: React.MouseEvent) => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      hoverTimerRef.current = setTimeout(() => {
+        setHoveredEvent({
+          event,
+          day,
+          position: { top: rect.top, left: rect.right + 8 },
+          badgeRect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+        });
+      }, 300);
+    },
+    []
+  );
+
+  const handleHoverLeave = useCallback(() => {
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+    // Small delay to allow mouse to move into the popover
+    setTimeout(() => {
+      if (!isInsidePopoverRef.current) {
+        setHoveredEvent(null);
+      }
+    }, 100);
+  }, []);
+
+  const handlePopoverMouseEnter = useCallback(() => {
+    isInsidePopoverRef.current = true;
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+  }, []);
+
+  const handlePopoverMouseLeave = useCallback(() => {
+    isInsidePopoverRef.current = false;
+    setHoveredEvent(null);
+  }, []);
+
+  const handleOpenDetailsFromPopover = useCallback(() => {
+    if (!hoveredEvent) return;
+    const ev = hoveredEvent.event;
+    setHoveredEvent(null);
+    isInsidePopoverRef.current = false;
+    openPanel(
+      <ReservationDetailsPanelContent event={ev} />,
+      { size: "third", title: `Reservation Details: ${ev.title}` }
+    );
+  }, [hoveredEvent, openPanel]);
+
+  const handleClosePopover = useCallback(() => {
+    setHoveredEvent(null);
+    isInsidePopoverRef.current = false;
+  }, []);
+
   const handlePrevMonth = useCallback(() => {
-    setSelectedEvent(null);
+    setHoveredEvent(null);
     setCurrentMonth((m) => {
       if (m === 0) {
         setCurrentYear((y) => y - 1);
@@ -2812,7 +3368,7 @@ export function SchedulePage() {
   }, []);
 
   const handleNextMonth = useCallback(() => {
-    setSelectedEvent(null);
+    setHoveredEvent(null);
     setCurrentMonth((m) => {
       if (m === 11) {
         setCurrentYear((y) => y + 1);
@@ -2820,23 +3376,6 @@ export function SchedulePage() {
       }
       return m + 1;
     });
-  }, []);
-
-  const handleSelectEvent = useCallback(
-    (event: CalendarEvent, day: number, e: React.MouseEvent) => {
-      e.stopPropagation();
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      setSelectedEvent({
-        event,
-        day,
-        position: { top: rect.top, left: rect.right + 8 },
-      });
-    },
-    []
-  );
-
-  const handleClosePopover = useCallback(() => {
-    setSelectedEvent(null);
   }, []);
 
   // If mobile, render mobile layout (after all hooks)
@@ -3110,10 +3649,14 @@ export function SchedulePage() {
                 day={day}
                 isToday={day === todayDate}
                 events={day ? MOCK_EVENTS[day] || [] : []}
-                selectedEventId={selectedEvent?.event.id ?? null}
+                selectedEventId={hoveredEvent?.event.id ?? null}
                 onSelectEvent={(event, e) => {
-                  if (day) handleSelectEvent(event, day, e);
+                  if (day) handleClickEvent(event, day, e);
                 }}
+                onHoverEvent={(event, e) => {
+                  if (day) handleHoverEvent(event, day, e);
+                }}
+                onHoverLeave={handleHoverLeave}
                 sc={sc}
                 colors={colors}
                 isDark={isDark}
@@ -3123,15 +3666,19 @@ export function SchedulePage() {
         ))}
       </div>
 
-      {/* ── Popover ────────────────────────────────────────────────── */}
-      {selectedEvent && (
+      {/* ── Hover Popover ──────────────────────────────────────────── */}
+      {hoveredEvent && (
         <ReservationDetailsPopover
-          event={selectedEvent.event}
-          day={selectedEvent.day}
+          event={hoveredEvent.event}
+          day={hoveredEvent.day}
           month={currentMonth}
           year={currentYear}
-          position={selectedEvent.position}
+          position={hoveredEvent.position}
+          badgeRect={hoveredEvent.badgeRect}
           onClose={handleClosePopover}
+          onMouseEnter={handlePopoverMouseEnter}
+          onMouseLeave={handlePopoverMouseLeave}
+          onOpenDetails={handleOpenDetailsFromPopover}
           sc={sc}
           colors={colors}
           isDark={isDark}
