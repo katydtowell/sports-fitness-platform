@@ -2803,13 +2803,14 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   // ─── Edit mode renders the full form (same as before) ───
   if (isEditing) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
         {showCancelConfirm && (
           <CancelConfirmModal
             onConfirm={handleConfirmDiscard}
             onKeepEditing={() => setShowCancelConfirm(false)}
           />
         )}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
         {/* Section switching now lives in the panel header dropdown. */}
 
         {/* ── Availability + Editing indicator + Book action ── */}
@@ -2856,7 +2857,8 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         <div><div style={{ ...labelBoldStyle, marginBottom: "2px" }}>Scheduled on</div><span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>02/26/2021 <span style={{ fontWeight: 600, color: palette.primary, cursor: "pointer" }}>Update?</span></span></div>
         <div><div style={{ ...labelBoldStyle, marginBottom: "8px" }}>Additional options</div><div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><span>Online description: Yoga</span><span>Allow self booking</span><span>Allow free bookings</span><span>Show on EZ Leagues</span></div><span style={{ display: "inline-block", marginTop: "8px", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span></div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: `1px solid ${palette.borderLight}` }}>
+        </div>
+        <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
           <button onClick={handleCancelEditing} style={secondaryBtnStyle}>Cancel</button>
           <div style={{ display: "flex", gap: "8px" }}>
             <button style={primaryBtnStyle} onClick={() => setIsEditing(false)}>Save &amp; Close</button>
@@ -2871,7 +2873,8 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   // Section switching now lives in the panel header (chevron next to title)
   // via setHeaderExtras; the panel body opens straight into section content.
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "20px" }}>
       {/* ── Availability + Edit Reservation + Book action ── */}
       {event.capacity > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: "8px", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", border: `1px solid ${palette.borderLight}` }}>
@@ -3007,8 +3010,9 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: `1px solid ${palette.borderLight}` }}>
+      </div>
+      {/* Footer — sticky bottom bar */}
+      <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
         <button onClick={closePanel} style={secondaryBtnStyle}>Close</button>
         <div style={{ display: "flex", gap: "8px" }}>
           {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>Next: {nextSectionName} <ArrowRight size={14} /></button>}
@@ -3166,7 +3170,8 @@ function AddReservationPanelContent() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Section switching now lives in the panel header dropdown. */}
 
       {/* Schedule type */}
@@ -3358,8 +3363,9 @@ function AddReservationPanelContent() {
         <span style={{ display: "inline-block", marginTop: "8px", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span>
       </div>
 
-      {/* Footer buttons */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: `1px solid ${palette.borderLight}` }}>
+      </div>
+      {/* Footer buttons — sticky bottom bar */}
+      <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
         <button onClick={closePanel} style={secondaryBtnStyle}>Cancel</button>
         <div style={{ display: "flex", gap: "8px" }}>
           <button
