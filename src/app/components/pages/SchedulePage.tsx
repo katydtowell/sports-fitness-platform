@@ -639,7 +639,7 @@ function DateCell({
           // so this cell still works if reused inside a flex container.
           flex: "1 1 0",
           minWidth: 0,
-          minHeight: "149px",
+          minHeight: "130px",
           borderBottom: `1px solid ${sc.border}`,
           borderLeft: `1px solid ${sc.border}`,
           background: isDark ? sc.cellBg : "#fafafa",
@@ -676,7 +676,7 @@ function DateCell({
       style={{
         flex: "1 1 0",
         minWidth: 0,
-        minHeight: "149px",
+        minHeight: "130px",
         display: "flex",
         flexDirection: "column",
         background: sc.cellBg,
@@ -3876,6 +3876,9 @@ export function SchedulePage() {
       style={{
         fontFamily: "var(--font-family)",
         padding: "0",
+        // Reclaim the excess bottom padding from Layout's <main> (80px).
+        // 16px is sufficient for the schedule page.
+        marginBottom: "-64px",
         // Fill the remaining height of the page's <main> column so the
         // calendar can stretch vertically. <main> is a flex-col container
         // (see Layout.tsx), so flex:1 on this child claims the leftover
@@ -4131,17 +4134,24 @@ export function SchedulePage() {
             its own flex row, sub-pixel rounding could shift the 1px column
             borders by a fraction of a pixel between rows, which read as
             misaligned grid lines — most visible on the first/last weeks.)
-            flex:1 fills the remaining height of the calendar container, and
-            gridAutoRows distributes that height equally across week rows
-            (down to a per-row minimum of 149px). */}
+            The wrapper takes flex:1 and scrolls when the grid's minimum
+            height exceeds the available space (e.g. small windows).
+            gridAutoRows distributes height equally across week rows
+            (down to a per-row minimum of 130px). */}
+        <div
+          style={{
+            flex: "1 1 0",
+            minHeight: 0,
+            overflowY: "auto",
+          }}
+        >
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
             gridTemplateRows: "auto",
-            gridAutoRows: "minmax(149px, 1fr)",
-            flex: "1 1 0",
-            minHeight: 0,
+            gridAutoRows: "minmax(130px, 1fr)",
+            minHeight: "100%",
           }}
         >
           {/* Day headers */}
@@ -4191,6 +4201,7 @@ export function SchedulePage() {
               />
             ))
           )}
+        </div>
         </div>
       </div>
       {/* ── Upcoming Today side rail (1/4 width) ───────────────────
