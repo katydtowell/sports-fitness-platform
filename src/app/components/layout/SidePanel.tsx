@@ -24,7 +24,7 @@ const SIZE_TO_PERCENT: Record<PanelSize, string> = {
 };
 
 export function SidePanel() {
-  const { isOpen, content, title, size, closePanel } = useSidePanel();
+  const { isOpen, content, title, size, closePanel, headerExtras } = useSidePanel();
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -83,16 +83,22 @@ export function SidePanel() {
           flexShrink: 0,
         }}
       >
-        <span
-          style={{
-            color: palette.textPrimary,
-            fontSize: "var(--text-lg)",
-            fontWeight: 600,
-            fontFamily: "var(--font-family)",
-          }}
-        >
-          {title}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
+          <span
+            style={{
+              color: palette.textPrimary,
+              fontSize: "var(--text-lg)",
+              fontWeight: 600,
+              fontFamily: "var(--font-family)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {title}
+          </span>
+          {headerExtras}
+        </div>
         <button
           onClick={closePanel}
           aria-label="Close panel"

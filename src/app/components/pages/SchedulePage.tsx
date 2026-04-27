@@ -27,7 +27,6 @@ import {
   MapPin,
   ArrowRight,
   Grid3x3,
-  List,
   Calendar as CalendarViewIcon,
   X,
   Pencil,
@@ -2514,14 +2513,131 @@ const MOCK_BOOKED_CLIENTS: { name: string; status: "Booked" | "Waitlisted" | "Re
   { name: "Elizabeth Hall", status: "Booked" },
 ];
 
+/**
+ * Self-contained dropdown rendered into the SidePanel header (next to the
+ * panel title) via `setHeaderExtras`. Owns its own open/close state and
+ * outside-click handling so it can live in a different React subtree from
+ * the panel content that registered it.
+ */
+function SectionHeaderDropdown({
+  sections,
+  activeSection,
+  onSelectSection,
+}: {
+  sections: string[];
+  activeSection: string;
+  onSelectSection: (s: string) => void;
+}) {
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Switch section"
+        title={`Section: ${activeSection}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "26px",
+          height: "26px",
+          padding: 0,
+          background: open ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
+          border: "none",
+          borderRadius: "6px",
+          color: palette.textTertiary,
+          cursor: "pointer",
+          outline: "none",
+          transition: "background 0.15s ease, color 0.15s ease",
+        }}
+        onMouseEnter={(e) => {
+          if (!open) {
+            e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)";
+            e.currentTarget.style.color = palette.textPrimary;
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!open) {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = palette.textTertiary;
+          }
+        }}
+      >
+        <ChevronDown
+          size={16}
+          style={{ transition: "transform 0.2s ease", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
+        />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            minWidth: "200px",
+            background: palette.surfacePrimary,
+            border: `1px solid ${palette.borderLight}`,
+            borderRadius: "8px",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+            zIndex: 20,
+            overflow: "hidden",
+            padding: "4px",
+          }}
+        >
+          {sections.map((section) => {
+            const isActive = section === activeSection;
+            return (
+              <button
+                key={section}
+                onClick={() => {
+                  onSelectSection(section);
+                  setOpen(false);
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "8px 12px",
+                  border: "none",
+                  borderRadius: "6px",
+                  background: isActive ? `${palette.primary}20` : "transparent",
+                  color: isActive ? palette.primary : palette.textPrimary,
+                  fontSize: "var(--text-sm)",
+                  fontWeight: isActive ? 600 : 400,
+                  fontFamily: "var(--font-family)",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {section}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
-  const { closePanel } = useSidePanel();
+  const { closePanel, setHeaderExtras } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Details");
-  const [showSectionDropdown, setShowSectionDropdown] = useState(false);
-  const sectionDropdownRef = useRef<HTMLDivElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
@@ -2608,16 +2724,22 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
 
   const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
 
+  // Register the section switcher into the SidePanel header (chevron next
+  // to the panel title). Re-runs on activeSection change so the dropdown
+  // always reflects the current section. Cleans up on unmount.
   useEffect(() => {
-    if (!showSectionDropdown) return;
-    function handleClick(e: MouseEvent) {
-      if (sectionDropdownRef.current && !sectionDropdownRef.current.contains(e.target as Node)) {
-        setShowSectionDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showSectionDropdown]);
+    setHeaderExtras(
+      <SectionHeaderDropdown
+        sections={sections}
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+      />
+    );
+    return () => setHeaderExtras(null);
+    // sections is a stable literal; depending on activeSection ensures the
+    // header shows the correct active item highlight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, setHeaderExtras]);
 
   // Shared styles for edit mode
   const labelStyle: CSSProperties = { color: palette.textPrimary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "6px", display: "block" };
@@ -2652,10 +2774,14 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const available = event.capacity - event.booked;
   const bookedClients = MOCK_BOOKED_CLIENTS.slice(0, event.booked || 0);
 
+  // Pill backgrounds. Light-mode tints have been pushed brighter so the
+  // status colour reads at a glance against the (also light)
+  // `surfaceSecondary` list background. Amber needs slightly more
+  // saturation than the cooler greens/blues to feel equally punchy.
   const statusColors: Record<string, { bg: string; text: string }> = {
-    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.1)", text: isDark ? "#00c4a0" : "#0a8a6a" },
-    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.1)", text: isDark ? "#ffb432" : "#b07a10" },
-    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.1)", text: isDark ? "#78a0c8" : "#4a7aaa" },
+    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.38)", text: isDark ? "#00c4a0" : "#076a52" },
+    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.45)", text: isDark ? "#ffb432" : "#8a5e0a" },
+    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.38)", text: isDark ? "#78a0c8" : "#385f8c" },
   };
 
   // Filter toggles for registered clients
@@ -2684,21 +2810,7 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
             onKeepEditing={() => setShowCancelConfirm(false)}
           />
         )}
-        {/* Section selector */}
-        <div ref={sectionDropdownRef} style={{ position: "relative" }}>
-          <button onClick={() => setShowSectionDropdown(!showSectionDropdown)} style={{ display: "flex", alignItems: "center", width: "100%", gap: "8px", padding: "10px 16px", background: palette.primary, border: "none", borderRadius: "8px", color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", outline: "none", letterSpacing: "0.01em" }}>
-            <List size={16} style={{ opacity: 0.85 }} />
-            <span style={{ flex: 1, textAlign: "left" }}>{activeSection}</span>
-            <ChevronDown size={16} style={{ opacity: 0.85, transition: "transform 0.2s ease", transform: showSectionDropdown ? "rotate(180deg)" : "rotate(0deg)" }} />
-          </button>
-          {showSectionDropdown && (
-            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: palette.surfacePrimary, border: `1px solid ${palette.borderLight}`, borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.2)", zIndex: 10, overflow: "hidden", padding: "4px" }}>
-              {sections.map((section) => { const isActive = section === activeSection; return (
-                <button key={section} onClick={() => { setActiveSection(section); setShowSectionDropdown(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", borderRadius: "6px", background: isActive ? `${palette.primary}20` : "transparent", color: isActive ? palette.primary : palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: isActive ? 600 : 400, fontFamily: "var(--font-family)", cursor: "pointer", textAlign: "left" }}>{section}</button>
-              ); })}
-            </div>
-          )}
-        </div>
+        {/* Section switching now lives in the panel header dropdown. */}
 
         {/* ── Availability + Editing indicator + Book action ── */}
         {event.capacity > 0 && (
@@ -2756,26 +2868,10 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   }
 
   // ─── Compact read-only view ───
+  // Section switching now lives in the panel header (chevron next to title)
+  // via setHeaderExtras; the panel body opens straight into section content.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* Section selector + Edit Reservation button — inline row */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <div ref={sectionDropdownRef} style={{ position: "relative", flex: 1 }}>
-          <button onClick={() => setShowSectionDropdown(!showSectionDropdown)} style={{ display: "flex", alignItems: "center", width: "100%", gap: "8px", padding: "10px 16px", background: palette.primary, border: "none", borderRadius: "8px", color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", outline: "none", letterSpacing: "0.01em" }}>
-            <List size={16} style={{ opacity: 0.85 }} />
-            <span style={{ flex: 1, textAlign: "left" }}>{activeSection}</span>
-            <ChevronDown size={16} style={{ opacity: 0.85, transition: "transform 0.2s ease", transform: showSectionDropdown ? "rotate(180deg)" : "rotate(0deg)" }} />
-          </button>
-          {showSectionDropdown && (
-            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: palette.surfacePrimary, border: `1px solid ${palette.borderLight}`, borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.2)", zIndex: 10, overflow: "hidden", padding: "4px" }}>
-              {sections.map((section) => { const isActive = section === activeSection; return (
-                <button key={section} onClick={() => { setActiveSection(section); setShowSectionDropdown(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", borderRadius: "6px", background: isActive ? `${palette.primary}20` : "transparent", color: isActive ? palette.primary : palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: isActive ? 600 : 400, fontFamily: "var(--font-family)", cursor: "pointer", textAlign: "left" }}>{section}</button>
-              ); })}
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* ── Availability + Edit Reservation + Book action ── */}
       {event.capacity > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: "8px", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", border: `1px solid ${palette.borderLight}` }}>
@@ -2931,11 +3027,9 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
 function AddReservationPanelContent() {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
-  const { closePanel } = useSidePanel();
+  const { closePanel, setHeaderExtras } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Details");
-  const [showSectionDropdown, setShowSectionDropdown] = useState(false);
-  const sectionDropdownRef = useRef<HTMLDivElement>(null);
   const [scheduleType, setScheduleType] = useState<"session" | "rental">("session");
   const [recurring, setRecurring] = useState<"yes" | "no">("no");
   const [selectedVenues, setSelectedVenues] = useState<string[]>([]);
@@ -2953,17 +3047,18 @@ function AddReservationPanelContent() {
 
   const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
 
-  // Close section dropdown on outside click
+  // Register section switcher into the SidePanel header.
   useEffect(() => {
-    if (!showSectionDropdown) return;
-    function handleClick(e: MouseEvent) {
-      if (sectionDropdownRef.current && !sectionDropdownRef.current.contains(e.target as Node)) {
-        setShowSectionDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showSectionDropdown]);
+    setHeaderExtras(
+      <SectionHeaderDropdown
+        sections={sections}
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+      />
+    );
+    return () => setHeaderExtras(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, setHeaderExtras]);
 
   const labelStyle: CSSProperties = {
     color: palette.textPrimary,
@@ -3072,87 +3167,7 @@ function AddReservationPanelContent() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Section selector dropdown */}
-      <div ref={sectionDropdownRef} style={{ position: "relative" }}>
-          <button
-            onClick={() => setShowSectionDropdown(!showSectionDropdown)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              width: "100%",
-              gap: "8px",
-              padding: "10px 16px",
-              background: palette.primary,
-              border: "none",
-              borderRadius: "8px",
-              color: palette.textOnPrimary ?? "#182023",
-              fontSize: "var(--text-base)",
-              fontWeight: 600,
-              fontFamily: "var(--font-family)",
-              cursor: "pointer",
-              outline: "none",
-              letterSpacing: "0.01em",
-            }}
-          >
-            <List size={16} style={{ opacity: 0.85 }} />
-            <span style={{ flex: 1, textAlign: "left" }}>{activeSection}</span>
-            <ChevronDown
-              size={16}
-              style={{
-                opacity: 0.85,
-                transition: "transform 0.2s ease",
-                transform: showSectionDropdown ? "rotate(180deg)" : "rotate(0deg)",
-              }}
-            />
-          </button>
-
-        {showSectionDropdown && (
-          <div
-            style={{
-              position: "absolute",
-              top: "calc(100% + 6px)",
-              left: 0,
-              right: 0,
-              background: palette.surfacePrimary,
-              border: `1px solid ${palette.borderLight}`,
-              borderRadius: "8px",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
-              zIndex: 10,
-              overflow: "hidden",
-              padding: "4px",
-            }}
-          >
-            {sections.map((section) => {
-              const isActive = section === activeSection;
-              return (
-                <button
-                  key={section}
-                  onClick={() => {
-                    setActiveSection(section);
-                    setShowSectionDropdown(false);
-                  }}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    padding: "8px 12px",
-                    border: "none",
-                    borderRadius: "6px",
-                    background: isActive ? `${palette.primary}20` : "transparent",
-                    color: isActive ? palette.primary : palette.textPrimary,
-                    fontSize: "var(--text-sm)",
-                    fontWeight: isActive ? 600 : 400,
-                    fontFamily: "var(--font-family)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  {section}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* Section switching now lives in the panel header dropdown. */}
 
       {/* Schedule type */}
       <div>
@@ -3403,15 +3418,16 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
       style={{
         flex: "1 1 0",
         minWidth: 0,
-        alignSelf: "flex-start",
+        // No alignSelf override — the parent row uses alignItems:"stretch",
+        // so the rail matches the calendar's height. A min-height:0 lets the
+        // inner list scroll instead of pushing the rail past the row bounds.
+        minHeight: 0,
         borderRadius: "12px",
         border: `1px solid ${sc.border}`,
         background: sc.cellBg,
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        // Cap height so the list scrolls instead of stretching the calendar row.
-        maxHeight: "calc(100vh - 180px)",
       }}
     >
       {/* Header */}
@@ -3850,7 +3866,21 @@ export function SchedulePage() {
   );
 
   return (
-    <div style={{ fontFamily: "var(--font-family)", padding: "0" }}>
+    <div
+      style={{
+        fontFamily: "var(--font-family)",
+        padding: "0",
+        // Fill the remaining height of the page's <main> column so the
+        // calendar can stretch vertically. <main> is a flex-col container
+        // (see Layout.tsx), so flex:1 on this child claims the leftover
+        // vertical space — the toolbar takes its intrinsic height and the
+        // calendar+side-rail row (also flex:1) consumes the rest.
+        display: "flex",
+        flexDirection: "column",
+        flex: "1 1 0",
+        minHeight: 0,
+      }}
+    >
       {/* ── Top toolbar ──────────────────────────────────────────────
           Mirrors the calendar + side-rail flex split below so the month
           navigation can be centered over the calendar's 3/4 column. */}
@@ -3860,6 +3890,7 @@ export function SchedulePage() {
           alignItems: "center",
           gap: "20px",
           padding: "12px 0",
+          flex: "0 0 auto",
         }}
       >
         {/* Calendar zone — same flex basis as the calendar container below.
@@ -3998,15 +4029,21 @@ export function SchedulePage() {
         )}
       </div>
 
-      {/* ── Calendar + Upcoming Today side rail ─────────────────────── */}
+      {/* ── Calendar + Upcoming Today side rail ───────────────────────
+          flex:1 takes the remaining viewport height under the toolbar,
+          letting the calendar grid stretch vertically. */}
       <div
         style={{
           display: "flex",
           alignItems: "stretch",
           gap: "20px",
+          flex: "1 1 0",
+          minHeight: 0,
         }}
       >
-      {/* ── Calendar container ─────────────────────────────────────── */}
+      {/* ── Calendar container ───────────────────────────────────────
+          Becomes a flex-col container so the sub-header keeps its
+          intrinsic height and the grid below claims the rest. */}
       <div
         style={{
           flex: "3 1 0",
@@ -4015,6 +4052,9 @@ export function SchedulePage() {
           border: `1px solid ${sc.border}`,
           overflow: "hidden",
           background: sc.cellBg,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
         }}
       >
         {/* Sub-header: count + search + filters */}
@@ -4084,11 +4124,18 @@ export function SchedulePage() {
             boundaries land on the exact same x-positions. (When each week was
             its own flex row, sub-pixel rounding could shift the 1px column
             borders by a fraction of a pixel between rows, which read as
-            misaligned grid lines — most visible on the first/last weeks.) */}
+            misaligned grid lines — most visible on the first/last weeks.)
+            flex:1 fills the remaining height of the calendar container, and
+            gridAutoRows distributes that height equally across week rows
+            (down to a per-row minimum of 149px). */}
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+            gridTemplateRows: "auto",
+            gridAutoRows: "minmax(149px, 1fr)",
+            flex: "1 1 0",
+            minHeight: 0,
           }}
         >
           {/* Day headers */}

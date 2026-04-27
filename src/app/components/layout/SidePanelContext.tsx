@@ -25,11 +25,17 @@ interface SidePanelState {
   size: PanelSize;
   /** Optional title shown in the panel header. */
   title: string;
+  /** Optional element rendered in the header next to the title.
+   *  Useful for in-panel section navigation (e.g., a dropdown that
+   *  switches the active section without leaving the panel). */
+  headerExtras: ReactNode | null;
 }
 
 interface SidePanelContextValue extends SidePanelState {
   openPanel: (content: ReactNode, opts?: { size?: PanelSize; title?: string }) => void;
   closePanel: () => void;
+  /** Allow the panel content to inject an element next to the title. */
+  setHeaderExtras: (extras: ReactNode | null) => void;
 }
 
 const SidePanelCtx = createContext<SidePanelContextValue | null>(null);
@@ -40,6 +46,7 @@ export function SidePanelProvider({ children }: { children: ReactNode }) {
     content: null,
     size: "quarter",
     title: "",
+    headerExtras: null,
   });
 
   const openPanel = useCallback(
@@ -49,17 +56,24 @@ export function SidePanelProvider({ children }: { children: ReactNode }) {
         content,
         size: opts?.size ?? "quarter",
         title: opts?.title ?? "",
+        // Header extras are reset whenever a new panel is opened. Panel
+        // content registers its own extras via setHeaderExtras.
+        headerExtras: null,
       });
     },
     []
   );
 
   const closePanel = useCallback(() => {
-    setState({ isOpen: false, content: null, size: "quarter", title: "" });
+    setState({ isOpen: false, content: null, size: "quarter", title: "", headerExtras: null });
+  }, []);
+
+  const setHeaderExtras = useCallback((extras: ReactNode | null) => {
+    setState((prev) => ({ ...prev, headerExtras: extras }));
   }, []);
 
   return (
-    <SidePanelCtx.Provider value={{ ...state, openPanel, closePanel }}>
+    <SidePanelCtx.Provider value={{ ...state, openPanel, closePanel, setHeaderExtras }}>
       {children}
     </SidePanelCtx.Provider>
   );
