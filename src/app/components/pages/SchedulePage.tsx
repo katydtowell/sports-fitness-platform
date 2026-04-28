@@ -13,7 +13,7 @@
  * Matches the Figma design: Flowbite_Calendar_EZLeagues
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -1520,6 +1520,10 @@ interface MobileToolbarProps {
   showTodayButton: boolean;
   /** Resets the calendar to the real-world current date. */
   onGoToToday: () => void;
+  /** Number of active filter dimensions — drives the count badge on
+   *  the Filters icon button so the user can see at a glance that the
+   *  calendar is showing a filtered subset (mirrors desktop). */
+  activeFilterCount: number;
 }
 
 function MobileToolbar({
@@ -1539,6 +1543,7 @@ function MobileToolbar({
   setSearchQuery,
   showTodayButton,
   onGoToToday,
+  activeFilterCount,
 }: MobileToolbarProps) {
   const viewDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1696,23 +1701,57 @@ function MobileToolbar({
           >
             <Search size={18} />
           </button>
+          {/* Filters — when any filter dimension is active, the button
+              border + icon turn brand-colored and a small count badge
+              sits in the top-right corner so the user can see at a
+              glance that the calendar is filtered. Mirrors desktop. */}
           <button
             onClick={() => setShowFilter(!showFilter)}
-            aria-label="Filters"
+            aria-label={activeFilterCount > 0 ? `Filters (${activeFilterCount} active)` : "Filters"}
             style={{
+              position: "relative",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               width: "40px",
               height: "40px",
               borderRadius: "8px",
-              border: `1px solid ${sc.border}`,
-              background: sc.controlBg,
+              border: `1px solid ${activeFilterCount > 0 ? sc.brand : sc.border}`,
+              background: activeFilterCount > 0
+                ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+                : sc.controlBg,
               cursor: "pointer",
-              color: sc.body,
+              color: activeFilterCount > 0 ? sc.brand : sc.body,
             }}
           >
             <SlidersHorizontal size={18} />
+            {activeFilterCount > 0 && (
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  top: "-4px",
+                  right: "-4px",
+                  minWidth: "16px",
+                  height: "16px",
+                  padding: "0 4px",
+                  borderRadius: "8px",
+                  background: sc.brand,
+                  color: isDark ? "#0a0e0f" : "#101828",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  fontFamily: "var(--font-family)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  lineHeight: 1,
+                  border: `2px solid ${sc.headerBg}`,
+                  boxSizing: "content-box",
+                }}
+              >
+                {activeFilterCount}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -2226,26 +2265,21 @@ function MobileEventList({
           borderBottom: `1px solid ${sc.border}`,
         }}
       >
-        {/* Left group — count text + Info legend button paired together
-            so the legend reads as a helper for "what do these results
-            look like on the calendar". The Info button is the smaller,
+        {/* Left group — Info legend button followed by the count text.
+            Mirrors desktop's order so the layout reads consistently
+            across breakpoints. The Info button is the smaller,
             subordinate one; the count is the dominant text. */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-          <span
-            style={{
-              fontSize: "14px",
-              fontWeight: 500,
-              color: sc.body,
-            }}
+          <div
+            ref={legendRef}
+            onMouseEnter={() => setShowLegend(true)}
+            onMouseLeave={() => setShowLegend(false)}
+            style={{ position: "relative" }}
           >
-            Found {nonClosedEvents.length} reservation(s)
-          </span>
-          <div ref={legendRef} style={{ position: "relative" }}>
             <button
               onClick={() => setShowLegend(!showLegend)}
               aria-expanded={showLegend}
-              aria-label="Reservation type legend"
-              title="Reservation type legend"
+              aria-label="Legend"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -2284,7 +2318,7 @@ function MobileEventList({
                 }}
               >
                 <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
-                  Reservation types
+                  Legend
                 </span>
                 {[
                   { type: "yoga" as ReservationType, label: "Yoga / Power Yoga / Morning Yoga" },
@@ -2321,6 +2355,15 @@ function MobileEventList({
               </div>
             )}
           </div>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: 500,
+              color: sc.body,
+            }}
+          >
+            Found {nonClosedEvents.length} reservation(s)
+          </span>
         </div>
         {/* Add Reservation — back in its original spot on the right of
             the count row. Disabled when the selected day is closed. */}
@@ -2415,9 +2458,48 @@ interface MobileScheduleViewProps {
   palette: ThemePalette;
   mode: "light" | "dark";
   onAddReservation?: () => void;
+  /** Filter state lifted from SchedulePage so it survives the
+   *  desktop/mobile breakpoint switch. Without this, resizing the
+   *  browser past the mobile breakpoint unmounts whichever view holds
+   *  the active filters and the user loses them. */
+  filterStartDate: string;
+  setFilterStartDate: (v: string) => void;
+  filterEndDate: string;
+  setFilterEndDate: (v: string) => void;
+  filterStartTime: string;
+  setFilterStartTime: (v: string) => void;
+  filterEndTime: string;
+  setFilterEndTime: (v: string) => void;
+  filterVenues: string[];
+  setFilterVenues: (v: string[]) => void;
+  filterInstructors: string[];
+  setFilterInstructors: (v: string[]) => void;
+  filterTypes: ReservationType[];
+  setFilterTypes: (v: ReservationType[]) => void;
+  filterPaymentStatus: "" | "Owed" | "Paid";
+  setFilterPaymentStatus: (v: "" | "Owed" | "Paid") => void;
+  filterRegistrations: "" | "Full" | "Some" | "All";
+  setFilterRegistrations: (v: "" | "Full" | "Some" | "All") => void;
+  activeFilterCount: number;
+  clearAllFilters: () => void;
 }
 
-function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleViewProps) {
+function MobileScheduleView({
+  palette,
+  mode,
+  onAddReservation,
+  filterStartDate, setFilterStartDate,
+  filterEndDate, setFilterEndDate,
+  filterStartTime, setFilterStartTime,
+  filterEndTime, setFilterEndTime,
+  filterVenues, setFilterVenues,
+  filterInstructors, setFilterInstructors,
+  filterTypes, setFilterTypes,
+  filterPaymentStatus, setFilterPaymentStatus,
+  filterRegistrations, setFilterRegistrations,
+  activeFilterCount,
+  clearAllFilters,
+}: MobileScheduleViewProps) {
   const isDark = mode === "dark";
   const sc = semanticColors(palette, isDark);
   const colors = getEventStyles(isDark);
@@ -2440,41 +2522,10 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
   // — it stays a desktop-only feature.
   const [showLegend, setShowLegend] = useState(false);
 
-  // Calendar filter state — mirrors desktop. The colored Reservation
-  // Types chips inside the filter drawer also serve as the legend on
-  // mobile, so the desktop's standalone Info button isn't needed here.
-  const [filterStartDate, setFilterStartDate] = useState("");
-  const [filterEndDate, setFilterEndDate] = useState("");
-  const [filterStartTime, setFilterStartTime] = useState("");
-  const [filterEndTime, setFilterEndTime] = useState("");
-  const [filterVenues, setFilterVenues] = useState<string[]>([]);
-  const [filterInstructors, setFilterInstructors] = useState<string[]>([]);
-  const [filterTypes, setFilterTypes] = useState<ReservationType[]>([]);
-  const [filterPaymentStatus, setFilterPaymentStatus] = useState<"" | "Owed" | "Paid">("");
-  const [filterRegistrations, setFilterRegistrations] = useState<"" | "Full" | "Some" | "All">("");
-
-  const activeFilterCount =
-    (filterStartDate ? 1 : 0) +
-    (filterEndDate ? 1 : 0) +
-    (filterStartTime ? 1 : 0) +
-    (filterEndTime ? 1 : 0) +
-    (filterVenues.length > 0 ? 1 : 0) +
-    (filterInstructors.length > 0 ? 1 : 0) +
-    (filterTypes.length > 0 ? 1 : 0) +
-    (filterPaymentStatus ? 1 : 0) +
-    (filterRegistrations ? 1 : 0);
-
-  const clearAllFilters = () => {
-    setFilterStartDate("");
-    setFilterEndDate("");
-    setFilterStartTime("");
-    setFilterEndTime("");
-    setFilterVenues([]);
-    setFilterInstructors([]);
-    setFilterTypes([]);
-    setFilterPaymentStatus("");
-    setFilterRegistrations("");
-  };
+  // Calendar filter state lives in SchedulePage and is passed in via
+  // props — so the active filters survive a viewport resize that
+  // crosses the mobile/desktop breakpoint (otherwise the unmounting
+  // view's local state would be lost).
 
   // Filter events by search query then apply the structured filter
   // drawer criteria (date / time ranges, venues, instructors, types,
@@ -2632,6 +2683,7 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
         setSearchQuery={setSearchQuery}
         showTodayButton={!isViewingToday}
         onGoToToday={handleGoToToday}
+        activeFilterCount={activeFilterCount}
       />
 
       {/* Filters drawer — same content as the desktop popover. The
@@ -2674,6 +2726,7 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
             isDark={isDark}
             sc={sc}
             colors={colors}
+            mobileLayout
           />
         </div>
       )}
@@ -2770,9 +2823,14 @@ interface SearchableMultiSelectProps {
   onChange: (selected: string[]) => void;
   placeholder: string;
   palette: ThemePalette;
+  /** Optional display-label transform. Defaults to identity. */
+  getLabel?: (option: string) => string;
+  /** Optional leading element (e.g. a color-coded dot) rendered before
+   *  the label in both trigger tags and dropdown options. */
+  getLeading?: (option: string) => ReactNode;
 }
 
-function SearchableMultiSelect({ options, selected, onChange, placeholder, palette }: SearchableMultiSelectProps) {
+function SearchableMultiSelect({ options, selected, onChange, placeholder, palette, getLabel, getLeading }: SearchableMultiSelectProps) {
   const { mode } = useTheme();
   const isDark = mode === "dark";
   const [isOpen, setIsOpen] = useState(false);
@@ -2830,7 +2888,10 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
     };
   }, [isOpen]);
 
-  const filtered = options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
+  const filtered = options.filter((o) => {
+    const haystack = (getLabel ? getLabel(o) : o).toLowerCase();
+    return haystack.includes(search.toLowerCase());
+  });
 
   const toggleOption = (option: string) => {
     if (selected.includes(option)) {
@@ -2904,8 +2965,9 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
         )}
         {selected.map((item) => (
           <span key={item} style={tagStyle}>
-            {item}
-            <button onClick={(e) => removeTag(item, e)} style={tagCloseStyle} aria-label={`Remove ${item}`}>
+            {getLeading?.(item)}
+            {getLabel ? getLabel(item) : item}
+            <button onClick={(e) => removeTag(item, e)} style={tagCloseStyle} aria-label={`Remove ${getLabel ? getLabel(item) : item}`}>
               ×
             </button>
           </span>
@@ -3026,7 +3088,8 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
                     >
                       {isChecked ? "✓" : ""}
                     </span>
-                    {option}
+                    {getLeading?.(option)}
+                    {getLabel ? getLabel(option) : option}
                   </button>
                 );
               })
@@ -4546,6 +4609,10 @@ interface CalendarFiltersContentProps {
   isDark: boolean;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
+  /** When true, the Reservation types section renders as a searchable
+   *  multiselect with a colored dot per option (mobile layout) instead
+   *  of the inline colored chips (desktop layout). */
+  mobileLayout?: boolean;
 }
 
 function CalendarFiltersContent({
@@ -4561,7 +4628,48 @@ function CalendarFiltersContent({
   activeFilterCount,
   clearAllFilters,
   palette, isDark, sc, colors,
+  mobileLayout = false,
 }: CalendarFiltersContentProps) {
+  // Pretty label for a reservation type — same logic as the chip
+  // rendering, lifted out so the dropdown variant can reuse it.
+  const typeLabel = (t: ReservationType): string =>
+    t === "power-yoga"
+      ? "Power Yoga"
+      : t === "morning-yoga"
+      ? "Morning Yoga"
+      : t === "hiit"
+      ? "HIIT"
+      : t.charAt(0).toUpperCase() + t.slice(1);
+  // Colored dot used as the leading element for each type option in
+  // the mobile multiselect — same color tokens as the desktop chips so
+  // both layouts read as the same legend.
+  const renderTypeDot = (t: string): ReactNode => {
+    const c = colors[t as ReservationType];
+    if (!c) return null;
+    return (
+      <span
+        aria-hidden
+        style={{
+          display: "inline-block",
+          width: "10px",
+          height: "10px",
+          borderRadius: "50%",
+          background: c.text,
+          flexShrink: 0,
+        }}
+      />
+    );
+  };
+  const TYPE_OPTIONS: ReservationType[] = [
+    "yoga",
+    "power-yoga",
+    "morning-yoga",
+    "meditation",
+    "pilates",
+    "hiit",
+    "stretch",
+    "league",
+  ];
   return (
     <>
       {/* Header — title + Clear all (when any filter is active). */}
@@ -4648,45 +4756,59 @@ function CalendarFiltersContent({
         />
       </div>
 
-      {/* Reservation type chips — colored to match each type's badge so
-          this row also serves as the legend. */}
+      {/* Reservation types — desktop renders as colored chips that
+          double as the legend; mobile renders as a searchable
+          multiselect with a colored dot per option (the chips would
+          wrap awkwardly in a narrow drawer, but the dot still anchors
+          each row to its calendar color). */}
       <div>
         <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Reservation types</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-          {(["yoga", "power-yoga", "morning-yoga", "meditation", "pilates", "hiit", "stretch", "league"] as const).map((t) => {
-            const isActive = filterTypes.includes(t);
-            const c = colors[t];
-            const toggle = () => {
-              const next = filterTypes.includes(t)
-                ? filterTypes.filter((x) => x !== t)
-                : [...filterTypes, t];
-              setFilterTypes(next);
-            };
-            const label = t === "power-yoga" ? "Power Yoga" : t === "morning-yoga" ? "Morning Yoga" : t === "hiit" ? "HIIT" : t.charAt(0).toUpperCase() + t.slice(1);
-            return (
-              <button
-                key={t}
-                onClick={toggle}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "12px",
-                  border: `1px solid ${c.border}`,
-                  background: isActive ? c.bg : "transparent",
-                  color: c.text,
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  fontFamily: "var(--font-family)",
-                  cursor: "pointer",
-                  lineHeight: 1.4,
-                  opacity: isActive ? 1 : 0.7,
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        {mobileLayout ? (
+          <SearchableMultiSelect
+            options={TYPE_OPTIONS as string[]}
+            selected={filterTypes as string[]}
+            onChange={(values) => setFilterTypes(values as ReservationType[])}
+            placeholder="—Any type—"
+            palette={palette}
+            getLabel={(o) => typeLabel(o as ReservationType)}
+            getLeading={renderTypeDot}
+          />
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {TYPE_OPTIONS.map((t) => {
+              const isActive = filterTypes.includes(t);
+              const c = colors[t];
+              const toggle = () => {
+                const next = filterTypes.includes(t)
+                  ? filterTypes.filter((x) => x !== t)
+                  : [...filterTypes, t];
+                setFilterTypes(next);
+              };
+              return (
+                <button
+                  key={t}
+                  onClick={toggle}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "12px",
+                    border: `1px solid ${c.border}`,
+                    background: isActive ? c.bg : "transparent",
+                    color: c.text,
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    fontFamily: "var(--font-family)",
+                    cursor: "pointer",
+                    lineHeight: 1.4,
+                    opacity: isActive ? 1 : 0.7,
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {typeLabel(t)}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Registrations + Payment status — derived-state filters. */}
@@ -5166,7 +5288,31 @@ export function SchedulePage() {
   // If mobile, render mobile layout (after all hooks)
   if (isMobile) {
     return (
-      <MobileScheduleView palette={palette} mode={mode} onAddReservation={handleOpenAddReservation} />
+      <MobileScheduleView
+        palette={palette}
+        mode={mode}
+        onAddReservation={handleOpenAddReservation}
+        filterStartDate={filterStartDate}
+        setFilterStartDate={setFilterStartDate}
+        filterEndDate={filterEndDate}
+        setFilterEndDate={setFilterEndDate}
+        filterStartTime={filterStartTime}
+        setFilterStartTime={setFilterStartTime}
+        filterEndTime={filterEndTime}
+        setFilterEndTime={setFilterEndTime}
+        filterVenues={filterVenues}
+        setFilterVenues={setFilterVenues}
+        filterInstructors={filterInstructors}
+        setFilterInstructors={setFilterInstructors}
+        filterTypes={filterTypes}
+        setFilterTypes={setFilterTypes}
+        filterPaymentStatus={filterPaymentStatus}
+        setFilterPaymentStatus={setFilterPaymentStatus}
+        filterRegistrations={filterRegistrations}
+        setFilterRegistrations={setFilterRegistrations}
+        activeFilterCount={activeFilterCount}
+        clearAllFilters={clearAllFilters}
+      />
     );
   }
 
@@ -5454,12 +5600,16 @@ export function SchedulePage() {
               affordance — it sits next to the result-count summary so
               users see it as a viewing helper, not a filter action. */}
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div ref={legendRef} style={{ position: "relative" }}>
+            <div
+              ref={legendRef}
+              onMouseEnter={() => setShowLegend(true)}
+              onMouseLeave={() => setShowLegend(false)}
+              style={{ position: "relative" }}
+            >
               <button
                 onClick={() => setShowLegend((v) => !v)}
                 aria-expanded={showLegend}
-                aria-label="Reservation type legend"
-                title="Reservation type legend"
+                aria-label="Legend"
                 style={{
                   ...controlBtn,
                   width: "28px",
@@ -5495,7 +5645,7 @@ export function SchedulePage() {
                   }}
                 >
                   <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
-                    Reservation types
+                    Legend
                   </span>
                   {[
                     { types: ["yoga"] as const, label: "Yoga / Power Yoga / Morning Yoga" },
