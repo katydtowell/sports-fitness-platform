@@ -5,12 +5,14 @@ import { SIDEBAR_WIDTH, DRAG_SOURCE_SIDEBAR, DRAG_SOURCE_DRAWER } from "./Sideba
 import { useTheme } from "./ThemeContext";
 
 // ── Badge chip ──────────────────────────────────────────────────────────────
-function Badge({ text, palette }: { text: string; palette: ReturnType<typeof useTheme>["palette"] }) {
+function Badge({ text, palette, isDark }: { text: string; palette: ReturnType<typeof useTheme>["palette"]; isDark: boolean }) {
   return (
     <span
       style={{
         background: palette.primary,
-        color: palette.surfaceBg,
+        // Dark text on green so it doesn't read as disabled in light mode
+        // (matches primary-button text spec: rgb 16,24,40 light / rgb 10,14,15 dark).
+        color: isDark ? "#0a0e0f" : "#101828",
         fontSize: "9px",
         fontWeight: 700,
         lineHeight: 1,
@@ -32,9 +34,10 @@ interface ToolRowProps {
   item: NavItem;
   onNavigate: (id: string) => void;
   palette: ReturnType<typeof useTheme>["palette"];
+  isDark: boolean;
 }
 
-function ToolRow({ item, onNavigate, palette }: ToolRowProps) {
+function ToolRow({ item, onNavigate, palette, isDark }: ToolRowProps) {
   const Icon = item.icon;
   const [hover, setHover] = useState(false);
 
@@ -77,7 +80,7 @@ function ToolRow({ item, onNavigate, palette }: ToolRowProps) {
       >
         {item.label}
       </span>
-      {item.badge && <Badge text={item.badge} palette={palette} />}
+      {item.badge && <Badge text={item.badge} palette={palette} isDark={isDark} />}
     </div>
   );
 }
@@ -102,7 +105,8 @@ export function MoreToolsDrawer({
   onPinItem,
   onUnpinItem,
 }: MoreToolsDrawerProps) {
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
   const drawerRef = useRef<HTMLDivElement>(null);
   const [isDropTarget, setIsDropTarget] = useState(false);
 
@@ -283,6 +287,7 @@ export function MoreToolsDrawer({
                 key={item.id}
                 item={item}
                 palette={palette}
+                isDark={isDark}
                 onNavigate={(id) => {
                   onNavigate(id);
                   onClose();

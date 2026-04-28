@@ -18,7 +18,7 @@ export const DRAG_SOURCE_SIDEBAR = "application/x-sidebar-item";
 export const DRAG_SOURCE_DRAWER  = "application/x-drawer-item";
 
 // ── Badge chip ──────────────────────────────────────────────────────────────
-function Badge({ text, palette }: { text: string; palette: ReturnType<typeof useTheme>["palette"] }) {
+function Badge({ text, palette, isDark }: { text: string; palette: ReturnType<typeof useTheme>["palette"]; isDark: boolean }) {
   return (
     <span
       style={{
@@ -26,7 +26,9 @@ function Badge({ text, palette }: { text: string; palette: ReturnType<typeof use
         top: 2,
         right: 2,
         background: palette.primary,
-        color: palette.surfaceBg,
+        // Dark text on green so it doesn't read as disabled in light mode
+        // (matches primary-button text spec: rgb 16,24,40 light / rgb 10,14,15 dark).
+        color: isDark ? "#0a0e0f" : "#101828",
         fontSize: "8px",
         fontWeight: 700,
         lineHeight: 1,
@@ -51,6 +53,7 @@ interface NavButtonProps {
   isDragTarget: boolean;
   isExternalDragTarget: boolean;
   palette: ReturnType<typeof useTheme>["palette"];
+  isDark: boolean;
 }
 
 function NavButton({
@@ -61,6 +64,7 @@ function NavButton({
   isDragTarget,
   isExternalDragTarget,
   palette,
+  isDark,
 }: NavButtonProps) {
   const Icon = item.icon;
   const showDropIndicator = isDragTarget || isExternalDragTarget;
@@ -107,7 +111,7 @@ function NavButton({
     >
       <Icon size={18} strokeWidth={isActive ? 2 : 1.5} />
       <span>{item.label}</span>
-      {item.badge && <Badge text={item.badge} palette={palette} />}
+      {item.badge && <Badge text={item.badge} palette={palette} isDark={isDark} />}
     </button>
   );
 }
@@ -197,7 +201,8 @@ export function Sidebar({
   onOpenMoreTools,
   moreToolsOpen,
 }: SidebarProps) {
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
   // Which pinned-item index is the cursor hovering over?
   const [overIndex, setOverIndex] = useState<number | null>(null);
   // Is the drag from the sidebar (internal reorder) or from the drawer?
@@ -360,6 +365,7 @@ export function Sidebar({
               }
               isExternalDragTarget={overIndex === i && dragSource === "drawer"}
               palette={palette}
+              isDark={isDark}
             />
           </div>
         ))}

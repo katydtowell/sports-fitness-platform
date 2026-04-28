@@ -40,7 +40,8 @@ function formatTimestamp(date: Date): string {
 
 export function NotificationsPanelContent() {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", margin: "-20px", fontFamily: "var(--font-family)" }}>
@@ -62,7 +63,7 @@ export function NotificationsPanelContent() {
             <span
               style={{
                 background: palette.primary,
-                color: palette.surfaceBg,
+                color: isDark ? "#0a0e0f" : "#101828",
                 fontSize: "10px",
                 fontWeight: 700,
                 padding: "1px 6px",

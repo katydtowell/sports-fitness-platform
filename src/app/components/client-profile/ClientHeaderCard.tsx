@@ -109,9 +109,10 @@ interface AvatarModalProps {
   onRemove: () => void;
   onClose: () => void;
   palette: any;
+  isDark: boolean;
 }
 
-function AvatarModal({ existingUrl, initialPendingUrl, onApply, onRemove, onClose, palette }: AvatarModalProps) {
+function AvatarModal({ existingUrl, initialPendingUrl, onApply, onRemove, onClose, palette, isDark }: AvatarModalProps) {
   const [view, setView]             = useState<"options" | "crop">(initialPendingUrl ? "crop" : "options");
   const [pendingUrl, setPendingUrl] = useState<string | null>(initialPendingUrl ?? null);
   const [zoom, setZoom]             = useState(1);
@@ -186,7 +187,7 @@ function AvatarModal({ existingUrl, initialPendingUrl, onApply, onRemove, onClos
     onApply(canvas.toDataURL("image/png"));
   }
 
-  const primaryBtn:   React.CSSProperties = { background: palette.primary, border: "none", borderRadius: "6px", color: palette.surfaceBg, fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", padding: "10px", cursor: "pointer", width: "100%" };
+  const primaryBtn:   React.CSSProperties = { background: palette.primary, border: "none", borderRadius: "6px", color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", padding: "10px", cursor: "pointer", width: "100%" };
   const secondaryBtn: React.CSSProperties = { background: "transparent", border: `1px solid ${palette.outlineAction}`, borderRadius: "6px", color: palette.textTertiary, fontSize: "var(--text-base)", fontFamily: "var(--font-family)", padding: "10px", cursor: "pointer", width: "100%" };
   const dangerBtn:    React.CSSProperties = { background: "transparent", border: `1px solid ${palette.textError}80`, borderRadius: "6px", color: palette.textError, fontSize: "var(--text-base)", fontFamily: "var(--font-family)", padding: "10px", cursor: "pointer", width: "100%" };
   const zoomPct = minZoom > 0 ? Math.round((zoom / minZoom) * 100) : 100;
@@ -262,7 +263,8 @@ interface ClientHeaderCardProps {
 }
 
 export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCancelEditing, isEditing, displayName, displayAge, onDueClick }: ClientHeaderCardProps) {
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const [modalOpen, setModalOpen]               = useState(false);
@@ -299,6 +301,7 @@ export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCa
           onRemove={() => { onAvatarChange(null); closeModal(); }}
           onClose={closeModal}
           palette={palette}
+          isDark={isDark}
         />
       )}
     </>
@@ -353,7 +356,7 @@ export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCa
             </div>
 
             {/* Check In */}
-            <button style={{ background: palette.primary, border: "none", borderRadius: "6px", color: palette.surfaceBg, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", padding: "7px 13px", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <button style={{ background: palette.primary, border: "none", borderRadius: "6px", color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", padding: "7px 13px", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
               Check In
             </button>
 
@@ -397,7 +400,7 @@ export function ClientHeaderCard({ avatarUrl, onAvatarChange, onEditClient, onCa
 
   /* ── Desktop / Tablet layout ───────────────────────────────────────────── */
   const checkInBtn = (
-    <button style={{ background: palette.primary, border: "none", borderRadius: "6px", color: palette.surfaceBg, fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", padding: "10px 20px", cursor: "pointer", whiteSpace: "nowrap" }}>
+    <button style={{ background: palette.primary, border: "none", borderRadius: "6px", color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", padding: "10px 20px", cursor: "pointer", whiteSpace: "nowrap" }}>
       Check In
     </button>
   );

@@ -37,14 +37,22 @@ interface ChoiceButtonProps {
   onClick: () => void;
   variant?: "primary" | "secondary";
   palette: any;
+  isDark: boolean;
 }
 
-function ChoiceButton({ icon, label, sublabel, onClick, variant = "primary", palette }: ChoiceButtonProps) {
+function ChoiceButton({ icon, label, sublabel, onClick, variant = "primary", palette, isDark }: ChoiceButtonProps) {
   const RADIUS = "6px";
   const isPrimary = variant === "primary";
 
+  // Primary text/icon on the green button must be dark in both modes so it
+  // doesn't read as disabled. Light mode previously used palette.surfaceBg
+  // (#dfe9ec, rgb 223,233,236), which sat too close to the green and looked
+  // muted. Now matches the canonical primary-button text color used across
+  // the app: rgb(16,24,40) light / rgb(10,14,15) dark.
+  const onPrimaryText = isDark ? "#0a0e0f" : "#101828";
+
   const buttonColors = isPrimary
-    ? { background: palette.primary, border: "none", color: palette.surfaceBg }
+    ? { background: palette.primary, border: "none", color: onPrimaryText }
     : { background: "transparent", border: `1px solid ${palette.outlineAction}`, color: palette.textTertiary };
 
   const iconBandBackground = isPrimary
@@ -78,7 +86,7 @@ function ChoiceButton({ icon, label, sublabel, onClick, variant = "primary", pal
           justifyContent: "center",
           padding: "0 14px",
           flexShrink: 0,
-          color: isPrimary ? palette.surfaceBg : palette.textTertiary,
+          color: isPrimary ? onPrimaryText : palette.textTertiary,
         }}
       >
         {icon === "pencil" ? <PencilIcon /> : <XIcon />}
@@ -116,7 +124,8 @@ interface CancelConfirmModalProps {
 }
 
 export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmModalProps) {
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
 
   return (
     <div
@@ -180,6 +189,7 @@ export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmMo
               sublabel="I'm not ready to exit."
               onClick={onKeepEditing}
               palette={palette}
+              isDark={isDark}
             />
             <ChoiceButton
               icon="x"
@@ -188,6 +198,7 @@ export function CancelConfirmModal({ onConfirm, onKeepEditing }: CancelConfirmMo
               onClick={onConfirm}
               variant="secondary"
               palette={palette}
+              isDark={isDark}
             />
           </div>
         </div>

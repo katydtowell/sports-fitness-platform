@@ -33,7 +33,8 @@ const TOTAL_DUE = MOCK_LINE_ITEMS.reduce((sum, item) => sum + item.amount, 0);
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function PaymentPanel() {
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
   const { closePanel } = useSidePanel();
 
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -281,7 +282,7 @@ export function PaymentPanel() {
             background: palette.primary,
             border: "none",
             borderRadius: "6px",
-            color: palette.surfaceBg,
+            color: isDark ? "#0a0e0f" : "#101828",
             fontSize: "var(--text-base)",
             fontWeight: 600,
             fontFamily: "var(--font-family)",

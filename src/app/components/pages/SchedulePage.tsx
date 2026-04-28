@@ -2428,6 +2428,8 @@ interface SearchableMultiSelectProps {
 }
 
 function SearchableMultiSelect({ options, selected, onChange, placeholder, palette }: SearchableMultiSelectProps) {
+  const { mode } = useTheme();
+  const isDark = mode === "dark";
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -2495,7 +2497,7 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
     padding: "2px 8px",
     borderRadius: "4px",
     background: palette.primary,
-    color: palette.textOnPrimary ?? "#182023",
+    color: isDark ? "#0a0e0f" : "#101828",
     fontSize: "var(--text-xs)",
     fontWeight: 500,
     fontFamily: "var(--font-family)",
@@ -2636,7 +2638,7 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
                         borderRadius: "3px",
                         border: isChecked ? "none" : `1.5px solid ${palette.borderMedium}`,
                         background: isChecked ? palette.primary : "transparent",
-                        color: isChecked ? (palette.textOnPrimary ?? "#182023") : "transparent",
+                        color: isChecked ? (isDark ? "#0a0e0f" : "#101828") : "transparent",
                         fontSize: "11px",
                         fontWeight: 700,
                         flexShrink: 0,
@@ -2949,7 +2951,7 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const chevronColor = encodeURIComponent(isDark ? "#a1bdc6" : "#475467");
   const selectStyle: CSSProperties = { ...inputStyle, appearance: "none" as const, backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='${chevronColor}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", paddingRight: "32px", cursor: "pointer" };
   const disabledInputStyle: CSSProperties = { ...selectStyle, backgroundColor: palette.surfaceSecondary, opacity: 0.5 };
-  const primaryBtnStyle: CSSProperties = { padding: "10px 20px", borderRadius: "6px", border: "none", background: palette.primary, color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" };
+  const primaryBtnStyle: CSSProperties = { padding: "10px 20px", borderRadius: "6px", border: "none", background: palette.primary, color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-base)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" };
   const secondaryBtnStyle: CSSProperties = { ...primaryBtnStyle, background: "transparent", border: `1px solid ${palette.borderMedium}`, color: palette.textTertiary };
 
   const currentSectionIndex = sections.indexOf(activeSection);
@@ -3027,7 +3029,7 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <button onClick={handleCancelEditing} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", borderRadius: "6px", border: `1px solid ${palette.primary}`, background: `${palette.primary}15`, color: palette.primary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Pencil size={13} /> Editing</button>
               {available > 0 ? (
-                <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
+                <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
               ) : (
                 <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: isDark ? "rgba(255,180,50,0.2)" : "rgba(220,150,20,0.15)", color: isDark ? "#ffb432" : "#b07a10", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Waitlist</button>
               )}
@@ -3154,7 +3156,7 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
             <button onClick={() => setIsEditing(true)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: "transparent", color: palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", whiteSpace: "nowrap" }}><Pencil size={13} /> Edit Reservation</button>
             {available > 0 ? (
-              <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: palette.textOnPrimary ?? "#182023", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
+              <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
             ) : (
               <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: isDark ? "rgba(255,180,50,0.2)" : "rgba(220,150,20,0.15)", color: isDark ? "#ffb432" : "#b07a10", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Waitlist</button>
             )}
@@ -3312,26 +3314,87 @@ function AddReservationPanelContent() {
   const { closePanel, setHeaderExtras } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Details");
-  const [scheduleType, setScheduleType] = useState<"session" | "rental">("session");
-  const [recurring, setRecurring] = useState<"yes" | "no">("no");
-  const [selectedVenues, setSelectedVenues] = useState<string[]>([]);
-  const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
-  const [reservationType, setReservationType] = useState("");
-  const [title, setTitle] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [allDay, setAllDay] = useState(false);
-  const [useDefaultBuffer, setUseDefaultBuffer] = useState(true);
-  const [preBuffer, setPreBuffer] = useState("15");
-  const [postBuffer, setPostBuffer] = useState("15");
+
+  // Initial / "pristine" values — used to detect unsaved changes when the
+  // user clicks Cancel. Anything that diverges from these is treated as a
+  // change worth confirming away.
+  const initScheduleType: "session" | "rental" = "session";
+  const initRecurring: "yes" | "no" = "no";
+  const initVenues: string[] = [];
+  const initInstructors: string[] = [];
+  const initReservationType = "";
+  const initTitle = "";
+  const initStartDate = "";
+  const initEndDate = "";
+  const initStartTime = "";
+  const initEndTime = "";
+  const initAllDay = false;
+  const initUseDefaultBuffer = true;
+  const initPreBuffer = "15";
+  const initPostBuffer = "15";
+  const initOnlineDescription = "";
+  const initAllowSelfBooking = true;
+  const initAllowFreeBookings = false;
+  const initShowOnEZLeagues = false;
+
+  const [scheduleType, setScheduleType] = useState<"session" | "rental">(initScheduleType);
+  const [recurring, setRecurring] = useState<"yes" | "no">(initRecurring);
+  const [selectedVenues, setSelectedVenues] = useState<string[]>(initVenues);
+  const [selectedInstructors, setSelectedInstructors] = useState<string[]>(initInstructors);
+  const [reservationType, setReservationType] = useState(initReservationType);
+  const [title, setTitle] = useState(initTitle);
+  const [startDate, setStartDate] = useState(initStartDate);
+  const [endDate, setEndDate] = useState(initEndDate);
+  const [startTime, setStartTime] = useState(initStartTime);
+  const [endTime, setEndTime] = useState(initEndTime);
+  const [allDay, setAllDay] = useState(initAllDay);
+  const [useDefaultBuffer, setUseDefaultBuffer] = useState(initUseDefaultBuffer);
+  const [preBuffer, setPreBuffer] = useState(initPreBuffer);
+  const [postBuffer, setPostBuffer] = useState(initPostBuffer);
   // Additional options (editable on new reservation) — accordion closed by default
-  const [onlineDescription, setOnlineDescription] = useState("");
-  const [allowSelfBooking, setAllowSelfBooking] = useState(true);
-  const [allowFreeBookings, setAllowFreeBookings] = useState(false);
-  const [showOnEZLeagues, setShowOnEZLeagues] = useState(false);
+  const [onlineDescription, setOnlineDescription] = useState(initOnlineDescription);
+  const [allowSelfBooking, setAllowSelfBooking] = useState(initAllowSelfBooking);
+  const [allowFreeBookings, setAllowFreeBookings] = useState(initAllowFreeBookings);
+  const [showOnEZLeagues, setShowOnEZLeagues] = useState(initShowOnEZLeagues);
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
+
+  // Cancel-confirmation gate: only show the modal when something diverges
+  // from the pristine state (otherwise just close the panel immediately).
+  // Activesection/showAdditionalOptions are UI-only and intentionally
+  // excluded from this comparison.
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const hasChanges =
+    scheduleType !== initScheduleType ||
+    recurring !== initRecurring ||
+    JSON.stringify(selectedVenues) !== JSON.stringify(initVenues) ||
+    JSON.stringify(selectedInstructors) !== JSON.stringify(initInstructors) ||
+    reservationType !== initReservationType ||
+    title !== initTitle ||
+    startDate !== initStartDate ||
+    endDate !== initEndDate ||
+    startTime !== initStartTime ||
+    endTime !== initEndTime ||
+    allDay !== initAllDay ||
+    useDefaultBuffer !== initUseDefaultBuffer ||
+    preBuffer !== initPreBuffer ||
+    postBuffer !== initPostBuffer ||
+    onlineDescription !== initOnlineDescription ||
+    allowSelfBooking !== initAllowSelfBooking ||
+    allowFreeBookings !== initAllowFreeBookings ||
+    showOnEZLeagues !== initShowOnEZLeagues;
+
+  const handleCancelClick = () => {
+    if (hasChanges) {
+      setShowCancelConfirm(true);
+    } else {
+      closePanel();
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowCancelConfirm(false);
+    closePanel();
+  };
 
   const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
 
@@ -3416,7 +3479,7 @@ function AddReservationPanelContent() {
     borderRadius: "6px",
     border: "none",
     background: palette.primary,
-    color: palette.textOnPrimary ?? "#182023",
+    color: isDark ? "#0a0e0f" : "#101828",
     fontSize: "var(--text-base)",
     fontWeight: 600,
     fontFamily: "var(--font-family)",
@@ -3455,6 +3518,12 @@ function AddReservationPanelContent() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      {showCancelConfirm && (
+        <CancelConfirmModal
+          onConfirm={handleConfirmDiscard}
+          onKeepEditing={() => setShowCancelConfirm(false)}
+        />
+      )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Section switching now lives in the panel header dropdown. */}
 
@@ -3703,7 +3772,7 @@ function AddReservationPanelContent() {
       </div>
       {/* Footer buttons — sticky bottom bar */}
       <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
-        <button onClick={closePanel} style={secondaryBtnStyle}>Cancel</button>
+        <button onClick={handleCancelClick} style={secondaryBtnStyle}>Cancel</button>
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             disabled={!isFormValid}
