@@ -32,6 +32,8 @@ import {
   Pencil,
   Users,
   Trophy,
+  Hourglass,
+  Info,
 } from "lucide-react";
 import { useTheme, type ThemePalette } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
@@ -259,7 +261,7 @@ function generateMockEvents(): DayEvents {
   // Week 2: days 8-14
   events[8] = [
     makeEvent("8a", "Yoga", "11am", "yoga"),
-    makeEvent("8b", "Meditation", "12am", "meditation"),
+    makeEvent("8b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20),
     makeEvent("8c", "Power Yoga", "1pm", "power-yoga"),
     makeEvent("8d", "HIIT", "2pm", "hiit"),
     makeEvent("8e", "Pilates", "3pm", "pilates"),
@@ -286,7 +288,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("12e", "Pilates", "3pm", "pilates"),
   ];
   events[13] = [
-    makeEvent("13a", "Morning Yoga Reset", "11am", "morning-yoga"),
+    makeEvent("13a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 0, 36),
     makeEvent("13b", "Meditation", "12am", "meditation"),
     makeEvent("13c", "Yoga", "1pm", "yoga"),
     makeEvent("13d", "HIIT", "2pm", "hiit"),
@@ -311,7 +313,7 @@ function generateMockEvents(): DayEvents {
   events[16] = [
     makeEvent("16a", "Yoga", "11am", "yoga"),
     makeEvent("16b", "Meditation", "12am", "meditation"),
-    makeEvent("16c", "Yoga", "1pm", "yoga"),
+    makeEvent("16c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 0, 36),
     makeEvent("16d", "HIIT", "2pm", "hiit"),
     makeEvent("16e", "Pilates", "3pm", "pilates"),
   ];
@@ -332,7 +334,7 @@ function generateMockEvents(): DayEvents {
   events[19] = [
     makeEvent("19a", "Yoga", "11am", "yoga"),
     makeEvent("19b", "Stretch & Restore", "12pm", "stretch"),
-    makeEvent("19c", "Meditation", "1pm", "meditation"),
+    makeEvent("19c", "Meditation", "1pm", "meditation", "Sara Chen", "Studio A", 0, 20),
     makeEvent("19d", "HIIT", "2pm", "hiit"),
     makeEvent("19e", "Pilates", "3pm", "pilates"),
   ];
@@ -345,7 +347,7 @@ function generateMockEvents(): DayEvents {
   ];
   events[21] = [
     makeEvent("21a", "Yoga", "11am", "yoga"),
-    makeEvent("21b", "Pilates", "12am", "pilates"),
+    makeEvent("21b", "Pilates", "12am", "pilates", "Lisa Park", "Studio A", 0, 24),
     makeEvent("21c", "Yoga", "1pm", "yoga"),
     makeEvent("21d", "HIIT", "2pm", "hiit"),
     makeEvent("21e", "Pilates", "3pm", "pilates"),
@@ -374,7 +376,7 @@ function generateMockEvents(): DayEvents {
   ];
   events[25] = [
     makeEvent("25a", "Yoga", "11am", "yoga"),
-    makeEvent("25b", "Meditation", "12am", "meditation"),
+    makeEvent("25b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20),
     makeEvent("25c", "Yoga", "1pm", "yoga"),
     makeEvent("25d", "HIIT", "2pm", "hiit"),
   ];
@@ -386,7 +388,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("26e", "Pilates", "3pm", "pilates"),
   ];
   events[27] = [
-    makeEvent("27a", "Stretch & Restore", "12pm", "stretch"),
+    makeEvent("27a", "Stretch & Restore", "12pm", "stretch", "Lisa Park", "Studio A", 0, 20),
     makeEvent("27b", "Yoga", "1pm", "yoga"),
     makeEvent("27c", "Meditation", "2pm", "meditation"),
     makeEvent("27d", "HIIT", "3pm", "hiit"),
@@ -513,6 +515,7 @@ function EventBadge({
   onHoverLeave,
   colors,
   isDark,
+  deleteMode = false,
 }: {
   event: CalendarEvent;
   isSelected: boolean;
@@ -521,11 +524,26 @@ function EventBadge({
   onHoverLeave?: () => void;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
+  /** When true, mark events with no registered clients as deletable
+   *  (red dashed border + tint) so users know which ones a click will
+   *  remove in Delete Mode. Events with bookings or closures are
+   *  unaffected. */
+  deleteMode?: boolean;
 }) {
   const style = colors[event.type] || colors.yoga;
 
   const hasPre = (event.preBuffer ?? 0) > 0;
   const hasPost = (event.postBuffer ?? 0) > 0;
+  // League games are zero-booked at the per-event level (registration is
+  // handled at the league level, not per session), so they're excluded
+  // from the deletable set even though `booked === 0` — same exclusion as
+  // closures.
+  const isDeletable = deleteMode && event.booked === 0 && event.type !== "closed" && event.type !== "league";
+  // While Delete Mode is on, dim every event that ISN'T deletable so the
+  // deletable subset (red dashed) stands out clearly. Closures, league
+  // games, and already-booked events stay visible at reduced opacity to
+  // preserve calendar context but recede from the action.
+  const dimNonDeletable = deleteMode && !isDeletable;
 
   // Stripe area is 12px wide; bump padding to 14px on the affected side so
   // text starts just past the stripes (mirrors the "diagonal lines next to
@@ -533,6 +551,10 @@ function EventBadge({
   const STRIPE_W = 12;
   const padL = hasPre ? STRIPE_W + 2 : 6;
   const padR = hasPost ? STRIPE_W + 2 : 6;
+
+  // Theme-aware "deletable" red — same hue as the overdue-balances meter
+  // segment so destructive affordances stay visually consistent.
+  const deletableColor = isDark ? "#e05a5a" : "#d41840";
 
   const badgeStyle: CSSProperties = {
     position: "relative",
@@ -546,12 +568,17 @@ function EventBadge({
     fontWeight: 700,
     lineHeight: "16px",
     overflow: "hidden",
-    cursor: "pointer",
+    cursor: dimNonDeletable ? "not-allowed" : "pointer",
     flex: event.fullWidth ? "1 0 100%" : "1 1 0",
     minWidth: 0,
-    background: isSelected ? style.text : style.bg,
-    border: `1px solid ${isSelected ? style.text : style.border}`,
-    color: isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
+    background: isDeletable
+      ? (isDark ? "rgba(224,90,90,0.12)" : "rgba(212,24,64,0.10)")
+      : isSelected ? style.text : style.bg,
+    border: isDeletable
+      ? `1px dashed ${deletableColor}`
+      : `1px solid ${isSelected ? style.text : style.border}`,
+    color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
+    opacity: dimNonDeletable ? 0.4 : 1,
     transition: "all 0.15s ease",
   };
 
@@ -652,6 +679,7 @@ function EventRow({
   onHoverLeave,
   colors,
   isDark,
+  deleteMode = false,
 }: {
   events: CalendarEvent[];
   selectedId: string | null;
@@ -660,6 +688,7 @@ function EventRow({
   onHoverLeave?: () => void;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
+  deleteMode?: boolean;
 }) {
   return (
     <div style={{ display: "flex", gap: "2px", width: "100%" }}>
@@ -673,6 +702,7 @@ function EventRow({
           onHoverLeave={onHoverLeave}
           colors={colors}
           isDark={isDark}
+          deleteMode={deleteMode}
         />
       ))}
     </div>
@@ -694,6 +724,7 @@ function DateCell({
   sc,
   colors,
   isDark,
+  deleteMode = false,
 }: {
   day: number | null;
   isToday: boolean;
@@ -705,6 +736,7 @@ function DateCell({
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
+  deleteMode?: boolean;
 }) {
   if (day === null) {
     return (
@@ -791,6 +823,7 @@ function DateCell({
           onHoverLeave={onHoverLeave}
           colors={colors}
           isDark={isDark}
+          deleteMode={deleteMode}
         />
       ))}
 
@@ -888,8 +921,17 @@ function ReservationDetailsPopover({
   }, [position, badgeRect]);
 
   const dateStr = formatEventDate(day, month, year);
-  const bookedPct = event.capacity > 0 ? (event.booked / event.capacity) * 100 : 0;
   const available = event.capacity - event.booked;
+  // Balances owed — split the booked portion of the meter into a paid
+  // (green) segment and an owed (red) segment, and surface the owed-client
+  // count below "Available". When 0, the meter is purely green and the
+  // Overdue Balances line is hidden.
+  const owedCount = getOwedCount(event);
+  const paidPct = event.capacity > 0 ? ((event.booked - owedCount) / event.capacity) * 100 : 0;
+  const owedPct = event.capacity > 0 ? (owedCount / event.capacity) * 100 : 0;
+  // Theme-aware red: brighter on dark, deeper on light, so the meter
+  // segment reads against either backdrop without overpowering the green.
+  const owedColor = isDark ? "#e05a5a" : "#d41840";
 
   const iconStyle: CSSProperties = { opacity: 0.5, flexShrink: 0, width: "24px", height: "24px" };
   const detailText: CSSProperties = {
@@ -1033,6 +1075,25 @@ function ReservationDetailsPopover({
                 : "—"}
             </span>
           </div>
+          {/* Buffer — transition time before/after the session. Shown only
+              when at least one buffer is set, and assembles dynamically so
+              "15min pre · 30min post", "15min pre", and "30min post" are
+              all valid forms. The hourglass icon evokes a span of time
+              between events rather than a specific clock time. */}
+          {((event.preBuffer ?? 0) > 0 || (event.postBuffer ?? 0) > 0) && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0" }}>
+              <Hourglass size={24} style={iconStyle} />
+              <span style={detailText}>
+                Buffer:{" "}
+                {[
+                  (event.preBuffer ?? 0) > 0 ? `${event.preBuffer}min pre` : null,
+                  (event.postBuffer ?? 0) > 0 ? `${event.postBuffer}min post` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0" }}>
             <User size={24} style={iconStyle} />
             <span style={detailText}>{event.instructor || "—"}</span>
@@ -1070,19 +1131,28 @@ function ReservationDetailsPopover({
                 background: sc.track,
                 position: "relative",
                 overflow: "hidden",
+                display: "flex",
               }}
             >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  bottom: 0,
-                  width: `${bookedPct}%`,
-                  borderRadius: "12px",
-                  background: sc.success,
-                }}
-              />
+              {/* Paid (green) segment — sits at the meter's start. */}
+              {paidPct > 0 && (
+                <div
+                  style={{
+                    width: `${paidPct}%`,
+                    background: sc.success,
+                  }}
+                />
+              )}
+              {/* Owed (red) segment — sits immediately to the right of paid,
+                  so the booked total is the sum of the two colored segments. */}
+              {owedPct > 0 && (
+                <div
+                  style={{
+                    width: `${owedPct}%`,
+                    background: owedColor,
+                  }}
+                />
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center" }}>
               <span style={{ flex: 1, fontSize: "12px", fontWeight: 500, color: sc.body }}>
@@ -1101,6 +1171,25 @@ function ReservationDetailsPopover({
                 {available}
               </span>
             </div>
+            {owedCount > 0 && (
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ flex: 1, fontSize: "12px", fontWeight: 500, color: sc.body }}>
+                  Overdue Balances
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    color: owedColor,
+                    textAlign: "right",
+                    letterSpacing: "-0.4px",
+                  }}
+                >
+                  {owedCount}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1566,10 +1655,14 @@ function MobileToolbar({
           )}
         </div>
 
-        {/* Right-side icon buttons */}
+        {/* Right-side icon buttons — Calendar toggle / Search / Filter.
+            Add Reservation lives in the results-count row below
+            (alongside the Info legend button), so the toolbar's right
+            group stays purely view-navigation. */}
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             onClick={onToggleCalendar}
+            aria-label="Toggle calendar"
             style={{
               display: "flex",
               alignItems: "center",
@@ -1587,6 +1680,7 @@ function MobileToolbar({
           </button>
           <button
             onClick={() => setShowSearch(!showSearch)}
+            aria-label="Search"
             style={{
               display: "flex",
               alignItems: "center",
@@ -1604,6 +1698,7 @@ function MobileToolbar({
           </button>
           <button
             onClick={() => setShowFilter(!showFilter)}
+            aria-label="Filters"
             style={{
               display: "flex",
               alignItems: "center",
@@ -1663,21 +1758,6 @@ function MobileToolbar({
         </div>
       )}
 
-      {/* Filters */}
-      {showFilter && (
-        <div
-          style={{
-            padding: "12px 16px",
-            background: sc.cellBg,
-            borderBottom: `1px solid ${sc.border}`,
-            fontSize: "14px",
-            fontWeight: 500,
-            color: sc.body,
-          }}
-        >
-          Filter options would appear here
-        </div>
-      )}
     </>
   );
 }
@@ -2080,9 +2160,15 @@ interface MobileEventListProps {
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
   onSelectEvent: (event: CalendarEvent) => void;
+  /** Opens the Add Reservation side panel from the brand-filled button
+   *  on the right of the count row. */
   onAddReservation?: () => void;
   eventsByDay?: DayEvents;
   searchQuery?: string;
+  /** Color-by-type legend popover, anchored to the Info button which
+   *  sits immediately after the count text. */
+  showLegend: boolean;
+  setShowLegend: (show: boolean) => void;
 }
 
 function MobileEventList({
@@ -2094,13 +2180,29 @@ function MobileEventList({
   onAddReservation,
   eventsByDay,
   searchQuery,
+  showLegend,
+  setShowLegend,
 }: MobileEventListProps) {
+  const legendRef = useRef<HTMLDivElement>(null);
+
+  /* close legend popover on outside click */
+  useEffect(() => {
+    if (!showLegend) return;
+    function handleClick(ev: MouseEvent) {
+      if (legendRef.current && !legendRef.current.contains(ev.target as Node)) {
+        setShowLegend(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showLegend, setShowLegend]);
   const source = eventsByDay ?? MOCK_EVENTS;
   const events = source[selectedDate] || [];
   const closedEvents = events.filter((e) => e.type === "closed");
   const nonClosedEvents = events.filter((e) => e.type !== "closed");
-  // Disable adding a reservation on any day with a closure on the books — for
-  // now mock data only has all-day closures, so any closed entry blocks it.
+  // Disable Add Reservation on any day with a closure on the books —
+  // for now the mock data only has all-day closures, so any closed
+  // entry blocks new reservations on that day.
   const isClosed = closedEvents.length > 0;
   const isFiltering = !!(searchQuery && searchQuery.trim());
 
@@ -2124,15 +2226,104 @@ function MobileEventList({
           borderBottom: `1px solid ${sc.border}`,
         }}
       >
-        <span
-          style={{
-            fontSize: "14px",
-            fontWeight: 500,
-            color: sc.body,
-          }}
-        >
-          Found {nonClosedEvents.length} reservation(s)
-        </span>
+        {/* Left group — count text + Info legend button paired together
+            so the legend reads as a helper for "what do these results
+            look like on the calendar". The Info button is the smaller,
+            subordinate one; the count is the dominant text. */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: 500,
+              color: sc.body,
+            }}
+          >
+            Found {nonClosedEvents.length} reservation(s)
+          </span>
+          <div ref={legendRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowLegend(!showLegend)}
+              aria-expanded={showLegend}
+              aria-label="Reservation type legend"
+              title="Reservation type legend"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "26px",
+                height: "26px",
+                borderRadius: "6px",
+                border: `1px solid ${showLegend ? sc.brand : sc.border}`,
+                background: showLegend
+                  ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+                  : sc.controlBg,
+                cursor: "pointer",
+                color: showLegend ? sc.brand : sc.body,
+                padding: 0,
+              }}
+            >
+              <Info size={14} />
+            </button>
+            {showLegend && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  left: 0,
+                  width: "260px",
+                  background: sc.cellBg,
+                  border: `1px solid ${sc.border}`,
+                  borderRadius: "10px",
+                  boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+                  padding: "16px",
+                  zIndex: 100,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  fontFamily: "var(--font-family)",
+                }}
+              >
+                <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
+                  Reservation types
+                </span>
+                {[
+                  { type: "yoga" as ReservationType, label: "Yoga / Power Yoga / Morning Yoga" },
+                  { type: "meditation" as ReservationType, label: "Meditation / Stretch & Restore" },
+                  { type: "pilates" as ReservationType, label: "Pilates" },
+                  { type: "hiit" as ReservationType, label: "HIIT" },
+                  { type: "league" as ReservationType, label: "League Game" },
+                  { type: "closed" as ReservationType, label: "Closed" },
+                ].map((row) => {
+                  const c = colors[row.type];
+                  return (
+                    <div
+                      key={row.label}
+                      style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                    >
+                      <span
+                        aria-hidden
+                        style={{
+                          display: "inline-block",
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "4px",
+                          background: c.bg,
+                          border: `1px solid ${c.border}`,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ fontSize: "13px", color: sc.body, lineHeight: 1.3 }}>
+                        {row.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+        {/* Add Reservation — back in its original spot on the right of
+            the count row. Disabled when the selected day is closed. */}
         <button
           onClick={isClosed ? undefined : onAddReservation}
           disabled={isClosed}
@@ -2242,12 +2433,111 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
   const [showViewDropdown, setShowViewDropdown] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // Color-by-type legend popover. On mobile the Info button lives in
+  // the results-count row (where Delete Mode used to live). Delete
+  // Mode itself was removed from mobile because the user can never see
+  // a full month at once on a phone, so there's no batch-delete payoff
+  // — it stays a desktop-only feature.
+  const [showLegend, setShowLegend] = useState(false);
 
-  // Filter events by the search query (matches title, instructor, venue, type).
-  const filteredEvents = useMemo(
-    () => filterEventsByQuery(MOCK_EVENTS, searchQuery),
-    [searchQuery]
-  );
+  // Calendar filter state — mirrors desktop. The colored Reservation
+  // Types chips inside the filter drawer also serve as the legend on
+  // mobile, so the desktop's standalone Info button isn't needed here.
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterStartTime, setFilterStartTime] = useState("");
+  const [filterEndTime, setFilterEndTime] = useState("");
+  const [filterVenues, setFilterVenues] = useState<string[]>([]);
+  const [filterInstructors, setFilterInstructors] = useState<string[]>([]);
+  const [filterTypes, setFilterTypes] = useState<ReservationType[]>([]);
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState<"" | "Owed" | "Paid">("");
+  const [filterRegistrations, setFilterRegistrations] = useState<"" | "Full" | "Some" | "All">("");
+
+  const activeFilterCount =
+    (filterStartDate ? 1 : 0) +
+    (filterEndDate ? 1 : 0) +
+    (filterStartTime ? 1 : 0) +
+    (filterEndTime ? 1 : 0) +
+    (filterVenues.length > 0 ? 1 : 0) +
+    (filterInstructors.length > 0 ? 1 : 0) +
+    (filterTypes.length > 0 ? 1 : 0) +
+    (filterPaymentStatus ? 1 : 0) +
+    (filterRegistrations ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setFilterStartDate("");
+    setFilterEndDate("");
+    setFilterStartTime("");
+    setFilterEndTime("");
+    setFilterVenues([]);
+    setFilterInstructors([]);
+    setFilterTypes([]);
+    setFilterPaymentStatus("");
+    setFilterRegistrations("");
+  };
+
+  // Filter events by search query then apply the structured filter
+  // drawer criteria (date / time ranges, venues, instructors, types,
+  // registrations, payment). Mirrors the desktop pipeline minus the
+  // delete-mode pass — Delete Mode is desktop-only.
+  const filteredEvents = useMemo(() => {
+    const bySearch = filterEventsByQuery(MOCK_EVENTS, searchQuery);
+
+    const parseHM = (s: string): number | null => {
+      if (!s) return null;
+      const [h, m] = s.split(":").map(Number);
+      if (Number.isNaN(h) || Number.isNaN(m)) return null;
+      return h * 60 + m;
+    };
+    const startMins = parseHM(filterStartTime);
+    const endMins = parseHM(filterEndTime);
+    const startDateObj = filterStartDate ? new Date(filterStartDate + "T00:00:00") : null;
+    const endDateObj = filterEndDate ? new Date(filterEndDate + "T23:59:59") : null;
+
+    const result: DayEvents = {};
+    for (const dayStr of Object.keys(bySearch)) {
+      const day = Number(dayStr);
+      if (startDateObj || endDateObj) {
+        const cellDate = new Date(currentYear, currentMonth, day);
+        if (startDateObj && cellDate < startDateObj) continue;
+        if (endDateObj && cellDate > endDateObj) continue;
+      }
+      const events = bySearch[day] ?? [];
+      const kept = events.filter((e) => {
+        if (e.type === "closed") return true;
+        if (startMins !== null || endMins !== null) {
+          const m = parseEventTimeToMinutes(e.time);
+          if (m === -1) return false;
+          if (startMins !== null && m < startMins) return false;
+          if (endMins !== null && m > endMins) return false;
+        }
+        if (filterVenues.length > 0 && !filterVenues.includes(e.venue)) return false;
+        if (filterInstructors.length > 0 && !filterInstructors.includes(e.instructor)) return false;
+        if (filterTypes.length > 0 && !filterTypes.includes(e.type)) return false;
+        if (filterPaymentStatus === "Owed" && getOwedCount(e) === 0) return false;
+        if (filterPaymentStatus === "Paid" && getOwedCount(e) > 0) return false;
+        if (filterRegistrations) {
+          if (e.capacity <= 0) return false;
+          const isFull = e.booked >= e.capacity;
+          const isAllAvailable = e.booked === 0;
+          const isSomeAvailable = !isFull && !isAllAvailable;
+          if (filterRegistrations === "Full" && !isFull) return false;
+          if (filterRegistrations === "Some" && !isSomeAvailable) return false;
+          if (filterRegistrations === "All" && !isAllAvailable) return false;
+        }
+        return true;
+      });
+      if (kept.length > 0) result[day] = kept;
+    }
+    return result;
+  }, [
+    searchQuery,
+    filterStartDate, filterEndDate,
+    filterStartTime, filterEndTime,
+    filterVenues, filterInstructors, filterTypes,
+    filterPaymentStatus, filterRegistrations,
+    currentMonth, currentYear,
+  ]);
 
   const handleToggleCalendar = useCallback(() => {
     setShowCalendar((v) => !v);
@@ -2292,12 +2582,15 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
     currentYear === today.getFullYear() &&
     selectedDate === today.getDate();
 
-  const handleSelectEvent = useCallback((event: CalendarEvent) => {
-    openPanel(
-      <ReservationDetailsPanelContent key={event.id} event={event} />,
-      { size: "full", title: `Reservation Details: ${event.title}` }
-    );
-  }, [openPanel]);
+  const handleSelectEvent = useCallback(
+    (event: CalendarEvent) => {
+      openPanel(
+        <ReservationDetailsPanelContent key={event.id} event={event} />,
+        { size: "full", title: `Reservation Details: ${event.title}` }
+      );
+    },
+    [openPanel]
+  );
 
   const handleCloseDetail = useCallback(() => {
     setSelectedEvent(null);
@@ -2311,7 +2604,12 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
         flexDirection: "column",
         minHeight: 0,
         flex: "1 1 0",
-        /* offset the Layout's 80px bottom padding on mobile so the list fills the space */
+        /* Reclaim Layout's mobile padding (0 12px 80px) so the schedule
+         * content runs edge-to-edge — the calendar grid + event list
+         * already have their own internal padding, so the page-level
+         * 12px gutter just wastes valuable horizontal space on phones. */
+        marginLeft: "-12px",
+        marginRight: "-12px",
         marginBottom: "-80px",
         paddingBottom: "12px",
       }}
@@ -2336,6 +2634,50 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
         onGoToToday={handleGoToToday}
       />
 
+      {/* Filters drawer — same content as the desktop popover. The
+          colored Reservation Types chips inside double as the legend
+          on mobile, so there's no separate Info button on this view. */}
+      {showFilter && (
+        <div
+          style={{
+            padding: "16px",
+            background: sc.cellBg,
+            borderBottom: `1px solid ${sc.border}`,
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+            fontFamily: "var(--font-family)",
+          }}
+        >
+          <CalendarFiltersContent
+            filterStartDate={filterStartDate}
+            setFilterStartDate={setFilterStartDate}
+            filterEndDate={filterEndDate}
+            setFilterEndDate={setFilterEndDate}
+            filterStartTime={filterStartTime}
+            setFilterStartTime={setFilterStartTime}
+            filterEndTime={filterEndTime}
+            setFilterEndTime={setFilterEndTime}
+            filterVenues={filterVenues}
+            setFilterVenues={setFilterVenues}
+            filterInstructors={filterInstructors}
+            setFilterInstructors={setFilterInstructors}
+            filterTypes={filterTypes}
+            setFilterTypes={setFilterTypes}
+            filterPaymentStatus={filterPaymentStatus}
+            setFilterPaymentStatus={setFilterPaymentStatus}
+            filterRegistrations={filterRegistrations}
+            setFilterRegistrations={setFilterRegistrations}
+            activeFilterCount={activeFilterCount}
+            clearAllFilters={clearAllFilters}
+            palette={palette}
+            isDark={isDark}
+            sc={sc}
+            colors={colors}
+          />
+        </div>
+      )}
+
       {/* Mini Calendar — toggleable via toolbar button */}
       {showCalendar && <MiniCalendar
         currentMonth={currentMonth}
@@ -2358,6 +2700,8 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
         onAddReservation={onAddReservation}
         eventsByDay={filteredEvents}
         searchQuery={searchQuery}
+        showLegend={showLegend}
+        setShowLegend={setShowLegend}
       />
 
       {/* Full-page reservation detail */}
@@ -2373,6 +2717,7 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
           isDark={isDark}
         />
       )}
+
     </div>
   );
 }
@@ -2433,13 +2778,22 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // Trigger rect — used to position the dropdown via `position: fixed` so
+  // it overlays any ancestor with `overflow: auto/hidden` (e.g. the
+  // calendar Filters popover, which previously clipped this dropdown).
+  const [triggerRect, setTriggerRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
-  // Close on outside click
+  // Close on outside click — also accept clicks on the portaled dropdown
+  // since it lives outside `containerRef`.
   useEffect(() => {
     if (!isOpen) return;
     function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const inTrigger = containerRef.current?.contains(e.target as Node);
+      const inDropdown = dropdownRef.current?.contains(e.target as Node);
+      if (!inTrigger && !inDropdown) {
         setIsOpen(false);
         setSearch("");
       }
@@ -2453,6 +2807,27 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
     if (isOpen && searchInputRef.current) {
       searchInputRef.current.focus();
     }
+  }, [isOpen]);
+
+  // Track the trigger's viewport position while the dropdown is open. We
+  // re-measure on open, on window resize, and on scroll (capture-phase so
+  // we catch ancestor scroll containers too) to keep the fixed-position
+  // dropdown anchored to the trigger as the page moves.
+  useEffect(() => {
+    if (!isOpen) return;
+    function update() {
+      const el = triggerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setTriggerRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+    }
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
   }, [isOpen]);
 
   const filtered = options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
@@ -2523,7 +2898,7 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
       {/* Trigger */}
-      <div onClick={() => setIsOpen(!isOpen)} style={triggerStyle}>
+      <div ref={triggerRef} onClick={() => setIsOpen(!isOpen)} style={triggerStyle}>
         {selected.length === 0 && (
           <span style={{ color: palette.textTertiary }}>{placeholder}</span>
         )}
@@ -2549,19 +2924,24 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
         />
       </div>
 
-      {/* Dropdown */}
-      {isOpen && (
+      {/* Dropdown — `position: fixed` with viewport-relative coordinates
+          from the trigger's getBoundingClientRect(), so the dropdown
+          overlays any ancestor `overflow: auto/hidden` container (most
+          notably the calendar Filters popover). High z-index keeps it
+          above the surrounding popover layer. */}
+      {isOpen && triggerRect && (
         <div
+          ref={dropdownRef}
           style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: 0,
-            right: 0,
+            position: "fixed",
+            top: triggerRect.top + triggerRect.height + 4,
+            left: triggerRect.left,
+            width: triggerRect.width,
             background: palette.surfacePrimary,
             border: `1px solid ${palette.borderMedium}`,
             borderRadius: "6px",
             boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            zIndex: 10,
+            zIndex: 1100,
             overflow: "hidden",
           }}
         >
@@ -2665,31 +3045,80 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
    scrollable clients list. Edit pencil toggles into full form mode.
    ═══════════════════════════════════════════════════════════════════════ */
 
-// Mock booked clients data for the scrollable list
-const MOCK_BOOKED_CLIENTS: { name: string; status: "Booked" | "Waitlisted" | "Reserved" }[] = [
-  { name: "Emma Rodriguez", status: "Booked" },
-  { name: "James Wilson", status: "Booked" },
-  { name: "Sophia Lee", status: "Booked" },
-  { name: "Liam Martinez", status: "Booked" },
-  { name: "Olivia Chen", status: "Reserved" },
-  { name: "Noah Thompson", status: "Booked" },
-  { name: "Ava Patel", status: "Booked" },
-  { name: "Mason Brown", status: "Waitlisted" },
-  { name: "Isabella Garcia", status: "Booked" },
-  { name: "Ethan Davis", status: "Booked" },
-  { name: "Mia Johnson", status: "Booked" },
-  { name: "Lucas Anderson", status: "Reserved" },
-  { name: "Charlotte Taylor", status: "Booked" },
-  { name: "Aiden Moore", status: "Booked" },
-  { name: "Amelia Jackson", status: "Waitlisted" },
-  { name: "Harper White", status: "Booked" },
-  { name: "Elijah Harris", status: "Booked" },
-  { name: "Abigail Martin", status: "Booked" },
-  { name: "Benjamin Clark", status: "Booked" },
-  { name: "Emily Lewis", status: "Booked" },
-  { name: "Daniel Walker", status: "Booked" },
-  { name: "Elizabeth Hall", status: "Booked" },
+// Mock booked clients data for the scrollable list.
+// `paymentStatus` + `balance` (USD) drive the new "overdue balances" UI in the
+// hover popover capacity meter, the clients-list payment column, and the
+// calendar's Filters popover ("only events with overdue balances").
+type BookedClient = {
+  name: string;
+  status: "Booked" | "Waitlisted" | "Reserved";
+  paymentStatus: "Paid" | "Owed";
+  balance: number;
+};
+const MOCK_BOOKED_CLIENTS: BookedClient[] = [
+  { name: "Emma Rodriguez",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "James Wilson",     status: "Booked",     paymentStatus: "Owed", balance: 35 },
+  { name: "Sophia Lee",       status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Liam Martinez",    status: "Booked",     paymentStatus: "Owed", balance: 25 },
+  { name: "Olivia Chen",      status: "Reserved",   paymentStatus: "Owed", balance: 50 },
+  { name: "Noah Thompson",    status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Ava Patel",        status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Mason Brown",      status: "Waitlisted", paymentStatus: "Paid", balance: 0 },
+  { name: "Isabella Garcia",  status: "Booked",     paymentStatus: "Owed", balance: 60 },
+  { name: "Ethan Davis",      status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Mia Johnson",      status: "Booked",     paymentStatus: "Owed", balance: 25 },
+  { name: "Lucas Anderson",   status: "Reserved",   paymentStatus: "Paid", balance: 0 },
+  { name: "Charlotte Taylor", status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Aiden Moore",      status: "Booked",     paymentStatus: "Owed", balance: 40 },
+  { name: "Amelia Jackson",   status: "Waitlisted", paymentStatus: "Paid", balance: 0 },
+  { name: "Harper White",     status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Elijah Harris",    status: "Booked",     paymentStatus: "Owed", balance: 25 },
+  { name: "Abigail Martin",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Benjamin Clark",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Emily Lewis",      status: "Booked",     paymentStatus: "Owed", balance: 15 },
+  { name: "Daniel Walker",    status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Elizabeth Hall",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
 ];
+
+// All-paid subset, used when an event maps to the "no overdue balances"
+// scenario (see getEventClients). Derived from MOCK_BOOKED_CLIENTS so any
+// future name additions automatically flow through.
+const ALL_PAID_CLIENTS: BookedClient[] = MOCK_BOOKED_CLIENTS.filter(
+  (c) => c.paymentStatus === "Paid"
+);
+
+// Distribute events across two "balance scenarios" so some events on the
+// calendar have no overdue balances at all (and therefore no "Overdue
+// Balances" line in the hover popover) and others show the existing mix.
+// The scenario is derived deterministically from event.id, so a given
+// event always falls into the same bucket across renders.
+//
+//   bucket 0  — all-paid roster (no owed clients, no red meter segment)
+//   bucket 1+ — mixed roster (current behavior; first-N from MOCK list)
+//
+// Used by the hover popover meter, the registered clients list in the
+// reservation details panel, and the calendar Filters popover.
+function getEventClients(event: CalendarEvent): BookedClient[] {
+  const booked = event.booked || 0;
+  if (booked === 0) return [];
+  const idHash = event.id
+    .split("")
+    .reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) | 0, 0);
+  const bucket = Math.abs(idHash) % 3;
+  if (bucket === 0) {
+    // All-paid scenario — slice from the all-paid list (cap at its
+    // length so we don't read past the end if booked is unusually high).
+    return ALL_PAID_CLIENTS.slice(0, Math.min(booked, ALL_PAID_CLIENTS.length));
+  }
+  return MOCK_BOOKED_CLIENTS.slice(0, booked);
+}
+
+// Helper: how many of an event's booked clients owe a balance.
+// Used in the hover popover meter, the clients list column counts, and
+// the calendar Filters popover's "overdue balances" filter.
+function getOwedCount(event: CalendarEvent): number {
+  return getEventClients(event).filter((c) => c.paymentStatus === "Owed").length;
+}
 
 /**
  * Self-contained dropdown rendered into the SidePanel header (next to the
@@ -2956,8 +3385,11 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
 
   const currentSectionIndex = sections.indexOf(activeSection);
   const isLastSection = currentSectionIndex === sections.length - 1;
+  const isFirstSection = currentSectionIndex === 0;
   const nextSectionName = isLastSection ? null : sections[currentSectionIndex + 1];
+  const prevSectionName = isFirstSection ? null : sections[currentSectionIndex - 1];
   const goToNextSection = () => { if (nextSectionName) setActiveSection(nextSectionName); };
+  const goToPrevSection = () => { if (prevSectionName) setActiveSection(prevSectionName); };
 
   const formatDisplayTime = (t: string) => {
     if (!t) return "—";
@@ -2974,7 +3406,10 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
 
   const bookedPct = event.capacity > 0 ? (event.booked / event.capacity) * 100 : 0;
   const available = event.capacity - event.booked;
-  const bookedClients = MOCK_BOOKED_CLIENTS.slice(0, event.booked || 0);
+  // Pulled via getEventClients so the panel matches the hover popover's
+  // balance scenario for this event (some events are all-paid, others
+  // show the mixed roster).
+  const bookedClients = getEventClients(event);
 
   // Pill backgrounds. Light-mode tints have been pushed brighter so the
   // status colour reads at a glance against the (also light)
@@ -2993,21 +3428,45 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
     Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.18)", text: isDark ? "#78a0c8" : "#2d6cab" },
   };
 
-  // Filter toggles for registered clients
-  const [clientFilters, setClientFilters] = useState<Record<string, boolean>>({ Booked: false, Reserved: false, Waitlisted: false });
-  const isAllActive = !clientFilters.Booked && !clientFilters.Reserved && !clientFilters.Waitlisted;
+  // Filter toggles for registered clients — two independent dimensions:
+  // status (Booked/Reserved/Waitlisted) and payment (Paid/Owed). Each
+  // dimension is "All" when none of its toggles are active. Selecting all
+  // toggles in a dimension collapses back to "All" (cleared) so the user
+  // doesn't end up in a redundant "every status" state.
+  const [clientFilters, setClientFilters] = useState<Record<string, boolean>>({
+    Booked: false, Reserved: false, Waitlisted: false,
+  });
+  const [paymentFilters, setPaymentFilters] = useState<Record<string, boolean>>({
+    Paid: false, Owed: false,
+  });
+  const isStatusAllActive = !clientFilters.Booked && !clientFilters.Reserved && !clientFilters.Waitlisted;
+  const isPaymentAllActive = !paymentFilters.Paid && !paymentFilters.Owed;
+  const isAllActive = isStatusAllActive && isPaymentAllActive;
   const toggleFilter = (status: string) =>
     setClientFilters((prev) => {
       const next = { ...prev, [status]: !prev[status] };
-      // If toggling this status causes every individual filter to be ON,
-      // collapse back to "All" (i.e. clear every toggle so isAllActive becomes true).
       if (next.Booked && next.Reserved && next.Waitlisted) {
         return { Booked: false, Reserved: false, Waitlisted: false };
       }
       return next;
     });
-  const toggleAll = () => setClientFilters({ Booked: false, Reserved: false, Waitlisted: false });
-  const filteredClients = isAllActive ? bookedClients : bookedClients.filter((c) => clientFilters[c.status]);
+  const togglePaymentFilter = (key: string) =>
+    setPaymentFilters((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (next.Paid && next.Owed) {
+        return { Paid: false, Owed: false };
+      }
+      return next;
+    });
+  const toggleAll = () => {
+    setClientFilters({ Booked: false, Reserved: false, Waitlisted: false });
+    setPaymentFilters({ Paid: false, Owed: false });
+  };
+  const filteredClients = bookedClients.filter((c) => {
+    const statusOk = isStatusAllActive || clientFilters[c.status];
+    const paymentOk = isPaymentAllActive || paymentFilters[c.paymentStatus];
+    return statusOk && paymentOk;
+  });
 
   // ─── Edit mode renders the full form (same as before) ───
   if (isEditing) {
@@ -3134,7 +3593,12 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         </div>
         <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
           <button onClick={handleCancelEditing} style={secondaryBtnStyle}>Cancel</button>
+          {/* Right-side group: Back ↔ Next pair the section navigation; Save &
+              Close stays primary in the middle. Back uses secondary styling so
+              the visual weight matches Cancel without sitting next to it —
+              navigation actions live to the right, exit on the left. */}
           <div style={{ display: "flex", gap: "8px" }}>
+            {!isFirstSection && <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> Back: {prevSectionName}</button>}
             <button style={primaryBtnStyle} onClick={() => setIsEditing(false)}>Save &amp; Close</button>
             {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>Next: {nextSectionName} <ArrowRight size={14} /></button>}
           </div>
@@ -3171,8 +3635,11 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
             <Users size={14} style={{ opacity: 0.5, color: palette.textTertiary }} />
             <span style={{ flex: 1, fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>Registered Clients ({bookedClients.length})</span>
           </div>
-          {/* Filter toggles */}
-          <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
+          {/* Filter toggles — single wrap row across both filter axes
+              (status + payment). flex-wrap lets pills flow to the next
+              visual line if the panel is narrow, but they stay one
+              contiguous group. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "14px" }}>
             <button onClick={toggleAll} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${isAllActive ? palette.textPrimary : palette.borderMedium}`, background: isAllActive ? (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent", color: isAllActive ? palette.textPrimary : palette.textTertiary, fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isAllActive ? 1 : 0.5, transition: "all 0.15s ease", lineHeight: "16px" }}>
               All ({bookedClients.length})
             </button>
@@ -3187,16 +3654,46 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
                 </button>
               );
             })}
+            {/* Payment-status pills — same shape, but Owed uses red and Paid
+                a muted neutral so they're clearly a different filter axis. */}
+            {(["Paid", "Owed"] as const).map((key) => {
+              const isActive = paymentFilters[key];
+              const count = bookedClients.filter((c) => c.paymentStatus === key).length;
+              const accent = key === "Owed"
+                ? { bg: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.14)", text: isDark ? "#e05a5a" : "#a31030" }
+                : { bg: isDark ? "rgba(161,189,198,0.12)" : "rgba(62,83,91,0.08)",  text: isDark ? "#a1bdc6" : "#3e535b" };
+              // "Owed" maps to a friendlier "Overdue" in the UI; the
+              // internal filter key + data model stay "Owed" so existing
+              // logic and pill colors don't have to fan out.
+              const label = key === "Owed" ? "Overdue" : key;
+              return (
+                <button key={key} onClick={() => togglePaymentFilter(key)} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${isActive ? accent.text : palette.borderMedium}`, background: isActive ? accent.bg : "transparent", color: isActive ? accent.text : palette.textTertiary, fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isActive ? 1 : 0.5, transition: "all 0.15s ease", lineHeight: "16px" }}>
+                  <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: isActive ? accent.text : palette.textTertiary, flexShrink: 0 }} />
+                  {label} ({count})
+                </button>
+              );
+            })}
           </div>
           <div className="always-show-scrollbar" style={{ maxHeight: "200px", border: `1px solid ${palette.borderLight}`, borderRadius: "8px", background: isDark ? "#1f292d" : "#f3f6f8" }}>
             {filteredClients.length === 0 ? (
               <div style={{ padding: "16px 12px", textAlign: "center", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, opacity: 0.6 }}>No clients match the selected filters</div>
             ) : filteredClients.map((client, i) => {
               const sc = statusColors[client.status] || statusColors.Booked;
+              const isOwed = client.paymentStatus === "Owed";
+              const balanceColors = isOwed
+                ? { bg: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.14)", text: isDark ? "#e05a5a" : "#a31030" }
+                : { bg: isDark ? "rgba(161,189,198,0.10)" : "rgba(62,83,91,0.06)",  text: isDark ? "#a1bdc6" : "#3e535b" };
               return (
-                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: i < filteredClients.length - 1 ? `1px solid ${palette.borderLight}` : "none" }}>
-                  <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary, fontWeight: 500 }}>{client.name}</span>
-                  <span style={{ fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", padding: "2px 8px", borderRadius: "10px", background: sc.bg, color: sc.text, flexShrink: 0 }}>{client.status}</span>
+                // 3-column grid: name | payment | status. Each pill is
+                // left-aligned within its column (justifySelf:start) so the
+                // payment column reads as a true middle column rather than
+                // floating right next to the status pill on the right edge.
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 90px 100px", gap: "8px", alignItems: "center", padding: "8px 12px", borderBottom: i < filteredClients.length - 1 ? `1px solid ${palette.borderLight}` : "none" }}>
+                  <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client.name}</span>
+                  <span style={{ justifySelf: "start", fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", padding: "2px 8px", borderRadius: "10px", background: balanceColors.bg, color: balanceColors.text }}>
+                    {isOwed ? `$${client.balance}` : "Paid"}
+                  </span>
+                  <span style={{ justifySelf: "start", fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", padding: "2px 8px", borderRadius: "10px", background: sc.bg, color: sc.text }}>{client.status}</span>
                 </div>
               );
             })}
@@ -3294,7 +3791,11 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
       {/* Footer — sticky bottom bar */}
       <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
         <button onClick={closePanel} style={secondaryBtnStyle}>Close</button>
+        {/* Right-side group: Back ↔ Next pair the section navigation. Back
+            uses secondary styling but is physically separated from Close by
+            the wide flex gap, so misclicks are unlikely. */}
         <div style={{ display: "flex", gap: "8px" }}>
+          {!isFirstSection && <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> Back: {prevSectionName}</button>}
           {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>Next: {nextSectionName} <ArrowRight size={14} /></button>}
         </div>
       </div>
@@ -4011,6 +4512,247 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — CalendarFiltersContent
+   Shared filter form used by the desktop Filters popover and the mobile
+   Filters drawer. Renders the structured filter sections (date range,
+   time range, venues, instructors, reservation types, registrations,
+   payment status) plus a header with optional Clear-all action. Stateless
+   — all values + setters come from the parent so the component can be
+   placed in either layout.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+interface CalendarFiltersContentProps {
+  filterStartDate: string;
+  filterEndDate: string;
+  filterStartTime: string;
+  filterEndTime: string;
+  filterVenues: string[];
+  filterInstructors: string[];
+  filterTypes: ReservationType[];
+  filterPaymentStatus: "" | "Owed" | "Paid";
+  filterRegistrations: "" | "Full" | "Some" | "All";
+  setFilterStartDate: (v: string) => void;
+  setFilterEndDate: (v: string) => void;
+  setFilterStartTime: (v: string) => void;
+  setFilterEndTime: (v: string) => void;
+  setFilterVenues: (v: string[]) => void;
+  setFilterInstructors: (v: string[]) => void;
+  setFilterTypes: (v: ReservationType[]) => void;
+  setFilterPaymentStatus: (v: "" | "Owed" | "Paid") => void;
+  setFilterRegistrations: (v: "" | "Full" | "Some" | "All") => void;
+  activeFilterCount: number;
+  clearAllFilters: () => void;
+  palette: ThemePalette;
+  isDark: boolean;
+  sc: SemanticColors;
+  colors: Record<ReservationType, BadgeColors>;
+}
+
+function CalendarFiltersContent({
+  filterStartDate, setFilterStartDate,
+  filterEndDate, setFilterEndDate,
+  filterStartTime, setFilterStartTime,
+  filterEndTime, setFilterEndTime,
+  filterVenues, setFilterVenues,
+  filterInstructors, setFilterInstructors,
+  filterTypes, setFilterTypes,
+  filterPaymentStatus, setFilterPaymentStatus,
+  filterRegistrations, setFilterRegistrations,
+  activeFilterCount,
+  clearAllFilters,
+  palette, isDark, sc, colors,
+}: CalendarFiltersContentProps) {
+  return (
+    <>
+      {/* Header — title + Clear all (when any filter is active). */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>Filter events</span>
+        {activeFilterCount > 0 && (
+          <button
+            onClick={clearAllFilters}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              fontSize: "12px",
+              fontWeight: 600,
+              fontFamily: "var(--font-family)",
+              color: sc.brand,
+              cursor: "pointer",
+            }}
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* Date range */}
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Date range</div>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <input
+            type="date"
+            value={filterStartDate}
+            onChange={(e) => setFilterStartDate(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+          />
+          <input
+            type="date"
+            value={filterEndDate}
+            onChange={(e) => setFilterEndDate(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+          />
+        </div>
+      </div>
+
+      {/* Time range */}
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Time range</div>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <input
+            type="time"
+            value={filterStartTime}
+            onChange={(e) => setFilterStartTime(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+          />
+          <input
+            type="time"
+            value={filterEndTime}
+            onChange={(e) => setFilterEndTime(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+          />
+        </div>
+      </div>
+
+      {/* Venues */}
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Venues</div>
+        <SearchableMultiSelect
+          options={VENUE_OPTIONS}
+          selected={filterVenues}
+          onChange={setFilterVenues}
+          placeholder="—Any venue—"
+          palette={palette}
+        />
+      </div>
+
+      {/* Instructors */}
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Instructors</div>
+        <SearchableMultiSelect
+          options={INSTRUCTOR_OPTIONS}
+          selected={filterInstructors}
+          onChange={setFilterInstructors}
+          placeholder="—Any instructor—"
+          palette={palette}
+        />
+      </div>
+
+      {/* Reservation type chips — colored to match each type's badge so
+          this row also serves as the legend. */}
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Reservation types</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {(["yoga", "power-yoga", "morning-yoga", "meditation", "pilates", "hiit", "stretch", "league"] as const).map((t) => {
+            const isActive = filterTypes.includes(t);
+            const c = colors[t];
+            const toggle = () => {
+              const next = filterTypes.includes(t)
+                ? filterTypes.filter((x) => x !== t)
+                : [...filterTypes, t];
+              setFilterTypes(next);
+            };
+            const label = t === "power-yoga" ? "Power Yoga" : t === "morning-yoga" ? "Morning Yoga" : t === "hiit" ? "HIIT" : t.charAt(0).toUpperCase() + t.slice(1);
+            return (
+              <button
+                key={t}
+                onClick={toggle}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  border: `1px solid ${c.border}`,
+                  background: isActive ? c.bg : "transparent",
+                  color: c.text,
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-family)",
+                  cursor: "pointer",
+                  lineHeight: 1.4,
+                  opacity: isActive ? 1 : 0.7,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Registrations + Payment status — derived-state filters. */}
+      <div style={{ height: "1px", background: sc.border }} />
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Registrations</div>
+        <select
+          value={filterRegistrations}
+          onChange={(e) => setFilterRegistrations(e.target.value as "" | "Full" | "Some" | "All")}
+          style={{
+            width: "100%",
+            padding: "6px 32px 6px 12px",
+            fontSize: "13px",
+            fontFamily: "var(--font-family)",
+            border: `1px solid ${palette.borderMedium}`,
+            borderRadius: "6px",
+            background: palette.surfaceBg,
+            color: palette.textPrimary,
+            colorScheme: isDark ? "dark" : "light",
+            cursor: "pointer",
+            appearance: "none",
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='${encodeURIComponent(isDark ? "#a1bdc6" : "#475467")}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 12px center",
+            minHeight: "42px",
+          }}
+        >
+          <option value="">Any</option>
+          <option value="Full">Full</option>
+          <option value="Some">Some Available</option>
+          <option value="All">All Available</option>
+        </select>
+      </div>
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Payment status</div>
+        <select
+          value={filterPaymentStatus}
+          onChange={(e) => setFilterPaymentStatus(e.target.value as "" | "Owed" | "Paid")}
+          style={{
+            width: "100%",
+            padding: "6px 32px 6px 12px",
+            fontSize: "13px",
+            fontFamily: "var(--font-family)",
+            border: `1px solid ${palette.borderMedium}`,
+            borderRadius: "6px",
+            background: palette.surfaceBg,
+            color: palette.textPrimary,
+            colorScheme: isDark ? "dark" : "light",
+            cursor: "pointer",
+            appearance: "none",
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='${encodeURIComponent(isDark ? "#a1bdc6" : "#475467")}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 12px center",
+            minHeight: "42px",
+          }}
+        >
+          <option value="">Any</option>
+          <option value="Owed">Overdue Balance</option>
+          <option value="Paid">Paid</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — SchedulePage (main export)
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -4028,6 +4770,75 @@ export function SchedulePage() {
   const [showDesktopViewDropdown, setShowDesktopViewDropdown] = useState(false);
   const desktopViewRef = useRef<HTMLDivElement>(null);
 
+  // ── Calendar Filters popover state ──
+  // Mirrors the criteria available in reservation details: date range,
+  // time range, venues, instructors, reservation types, and a balances-owed
+  // toggle. All filter dimensions combine with AND in the filteredEvents
+  // memo below; an empty value (string "" or empty array) means "no filter"
+  // for that dimension.
+  const [showFilters, setShowFilters] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  // Color legend popover — opens from an Info button in the sub-header so
+  // the user can quickly look up what each event-badge color represents.
+  const [showLegend, setShowLegend] = useState(false);
+  const legendRef = useRef<HTMLDivElement>(null);
+
+  // Delete Mode — when on, clicking an empty (no-registered-clients)
+  // event removes it from the calendar quickly. Eligible events get a
+  // red dashed border + tint; non-eligible events dim to half opacity
+  // so the deletable subset stands out. Removed ids live in
+  // `deletedEventIds` and are filtered out at the start of the events
+  // memo so deletions feel immediate.
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(() => new Set());
+  // Click-on-ineligible feedback. When the user clicks an event that
+  // can't be deleted in Delete Mode (booked > 0, or league/closed), we
+  // show a small tooltip near the event explaining the gating rule.
+  // Auto-dismisses after a few seconds; cleared whenever Delete Mode
+  // toggles off, the user dismisses it, or the next event click runs.
+  const [deleteBlockedHint, setDeleteBlockedHint] = useState<{ top: number; left: number } | null>(null);
+  const deleteBlockedHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterStartTime, setFilterStartTime] = useState("");
+  const [filterEndTime, setFilterEndTime] = useState("");
+  const [filterVenues, setFilterVenues] = useState<string[]>([]);
+  const [filterInstructors, setFilterInstructors] = useState<string[]>([]);
+  const [filterTypes, setFilterTypes] = useState<ReservationType[]>([]);
+  // Payment status — "" means "Any" (no filter). "Owed" shows only events
+  // where at least one registered client has an outstanding balance;
+  // "Paid" shows only events where every registered client is paid up.
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState<"" | "Owed" | "Paid">("");
+  // Registrations — "" means any. "Full" = booked >= capacity; "Some" =
+  // booked > 0 and < capacity (partial roster); "All" = booked === 0.
+  // Events with no capacity (e.g. league games / closures) are skipped
+  // by this filter, since "available seats" doesn't apply to them.
+  const [filterRegistrations, setFilterRegistrations] = useState<"" | "Full" | "Some" | "All">("");
+
+  // Active-filter count for the badge on the Filters button.
+  const activeFilterCount =
+    (filterStartDate ? 1 : 0) +
+    (filterEndDate ? 1 : 0) +
+    (filterStartTime ? 1 : 0) +
+    (filterEndTime ? 1 : 0) +
+    (filterVenues.length > 0 ? 1 : 0) +
+    (filterInstructors.length > 0 ? 1 : 0) +
+    (filterTypes.length > 0 ? 1 : 0) +
+    (filterPaymentStatus ? 1 : 0) +
+    (filterRegistrations ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setFilterStartDate("");
+    setFilterEndDate("");
+    setFilterStartTime("");
+    setFilterEndTime("");
+    setFilterVenues([]);
+    setFilterInstructors([]);
+    setFilterTypes([]);
+    setFilterPaymentStatus("");
+    setFilterRegistrations("");
+  };
+
   // Close desktop view dropdown on outside click
   useEffect(() => {
     if (!showDesktopViewDropdown) return;
@@ -4039,6 +4850,43 @@ export function SchedulePage() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showDesktopViewDropdown]);
+
+  // Close filters popover on outside click
+  useEffect(() => {
+    if (!showFilters) return;
+    function handleClick(e: MouseEvent) {
+      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showFilters]);
+
+  // Clear any visible "can't delete" hint when Delete Mode toggles off,
+  // so a stale tooltip doesn't linger after the user exits the mode.
+  useEffect(() => {
+    if (!deleteMode) {
+      setDeleteBlockedHint(null);
+      if (deleteBlockedHintTimerRef.current) {
+        clearTimeout(deleteBlockedHintTimerRef.current);
+        deleteBlockedHintTimerRef.current = null;
+      }
+    }
+  }, [deleteMode]);
+
+  // Close legend popover on outside click
+  useEffect(() => {
+    if (!showLegend) return;
+    function handleClick(e: MouseEvent) {
+      if (legendRef.current && !legendRef.current.contains(e.target as Node)) {
+        setShowLegend(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showLegend]);
+
 
   // Hover popover state (with 300ms delay)
   const [hoveredEvent, setHoveredEvent] = useState<{
@@ -4057,18 +4905,50 @@ export function SchedulePage() {
     [openPanel]
   );
 
-  // Open Reservation Details side panel on click
+  // Open Reservation Details side panel on click — except in Delete
+  // Mode, where the click is gated by deletability:
+  //   • eligible (empty session) → remove the event
+  //   • ineligible (has bookings, or is a league/closed event) → show
+  //     a tooltip near the click explaining the gating rule, and skip
+  //     the panel-open path entirely
+  // Outside Delete Mode, every click opens the details panel as usual.
   const handleClickEvent = useCallback(
     (event: CalendarEvent, _day: number, e: React.MouseEvent) => {
       e.stopPropagation();
       setHoveredEvent(null);
       if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+      if (deleteMode) {
+        const eligible =
+          event.booked === 0 &&
+          event.type !== "closed" &&
+          event.type !== "league";
+        if (eligible) {
+          setDeletedEventIds((prev) => {
+            const next = new Set(prev);
+            next.add(event.id);
+            return next;
+          });
+          return;
+        }
+        // Ineligible — anchor the hint just below the clicked badge so
+        // it's clearly tied to that event, then auto-dismiss.
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setDeleteBlockedHint({ top: rect.bottom + 8, left: rect.left });
+        if (deleteBlockedHintTimerRef.current) {
+          clearTimeout(deleteBlockedHintTimerRef.current);
+        }
+        deleteBlockedHintTimerRef.current = setTimeout(() => {
+          setDeleteBlockedHint(null);
+          deleteBlockedHintTimerRef.current = null;
+        }, 4000);
+        return;
+      }
       openPanel(
         <ReservationDetailsPanelContent key={event.id} event={event} />,
         { size: "third", title: `Reservation Details: ${event.title}` }
       );
     },
-    [openPanel]
+    [openPanel, deleteMode]
   );
 
   // Hover handlers with 300ms delay
@@ -4156,13 +5036,98 @@ export function SchedulePage() {
     setCurrentYear(now.getFullYear());
   }, []);
 
-  // Filter events by the search query (matches title, instructor, venue, type).
+  // Filter events by the search query plus the structured Filters popover
+  // criteria (date range, time range, venues, instructors, types, balances
+  // owed). All dimensions combine with AND. An empty string / empty array
+  // / false means "no filter" for that dimension.
   // NOTE: Defined here — before any conditional early return — so React's hook
   // ordering stays stable across the mobile / desktop branches.
-  const filteredEvents = useMemo(
-    () => filterEventsByQuery(MOCK_EVENTS, searchQuery),
-    [searchQuery]
-  );
+  const filteredEvents = useMemo(() => {
+    const bySearch = filterEventsByQuery(MOCK_EVENTS, searchQuery);
+    // Strip events the user removed via Delete Mode before any further
+    // filtering so the rest of the pipeline doesn't see them.
+    const byDeletion: DayEvents = {};
+    for (const dayStr of Object.keys(bySearch)) {
+      const day = Number(dayStr);
+      const events = (bySearch[day] ?? []).filter((ev) => !deletedEventIds.has(ev.id));
+      if (events.length > 0) byDeletion[day] = events;
+    }
+
+    // Pre-parse filter time bounds once for the inner per-event check.
+    const parseHM = (s: string): number | null => {
+      if (!s) return null;
+      const [h, m] = s.split(":").map(Number);
+      if (Number.isNaN(h) || Number.isNaN(m)) return null;
+      return h * 60 + m;
+    };
+    const startMins = parseHM(filterStartTime);
+    const endMins = parseHM(filterEndTime);
+    const startDateObj = filterStartDate ? new Date(filterStartDate + "T00:00:00") : null;
+    const endDateObj = filterEndDate ? new Date(filterEndDate + "T23:59:59") : null;
+
+    const result: DayEvents = {};
+    for (const dayStr of Object.keys(byDeletion)) {
+      const day = Number(dayStr);
+
+      // Date-range — events render in `currentMonth/currentYear`, so we
+      // compare each day cell's calendar date against the filter range.
+      if (startDateObj || endDateObj) {
+        const cellDate = new Date(currentYear, currentMonth, day);
+        if (startDateObj && cellDate < startDateObj) continue;
+        if (endDateObj && cellDate > endDateObj) continue;
+      }
+
+      const events = byDeletion[day] ?? [];
+      const kept = events.filter((e) => {
+        // Closed-day rows are layout markers, not real reservations — they
+        // bypass the per-event filters so closures stay visible regardless
+        // of trainer/venue/type/balance filters.
+        if (e.type === "closed") return true;
+
+        if (startMins !== null || endMins !== null) {
+          const m = parseEventTimeToMinutes(e.time);
+          if (m === -1) return false;
+          if (startMins !== null && m < startMins) return false;
+          if (endMins !== null && m > endMins) return false;
+        }
+        if (filterVenues.length > 0 && !filterVenues.includes(e.venue)) return false;
+        if (filterInstructors.length > 0 && !filterInstructors.includes(e.instructor)) return false;
+        if (filterTypes.length > 0 && !filterTypes.includes(e.type)) return false;
+        if (filterPaymentStatus === "Owed" && getOwedCount(e) === 0) return false;
+        // "Paid" = all registered clients are paid up. Empty events
+        // (booked = 0) don't qualify either way; treat them as Paid since
+        // there's no outstanding balance.
+        if (filterPaymentStatus === "Paid" && getOwedCount(e) > 0) return false;
+        // Registration counts — only meaningful for events with a real
+        // capacity. Events without capacity (league games, etc.) are
+        // dropped by any registration filter since "seats available"
+        // doesn't apply. Closures are exempted at the top of this
+        // filter callback.
+        if (filterRegistrations) {
+          if (e.capacity <= 0) return false;
+          const isFull = e.booked >= e.capacity;
+          const isAllAvailable = e.booked === 0;
+          const isSomeAvailable = !isFull && !isAllAvailable;
+          if (filterRegistrations === "Full" && !isFull) return false;
+          if (filterRegistrations === "Some" && !isSomeAvailable) return false;
+          if (filterRegistrations === "All" && !isAllAvailable) return false;
+        }
+        return true;
+      });
+
+      if (kept.length > 0) result[day] = kept;
+    }
+    return result;
+  }, [
+    searchQuery,
+    filterStartDate, filterEndDate,
+    filterStartTime, filterEndTime,
+    filterVenues, filterInstructors, filterTypes,
+    filterPaymentStatus,
+    filterRegistrations,
+    currentMonth, currentYear,
+    deletedEventIds,
+  ]);
 
   // Today's not-yet-started events for the "Upcoming Today" side panel.
   // Uses the real-world "today" so the rail stays useful regardless of which
@@ -4483,9 +5448,180 @@ export function SchedulePage() {
             borderTopRightRadius: "12px",
           }}
         >
-          <span style={{ fontSize: "14px", fontWeight: 500, color: sc.body, lineHeight: "14px" }}>
-            Found {totalReservations} reservations
-          </span>
+          {/* Left group: legend Info button + count text. The Info button
+              is grouped with the count rather than the right-side
+              actions because the legend is a "what does this view mean?"
+              affordance — it sits next to the result-count summary so
+              users see it as a viewing helper, not a filter action. */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div ref={legendRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowLegend((v) => !v)}
+                aria-expanded={showLegend}
+                aria-label="Reservation type legend"
+                title="Reservation type legend"
+                style={{
+                  ...controlBtn,
+                  width: "28px",
+                  height: "28px",
+                  padding: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderColor: showLegend ? sc.brand : sc.border,
+                  color: showLegend ? sc.brand : sc.body,
+                }}
+              >
+                <Info size={14} />
+              </button>
+
+              {showLegend && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    left: 0,
+                    width: "260px",
+                    background: sc.cellBg,
+                    border: `1px solid ${sc.border}`,
+                    borderRadius: "10px",
+                    boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+                    padding: "16px",
+                    zIndex: 100,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                    fontFamily: "var(--font-family)",
+                  }}
+                >
+                  <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
+                    Reservation types
+                  </span>
+                  {[
+                    { types: ["yoga"] as const, label: "Yoga / Power Yoga / Morning Yoga" },
+                    { types: ["meditation"] as const, label: "Meditation / Stretch & Restore" },
+                    { types: ["pilates"] as const, label: "Pilates" },
+                    { types: ["hiit"] as const, label: "HIIT" },
+                    { types: ["league"] as const, label: "League Game" },
+                    { types: ["closed"] as const, label: "Closed" },
+                  ].map((row) => {
+                    const c = colors[row.types[0]];
+                    return (
+                      <div
+                        key={row.label}
+                        style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            display: "inline-block",
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "4px",
+                            background: c.bg,
+                            border: `1px solid ${c.border}`,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ fontSize: "13px", color: sc.body, lineHeight: 1.3 }}>
+                          {row.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <span style={{ fontSize: "14px", fontWeight: 500, color: sc.body, lineHeight: "14px" }}>
+              Found {totalReservations} reservations
+            </span>
+            {/* Subtle vertical divider to visually separate the count
+                (meta-info) from the Delete Mode toggle (mode toggle).
+                Without it the three left-side items (Info button, count
+                text, toggle pill) sit at uneven visual weights with
+                ambiguous grouping — the divider gives the row a clear
+                "info | mode" rhythm. */}
+            <span
+              role="separator"
+              aria-orientation="vertical"
+              style={{
+                width: "1px",
+                height: "18px",
+                background: sc.border,
+                flexShrink: 0,
+              }}
+            />
+            {/* Delete Mode — slider toggle living in the sub-header's
+                meta-info zone (left side, after the result count) so it's
+                findable but visually subordinate to Search/Filters and
+                far from the Add Reservation primary action. The track
+                turns red when active to telegraph the destructive intent
+                of the mode (matches the dashed-red treatment we apply to
+                deletable events on the calendar). */}
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+              title="Quickly delete sessions that have no registered clients"
+            >
+              <input
+                type="checkbox"
+                checked={deleteMode}
+                onChange={(e) => setDeleteMode(e.target.checked)}
+                style={{
+                  position: "absolute",
+                  opacity: 0,
+                  width: 0,
+                  height: 0,
+                  pointerEvents: "none",
+                }}
+              />
+              <span
+                aria-hidden
+                style={{
+                  position: "relative",
+                  display: "inline-block",
+                  width: "32px",
+                  height: "18px",
+                  borderRadius: "9px",
+                  background: deleteMode
+                    ? (isDark ? "#e05a5a" : "#d41840")
+                    : sc.border,
+                  transition: "background 0.15s ease",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "2px",
+                    left: deleteMode ? "16px" : "2px",
+                    width: "14px",
+                    height: "14px",
+                    borderRadius: "50%",
+                    background: "#ffffff",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                    transition: "left 0.15s ease",
+                  }}
+                />
+              </span>
+              <span
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: deleteMode ? (isDark ? "#e05a5a" : "#d41840") : sc.muted,
+                  lineHeight: "14px",
+                  transition: "color 0.15s ease",
+                }}
+              >
+                Delete Mode
+              </span>
+            </label>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             {/* Search */}
             <div
@@ -4518,18 +5654,100 @@ export function SchedulePage() {
                 }}
               />
             </div>
-            {/* Filters */}
-            <button
-              style={{
-                ...controlBtn,
-                gap: "6px",
-                padding: "8px 12px",
-                fontSize: "14px",
-                fontWeight: 500,
-              }}
-            >
-              <SlidersHorizontal size={16} /> Filters <ChevronDown size={16} />
-            </button>
+            {/* Filters — opens a structured popover that mirrors the
+                criteria available in reservation details (date / time
+                ranges, venues, instructors, types) plus a dedicated
+                balances-owed toggle. Active filter dimensions get a count
+                badge on the button so the user knows the calendar is
+                showing a filtered subset. */}
+            <div ref={filtersRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowFilters((v) => !v)}
+                aria-expanded={showFilters}
+                style={{
+                  ...controlBtn,
+                  gap: "6px",
+                  padding: "8px 12px",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  borderColor: activeFilterCount > 0 ? sc.brand : sc.border,
+                  color: activeFilterCount > 0 ? sc.brand : sc.body,
+                }}
+              >
+                <SlidersHorizontal size={16} /> Filters
+                {activeFilterCount > 0 && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: "18px",
+                      height: "18px",
+                      padding: "0 5px",
+                      borderRadius: "9px",
+                      background: sc.brand,
+                      color: isDark ? "#0a0e0f" : "#101828",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {activeFilterCount}
+                  </span>
+                )}
+                <ChevronDown size={16} style={{ transform: showFilters ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }} />
+              </button>
+
+              {showFilters && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    right: 0,
+                    width: "360px",
+                    maxHeight: "70vh",
+                    overflowY: "auto",
+                    background: sc.cellBg,
+                    border: `1px solid ${sc.border}`,
+                    borderRadius: "10px",
+                    boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+                    padding: "16px",
+                    zIndex: 100,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "16px",
+                    fontFamily: "var(--font-family)",
+                  }}
+                >
+                  <CalendarFiltersContent
+                    filterStartDate={filterStartDate}
+                    setFilterStartDate={setFilterStartDate}
+                    filterEndDate={filterEndDate}
+                    setFilterEndDate={setFilterEndDate}
+                    filterStartTime={filterStartTime}
+                    setFilterStartTime={setFilterStartTime}
+                    filterEndTime={filterEndTime}
+                    setFilterEndTime={setFilterEndTime}
+                    filterVenues={filterVenues}
+                    setFilterVenues={setFilterVenues}
+                    filterInstructors={filterInstructors}
+                    setFilterInstructors={setFilterInstructors}
+                    filterTypes={filterTypes}
+                    setFilterTypes={setFilterTypes}
+                    filterPaymentStatus={filterPaymentStatus}
+                    setFilterPaymentStatus={setFilterPaymentStatus}
+                    filterRegistrations={filterRegistrations}
+                    setFilterRegistrations={setFilterRegistrations}
+                    activeFilterCount={activeFilterCount}
+                    clearAllFilters={clearAllFilters}
+                    palette={palette}
+                    isDark={isDark}
+                    sc={sc}
+                    colors={colors}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -4602,6 +5820,7 @@ export function SchedulePage() {
                 sc={sc}
                 colors={colors}
                 isDark={isDark}
+                deleteMode={deleteMode}
               />
             ))
           )}
@@ -4673,6 +5892,38 @@ export function SchedulePage() {
           colors={colors}
           isDark={isDark}
         />
+      )}
+
+      {/* ── Delete-blocked hint ─────────────────────────────────────
+          Shown when the user clicks an ineligible event in Delete Mode.
+          Anchored to the clicked badge via getBoundingClientRect (fixed
+          positioning, so it overlays anything underneath including the
+          calendar's overflow:hidden ancestor). Auto-dismisses after a
+          few seconds via the timer set in handleClickEvent. */}
+      {deleteBlockedHint && (
+        <div
+          role="tooltip"
+          onClick={() => setDeleteBlockedHint(null)}
+          style={{
+            position: "fixed",
+            top: deleteBlockedHint.top,
+            left: deleteBlockedHint.left,
+            zIndex: 1500,
+            maxWidth: "260px",
+            padding: "10px 12px",
+            borderRadius: "8px",
+            background: sc.cellBg,
+            border: `1px solid ${isDark ? "#e05a5a" : "#d41840"}`,
+            boxShadow: `0px 8px 16px -4px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+            fontSize: "12px",
+            lineHeight: 1.45,
+            color: sc.body,
+            fontFamily: "var(--font-family)",
+            cursor: "pointer",
+          }}
+        >
+          Registered clients must be deregistered before the reservation can be deleted.
+        </div>
       )}
 
     </div>

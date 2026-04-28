@@ -21,13 +21,21 @@ body {
   transition: background 0.25s ease, color 0.25s ease;
 }
 
-/* Match calendar icon colour to placeholder text */
-[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1) sepia(0.15) saturate(0.8) hue-rotate(155deg) opacity(0.5);
+/* Native date/time picker icons — dimmed slightly so they sit beside the
+   placeholder text instead of looking neon-bright, but never inverted.
+   The previous dark-mode rule started with `invert(1)`, which flipped the
+   already-light `color-scheme: dark` icon into a dark one that was hard
+   to see. Using `opacity()` alone preserves the browser's color-scheme
+   choice (light-on-dark in dark mode, dark-on-light in light mode) and
+   keeps the date and time icons in matching tones. */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: opacity(0.6);
   cursor: pointer;
 }
-[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: none;
+[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: opacity(0.7);
   cursor: pointer;
 }
 
