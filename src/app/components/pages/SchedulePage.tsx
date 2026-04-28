@@ -31,6 +31,7 @@ import {
   X,
   Pencil,
   Users,
+  Trophy,
 } from "lucide-react";
 import { useTheme, type ThemePalette } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
@@ -64,6 +65,12 @@ interface CalendarEvent {
   fullWidth?: boolean;
   /** When true, a full class shows "Waitlist" instead of "Full". */
   waitlistEnabled?: boolean;
+  /** Pre-buffer time in minutes — when > 0, the badge renders a diagonal-stripe
+   *  indicator at its leading edge. */
+  preBuffer?: number;
+  /** Post-buffer time in minutes — when > 0, the badge renders a diagonal-stripe
+   *  indicator at its trailing edge. */
+  postBuffer?: number;
 }
 
 interface DayEvents {
@@ -189,62 +196,64 @@ function generateMockEvents(): DayEvents {
     booked = 32,
     capacity = 36,
     fullWidth = false,
-    waitlistEnabled = false
-  ): CalendarEvent => ({ id, title, time, type, instructor, venue, booked, capacity, fullWidth, waitlistEnabled });
+    waitlistEnabled = false,
+    preBuffer = 0,
+    postBuffer = 0
+  ): CalendarEvent => ({ id, title, time, type, instructor, venue, booked, capacity, fullWidth, waitlistEnabled, preBuffer, postBuffer });
 
   // Week 1: days 1-7
-  // Day 1 — mix of all states: bookable, full+waitlist, full (no waitlist)
+  // Day 1 — mix of all states + buffer variants (pre-only, post-only, both, none)
   events[1] = [
-    makeEvent("1a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 12, 36, false, false),       // bookable
-    makeEvent("1b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),         // full + waitlist
-    makeEvent("1c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 28, 36, false, false),                    // bookable
-    makeEvent("1d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),                // full, no waitlist
-    makeEvent("1e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 8, 24, false, false),               // bookable
-    makeEvent("1f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 24, 24, false, true),         // full + waitlist
-    makeEvent("1g", "Power Yoga", "5pm", "power-yoga", "Alan Alda", "Studio B", 18, 18, false, false),        // full, no waitlist
+    makeEvent("1a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 12, 36, false, false, 15, 0),     // pre-buffer only
+    makeEvent("1b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true, 0, 15),       // post-buffer only
+    makeEvent("1c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 28, 36, false, false, 15, 15),                  // both buffers
+    makeEvent("1d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),                      // no buffer
+    makeEvent("1e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 8, 24, false, false, 30, 0),              // pre-buffer only (longer)
+    makeEvent("1f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 24, 24, false, true),               // no buffer
+    makeEvent("1g", "Power Yoga", "5pm", "power-yoga", "Alan Alda", "Studio B", 18, 18, false, false, 15, 30),      // both, asymmetric
   ];
   events[2] = [
-    makeEvent("2a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 10, 36, false, false),
-    makeEvent("2b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),
-    makeEvent("2c", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 36, 36, false, false),
-    makeEvent("2d", "Stretch & Restore", "2pm", "stretch", "Lisa Park", "Studio A", 5, 20, false, false),
-    makeEvent("2e", "HIIT", "3pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true),
-    makeEvent("2f", "Pilates", "4pm", "pilates", "Lisa Park", "Studio A", 15, 24, false, false),
+    makeEvent("2a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 10, 36, false, false, 15, 15),     // both
+    makeEvent("2b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
+    makeEvent("2c", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 36, 36, false, false, 30, 0),                  // pre only
+    makeEvent("2d", "Stretch & Restore", "2pm", "stretch", "Lisa Park", "Studio A", 5, 20, false, false, 0, 15),    // post only
+    makeEvent("2e", "HIIT", "3pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true, 15, 15),               // both
+    makeEvent("2f", "Pilates", "4pm", "pilates", "Lisa Park", "Studio A", 15, 24, false, false),                    // none
   ];
   events[3] = [
-    makeEvent("3a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 22, 36, false, false),
-    makeEvent("3b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true),
-    makeEvent("3c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true),
-    makeEvent("3d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 14, 30, false, false),
-    makeEvent("3e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 24, 24, false, false),
-    makeEvent("3f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 6, 20, false, false),
+    makeEvent("3a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 22, 36, false, false, 15, 0),                  // pre only
+    makeEvent("3b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),            // both (league: longer)
+    makeEvent("3c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true, 0, 15),                    // post only
+    makeEvent("3d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 14, 30, false, false, 15, 30),              // both
+    makeEvent("3e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 24, 24, false, false),                    // none
+    makeEvent("3f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 6, 20, false, false, 0, 30),        // post only
   ];
   events[4] = [
-    makeEvent("4a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 0, 36, false, false),
-    makeEvent("4b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),
-    makeEvent("4c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 30, 36, false, false),
-    makeEvent("4d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),
-    makeEvent("4e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 10, 24, false, false),
+    makeEvent("4a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 0, 36, false, false, 15, 0),       // pre only
+    makeEvent("4b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
+    makeEvent("4c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 30, 36, false, false, 30, 30),                  // both
+    makeEvent("4d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),                      // none
+    makeEvent("4e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 10, 24, false, false, 0, 15),             // post only
   ];
   events[5] = [
-    makeEvent("5a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 15, 36, false, false),
-    makeEvent("5b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 18, 20, false, false),
-    makeEvent("5c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true),
-    makeEvent("5d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 25, 30, false, false),
-    makeEvent("5e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 24, 24, false, false),
+    makeEvent("5a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 15, 36, false, false, 15, 0),  // pre only
+    makeEvent("5b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 18, 20, false, false),             // none
+    makeEvent("5c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true, 0, 15),                    // post only
+    makeEvent("5d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 25, 30, false, false, 15, 15),              // both
+    makeEvent("5e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 24, 24, false, false),                    // none
   ];
   events[6] = [
-    makeEvent("6a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 20, 36, false, false),
-    makeEvent("6b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),
-    makeEvent("6c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, false),
-    makeEvent("6d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 8, 30, false, false),
-    makeEvent("6e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 12, 24, false, false),
+    makeEvent("6a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 20, 36, false, false),   // none
+    makeEvent("6b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true, 15, 0),       // pre only
+    makeEvent("6c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, false, 0, 30),                   // post only
+    makeEvent("6d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 8, 30, false, false, 15, 15),               // both
+    makeEvent("6e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 12, 24, false, false),                    // none
   ];
   events[7] = [
-    makeEvent("7a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 30, 36, false, false),
-    makeEvent("7b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),
-    makeEvent("7c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 10, 36, false, false),
-    makeEvent("7d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),
+    makeEvent("7a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 30, 36, false, false, 30, 0),                  // pre only
+    makeEvent("7b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
+    makeEvent("7c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 10, 36, false, false, 0, 15),                   // post only
+    makeEvent("7d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false, 15, 15),              // both
   ];
 
   // Week 2: days 8-14
@@ -263,7 +272,7 @@ function generateMockEvents(): DayEvents {
   ];
   events[10] = [
     makeEvent("10a", "Yoga", "11am", "yoga"),
-    makeEvent("10b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true),
+    makeEvent("10b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("10c", "Pilates", "3pm", "pilates"),
   ];
   events[11] = [
@@ -308,7 +317,7 @@ function generateMockEvents(): DayEvents {
   ];
   events[17] = [
     makeEvent("17a", "Yoga", "11am", "yoga"),
-    makeEvent("17b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true),
+    makeEvent("17b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("17c", "Power Yoga", "1pm", "power-yoga"),
     makeEvent("17d", "HIIT", "2pm", "hiit"),
     makeEvent("17e", "Meditation", "3pm", "meditation"),
@@ -316,7 +325,7 @@ function generateMockEvents(): DayEvents {
   events[18] = [
     makeEvent("18a", "Morning Yoga Reset", "11am", "morning-yoga"),
     makeEvent("18b", "Meditation", "12am", "meditation"),
-    makeEvent("18c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true),
+    makeEvent("18c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("18d", "Power Yoga", "2pm", "power-yoga"),
     makeEvent("18e", "HIIT", "3pm", "hiit"),
   ];
@@ -344,7 +353,7 @@ function generateMockEvents(): DayEvents {
 
   // Week 4: days 22-28
   events[22] = [
-    makeEvent("22a", "Tigers v. Capybaras", "11am", "league", "—", "Field A", 0, 0, true),
+    makeEvent("22a", "Tigers v. Capybaras", "11am", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("22b", "Yoga", "12pm", "yoga"),
     makeEvent("22c", "HIIT", "2pm", "hiit"),
     makeEvent("22d", "Meditation", "3pm", "meditation"),
@@ -358,7 +367,7 @@ function generateMockEvents(): DayEvents {
   ];
   events[24] = [
     makeEvent("24a", "Morning Yoga Reset", "11am", "morning-yoga"),
-    makeEvent("24b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true),
+    makeEvent("24b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("24c", "Yoga", "1pm", "yoga"),
     makeEvent("24d", "HIIT", "2pm", "hiit"),
     makeEvent("24e", "Pilates", "3pm", "pilates"),
@@ -401,7 +410,7 @@ function generateMockEvents(): DayEvents {
   events[30] = [
     makeEvent("30a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 30, 36, false, false),
     makeEvent("30b", "Stretch & Restore", "12pm", "stretch", "Lisa Park", "Studio A", 8, 20, false, false),
-    makeEvent("30c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true),
+    makeEvent("30c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("30d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true),
     makeEvent("30e", "Meditation", "3pm", "meditation", "Sara Chen", "Studio A", 12, 20, false, false),
   ];
@@ -515,12 +524,23 @@ function EventBadge({
 }) {
   const style = colors[event.type] || colors.yoga;
 
+  const hasPre = (event.preBuffer ?? 0) > 0;
+  const hasPost = (event.postBuffer ?? 0) > 0;
+
+  // Stripe area is 12px wide; bump padding to 14px on the affected side so
+  // text starts just past the stripes (mirrors the "diagonal lines next to
+  // the title" pattern from the source design).
+  const STRIPE_W = 12;
+  const padL = hasPre ? STRIPE_W + 2 : 6;
+  const padR = hasPost ? STRIPE_W + 2 : 6;
+
   const badgeStyle: CSSProperties = {
+    position: "relative",
     display: "flex",
     alignItems: "center",
     gap: "4px",
     height: "24px",
-    padding: "4px 6px",
+    padding: `4px ${padR}px 4px ${padL}px`,
     borderRadius: "4px",
     fontSize: "10px",
     fontWeight: 700,
@@ -550,6 +570,22 @@ function EventBadge({
     badgeStyle.cursor = "default";
   }
 
+  // Diagonal-stripe pattern for buffer indicators. Uses currentColor so the
+  // stripes pick up the badge's text color, then opacity fades them so they
+  // read as a tinted "blocked" area rather than a hard color band. Selected
+  // badges use white-ish stripes since the bg becomes the saturated text
+  // color (color is set via `color` prop on the stripe div).
+  const stripeColor = isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text;
+  const bufferStripeStyle: CSSProperties = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: `${STRIPE_W}px`,
+    pointerEvents: "none",
+    backgroundImage: `repeating-linear-gradient(135deg, ${stripeColor} 0px, ${stripeColor} 1.5px, transparent 1.5px, transparent 5px)`,
+    opacity: 0.5,
+  };
+
   return (
     <div
       style={badgeStyle}
@@ -557,8 +593,22 @@ function EventBadge({
       onMouseEnter={event.type !== "closed" ? onHoverEnter : undefined}
       onMouseLeave={event.type !== "closed" ? onHoverLeave : undefined}
     >
+      {hasPre && (
+        <div
+          aria-hidden
+          title={`${event.preBuffer} min pre-buffer`}
+          style={{ ...bufferStripeStyle, left: 0 }}
+        />
+      )}
+      {hasPost && (
+        <div
+          aria-hidden
+          title={`${event.postBuffer} min post-buffer`}
+          style={{ ...bufferStripeStyle, right: 0 }}
+        />
+      )}
       {event.type === "league" && (
-        <span style={{ fontSize: "10px", flexShrink: 0 }}>&#9917;</span>
+        <Trophy size={12} style={{ flexShrink: 0 }} />
       )}
       <span
         style={{
@@ -2141,7 +2191,7 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
 
   const handleSelectEvent = useCallback((event: CalendarEvent) => {
     openPanel(
-      <ReservationDetailsPanelContent event={event} />,
+      <ReservationDetailsPanelContent key={event.id} event={event} />,
       { size: "full", title: `Reservation Details: ${event.title}` }
     );
   }, [openPanel]);
@@ -2677,8 +2727,11 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const initEndTime = event.time ? `${String(parseInt(event.time) + 1).padStart(2, "0")}:00` : "10:00";
   const initAllDay = false;
   const initUseDefaultBuffer = true;
-  const initPreBuffer = "15";
-  const initPostBuffer = "15";
+  // Read buffers from the event itself; fall back to "" (None) when absent or 0
+  // so the Pre-buffer / Post-buffer rows in the details view say "None" rather
+  // than "0 min", and the form's <select> picks up "None" as the default.
+  const initPreBuffer = event.preBuffer && event.preBuffer > 0 ? String(event.preBuffer) : "";
+  const initPostBuffer = event.postBuffer && event.postBuffer > 0 ? String(event.postBuffer) : "";
   const initNotes = "";
 
   const [scheduleType, setScheduleType] = useState<"session" | "rental">(initScheduleType);
@@ -2802,9 +2855,16 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   // `surfaceSecondary` list background. Amber needs slightly more
   // saturation than the cooler greens/blues to feel equally punchy.
   const statusColors: Record<string, { bg: string; text: string }> = {
-    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.38)", text: isDark ? "#00c4a0" : "#076a52" },
-    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.45)", text: isDark ? "#ffb432" : "#8a5e0a" },
-    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.38)", text: isDark ? "#78a0c8" : "#385f8c" },
+    // Light-mode bg alphas were dropped from 0.38–0.45 down to 0.18–0.22 so
+    // the pills sit lightly on the new lighter list background instead of
+    // overpowering it. Light-mode text was retoned from muted earth shades
+    // (#076a52 / #8a5e0a / #385f8c) to deeper jewel cousins of the dark-mode
+    // values — same hue family as the brand's #00c4a0 / #ffb432 / #78a0c8,
+    // just darkened enough to keep WCAG-acceptable contrast on the lighter
+    // pill backgrounds. Dark mode is unchanged.
+    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.18)", text: isDark ? "#00c4a0" : "#00876c" },
+    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.22)", text: isDark ? "#ffb432" : "#b07800" },
+    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.18)", text: isDark ? "#78a0c8" : "#2d6cab" },
   };
 
   // Filter toggles for registered clients
@@ -2938,7 +2998,7 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
               );
             })}
           </div>
-          <div className="always-show-scrollbar" style={{ maxHeight: "200px", border: `1px solid ${palette.borderLight}`, borderRadius: "8px", background: palette.surfaceSecondary }}>
+          <div className="always-show-scrollbar" style={{ maxHeight: "200px", border: `1px solid ${palette.borderLight}`, borderRadius: "8px", background: isDark ? "#1f292d" : "#f3f6f8" }}>
             {filteredClients.length === 0 ? (
               <div style={{ padding: "16px 12px", textAlign: "center", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, opacity: 0.6 }}>No clients match the selected filters</div>
             ) : filteredClients.map((client, i) => {
@@ -3681,7 +3741,7 @@ export function SchedulePage() {
       setHoveredEvent(null);
       if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
       openPanel(
-        <ReservationDetailsPanelContent event={event} />,
+        <ReservationDetailsPanelContent key={event.id} event={event} />,
         { size: "third", title: `Reservation Details: ${event.title}` }
       );
     },
@@ -3731,7 +3791,7 @@ export function SchedulePage() {
     setHoveredEvent(null);
     isInsidePopoverRef.current = false;
     openPanel(
-      <ReservationDetailsPanelContent event={ev} />,
+      <ReservationDetailsPanelContent key={ev.id} event={ev} />,
       { size: "third", title: `Reservation Details: ${ev.title}` }
     );
   }, [hoveredEvent, openPanel]);
@@ -3808,7 +3868,7 @@ export function SchedulePage() {
   const handleSelectUpcomingEvent = useCallback(
     (event: CalendarEvent) => {
       openPanel(
-        <ReservationDetailsPanelContent event={event} />,
+        <ReservationDetailsPanelContent key={event.id} event={event} />,
         { size: "third", title: `Reservation Details: ${event.title}` }
       );
     },
