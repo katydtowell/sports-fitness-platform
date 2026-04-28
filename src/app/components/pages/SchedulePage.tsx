@@ -308,8 +308,16 @@ function generateMockEvents(): DayEvents {
     makeEvent("15a", "Yoga", "11am", "yoga"),
     makeEvent("15b", "Meditation", "12am", "meditation"),
     makeEvent("15c", "Power Yoga", "1pm", "yoga"),
-    makeEvent("15d", "HIIT", "2pm", "hiit"),
-    makeEvent("15e", "Pilates", "3pm", "pilates"),
+    makeEvent("15d", "Tigers v. Capybaras", "1:30pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
+    makeEvent("15e", "HIIT", "2pm", "hiit"),
+    makeEvent("15f", "Pilates", "3pm", "pilates"),
+    makeEvent("15g", "Stretch & Restore", "4pm", "meditation"),
+    makeEvent("15h", "HIIT", "5pm", "hiit"),
+    makeEvent("15i", "Power Yoga", "6pm", "yoga"),
+    makeEvent("15j", "Meditation", "7pm", "meditation"),
+    makeEvent("15k", "Yoga", "8pm", "yoga"),
+    makeEvent("15l", "Pilates", "9pm", "pilates"),
+    makeEvent("15m", "HIIT", "10pm", "hiit"),
   ];
   events[16] = [
     makeEvent("16a", "Yoga", "11am", "yoga"),
@@ -836,6 +844,7 @@ function DateCell({
   onSelectEvent,
   onHoverEvent,
   onHoverLeave,
+  onShowMore,
   sc,
   colors,
   isDark,
@@ -848,6 +857,7 @@ function DateCell({
   onSelectEvent: (event: CalendarEvent, e: React.MouseEvent) => void;
   onHoverEvent?: (event: CalendarEvent, e: React.MouseEvent) => void;
   onHoverLeave?: () => void;
+  onShowMore?: (day: number, events: CalendarEvent[]) => void;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
@@ -944,12 +954,14 @@ function DateCell({
 
       {hiddenCount > 0 && (
         <div
+          onClick={(e) => { e.stopPropagation(); if (day && onShowMore) onShowMore(day, events); }}
           style={{
             fontSize: "10px",
-            fontWeight: 500,
-            color: sc.body,
+            fontWeight: 600,
+            color: sc.brand,
             padding: "2px 5px",
             lineHeight: "16px",
+            cursor: "pointer",
           }}
         >
           +{hiddenCount} more
@@ -5363,6 +5375,105 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — DayEventsPanelContent
+   Rendered inside the shared SidePanel when the user clicks "+X more"
+   on a calendar date cell. Shows all events for that day in the same
+   card style as the Upcoming Today side rail.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function DayEventsPanelContent({
+  day, month, year, events, onSelectEvent,
+}: {
+  day: number;
+  month: number;
+  year: number;
+  events: CalendarEvent[];
+  onSelectEvent: (event: CalendarEvent) => void;
+}) {
+  const { palette, mode } = useTheme();
+  const isDark = mode === "dark";
+  const sc = semanticColors(palette, isDark);
+  const colors = getEventStyles(isDark);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      {events.length === 0 ? (
+        <div style={{ padding: "32px 16px", textAlign: "center", color: sc.muted, fontSize: "13px" }}>
+          No events on this day.
+        </div>
+      ) : (
+        events.map((event) => {
+          const ec = colors[event.type];
+          const remaining = Math.max(0, event.capacity - event.booked);
+          const isFull = remaining === 0;
+          return (
+            <button
+              key={event.id}
+              onClick={() => onSelectEvent(event)}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                padding: "12px",
+                borderRadius: "8px",
+                border: `1px solid ${sc.border}`,
+                background: "transparent",
+                cursor: "pointer",
+                textAlign: "left",
+                width: "100%",
+                fontFamily: "var(--font-family)",
+                color: sc.body,
+                transition: "background 0.15s ease, border-color 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
+                e.currentTarget.style.borderColor = sc.brand;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.borderColor = sc.border;
+              }}
+            >
+              <span style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: ec.text, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
+                  <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {event.title}
+                  </span>
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: sc.body, lineHeight: "16px", flexShrink: 0 }}>
+                    {event.time}
+                  </span>
+                </div>
+                <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <User size={12} /> {event.instructor}
+                  </span>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <MapPin size={12} /> {event.venue}
+                  </span>
+                </div>
+                {event.type !== "closed" && (
+                  <div style={{ fontSize: "12px", lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", color: sc.body }}>
+                    <Users size={12} style={{ color: sc.muted }} />
+                    <span style={{ fontWeight: 600 }}>{event.booked}/{event.capacity}</span>
+                    <span style={{ color: sc.muted }}>
+                      {isFull
+                        ? event.waitlistEnabled ? "(Waitlist open)" : "(Full)"
+                        : `(${remaining} available)`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — CalendarFiltersContent
    Shared filter form used by the desktop Filters popover and the mobile
    Filters drawer. Renders the structured filter sections (date range,
@@ -5858,6 +5969,31 @@ export function SchedulePage() {
       );
     },
     [openPanel, deleteMode]
+  );
+
+  // "+X more" handler — opens a side panel listing all events for the day
+  const handleShowMore = useCallback(
+    (day: number, dayEvents: CalendarEvent[]) => {
+      setHoveredEvent(null);
+      if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+      const dateLabel = formatEventDate(day, currentMonth, currentYear);
+      openPanel(
+        <DayEventsPanelContent
+          day={day}
+          month={currentMonth}
+          year={currentYear}
+          events={dayEvents}
+          onSelectEvent={(event) => {
+            openPanel(
+              <ReservationDetailsPanelContent key={event.id} event={event} />,
+              { size: "third", title: `Reservation Details: ${event.title}` }
+            );
+          }}
+        />,
+        { size: "third", title: `${dateLabel} · ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` }
+      );
+    },
+    [openPanel, currentMonth, currentYear]
   );
 
   // Hover handlers with 300ms delay
@@ -6802,6 +6938,7 @@ export function SchedulePage() {
                   if (day) handleHoverEvent(event, day, e);
                 }}
                 onHoverLeave={handleHoverLeave}
+                onShowMore={handleShowMore}
                 sc={sc}
                 colors={colors}
                 isDark={isDark}
