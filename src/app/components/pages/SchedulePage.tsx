@@ -590,8 +590,10 @@ function EventBadge({
     <div
       style={badgeStyle}
       onClick={event.type !== "closed" ? onClick : undefined}
-      onMouseEnter={event.type !== "closed" ? onHoverEnter : undefined}
-      onMouseLeave={event.type !== "closed" ? onHoverLeave : undefined}
+      // Closed days still get hover so a minimal "Closed all day" popover can
+      // appear; click stays disabled because there's no detail panel for them.
+      onMouseEnter={onHoverEnter}
+      onMouseLeave={onHoverLeave}
     >
       {hasPre && (
         <div
@@ -844,7 +846,8 @@ function ReservationDetailsPopover({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const dotColor = (colors[event.type] || colors.yoga).text;
-  const POPOVER_WIDTH = 320;
+  // Closed-day popover is much narrower since it only shows two lines.
+  const POPOVER_WIDTH = event.type === "closed" ? 240 : 320;
   const GAP = 8;
 
   const [adjusted, setAdjusted] = useState(position);
@@ -898,6 +901,63 @@ function ReservationDetailsPopover({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
   };
+
+  // ── Closed-day popover ───────────────────────────────────────────────
+  // Closed events have no instructor / venue / capacity / time, so the full
+  // reservation popover would be mostly empty rows. Render a minimal card
+  // that just states the date and how long the facility is closed. Right
+  // now the only "closed" state in mock data is all-day; once partial-day
+  // closures land, the duration line below should derive from the event.
+  if (event.type === "closed") {
+    return (
+      <div
+        ref={ref}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        style={{
+          position: "fixed",
+          top: adjusted.top,
+          left: adjusted.left,
+          width: `${POPOVER_WIDTH}px`,
+          background: sc.cellBg,
+          borderRadius: "12px",
+          border: `1px solid ${sc.border}`,
+          boxShadow: `0px 10px 15px -3px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+          padding: "16px 20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          zIndex: 1000,
+          fontFamily: "var(--font-family)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <div
+            style={{
+              width: "9px",
+              height: "9px",
+              borderRadius: "50%",
+              background: dotColor,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: "16px", fontWeight: 700, color: sc.heading, lineHeight: "20px" }}>
+            Closed
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 0" }}>
+            <CalendarIcon size={20} style={{ ...iconStyle, width: "20px", height: "20px" }} />
+            <span style={detailText}>{dateStr}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 0" }}>
+            <Clock size={20} style={{ ...iconStyle, width: "20px", height: "20px" }} />
+            <span style={detailText}>Closed all day</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const secondaryBtn: CSSProperties = {
     flex: 1,
