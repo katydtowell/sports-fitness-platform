@@ -173,7 +173,7 @@ function semanticColors(palette: ThemePalette, isDark: boolean): SemanticColors 
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MOCK DATA — February 2026
+   MOCK DATA — keyed by day-of-month (renders in whatever month is displayed)
    ═══════════════════════════════════════════════════════════════════════ */
 
 function generateMockEvents(): DayEvents {
@@ -192,7 +192,7 @@ function generateMockEvents(): DayEvents {
     waitlistEnabled = false
   ): CalendarEvent => ({ id, title, time, type, instructor, venue, booked, capacity, fullWidth, waitlistEnabled });
 
-  // Week 1: Feb 1-7
+  // Week 1: days 1-7
   // Day 1 — mix of all states: bookable, full+waitlist, full (no waitlist)
   events[1] = [
     makeEvent("1a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 12, 36, false, false),       // bookable
@@ -247,7 +247,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("7d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),
   ];
 
-  // Week 2: Feb 8-14
+  // Week 2: days 8-14
   events[8] = [
     makeEvent("8a", "Yoga", "11am", "yoga"),
     makeEvent("8b", "Meditation", "12am", "meditation"),
@@ -291,7 +291,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("14e", "Pilates", "3pm", "pilates"),
   ];
 
-  // Week 3: Feb 15-21
+  // Week 3: days 15-21
   events[15] = [
     makeEvent("15a", "Yoga", "11am", "yoga"),
     makeEvent("15b", "Meditation", "12am", "meditation"),
@@ -342,7 +342,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("21e", "Pilates", "3pm", "pilates"),
   ];
 
-  // Week 4: Feb 22-28
+  // Week 4: days 22-28
   events[22] = [
     makeEvent("22a", "Tigers v. Capybaras", "11am", "league", "—", "Field A", 0, 0, true),
     makeEvent("22b", "Yoga", "12pm", "yoga"),
@@ -388,6 +388,29 @@ function generateMockEvents(): DayEvents {
     makeEvent("28b", "Meditation", "12am", "meditation"),
     makeEvent("28c", "Power Yoga", "2pm", "power-yoga"),
     makeEvent("28d", "HIIT", "3pm", "hiit"),
+  ];
+
+  // Week 5: days 29-31 (only render in months with 29+ days)
+  events[29] = [
+    makeEvent("29a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 18, 36, false, false),
+    makeEvent("29b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 14, 20, false, false),
+    makeEvent("29c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 26, 36, false, false),
+    makeEvent("29d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 22, 30, false, false),
+    makeEvent("29e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 16, 24, false, false),
+  ];
+  events[30] = [
+    makeEvent("30a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 30, 36, false, false),
+    makeEvent("30b", "Stretch & Restore", "12pm", "stretch", "Lisa Park", "Studio A", 8, 20, false, false),
+    makeEvent("30c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true),
+    makeEvent("30d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true),
+    makeEvent("30e", "Meditation", "3pm", "meditation", "Sara Chen", "Studio A", 12, 20, false, false),
+  ];
+  events[31] = [
+    makeEvent("31a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 24, 36, false, false),
+    makeEvent("31b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),
+    makeEvent("31c", "Power Yoga", "1pm", "power-yoga", "Alan Alda", "Studio B", 18, 36, false, false),
+    makeEvent("31d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 26, 30, false, false),
+    makeEvent("31e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 20, 24, false, false),
   ];
 
   return events;
@@ -2056,9 +2079,9 @@ function MobileScheduleView({ palette, mode, onAddReservation }: MobileScheduleV
   const colors = getEventStyles(isDark);
   const { openPanel } = useSidePanel();
 
-  const [currentMonth, setCurrentMonth] = useState(1);
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [selectedDate, setSelectedDate] = useState(1);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth());
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [selectedDate, setSelectedDate] = useState(() => new Date().getDate());
   const [currentView, setCurrentView] = useState("Monthly");
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
@@ -2648,8 +2671,8 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const initInstructors = event.instructor ? [event.instructor] : [];
   const initReservationType = event.type === "league" ? "League Game" : "Group Class";
   const initTitle = event.title;
-  const initStartDate = "2026-02-03";
-  const initEndDate = "2026-02-03";
+  const initStartDate = new Date().toISOString().slice(0, 10);
+  const initEndDate = new Date().toISOString().slice(0, 10);
   const initStartTime = event.time ? `${event.time.replace(/[ap]m/, "").padStart(2, "0")}:00` : "09:00";
   const initEndTime = event.time ? `${String(parseInt(event.time) + 1).padStart(2, "0")}:00` : "10:00";
   const initAllDay = false;
@@ -3613,10 +3636,10 @@ export function SchedulePage() {
   const isDark = mode === "dark";
   const isMobile = useIsMobile();
 
-  // Calendar state — February 2026 (matching Figma)
+  // Calendar state — defaults to today's month/year
   // NOTE: All hooks must be called unconditionally (before any early return)
-  const [currentMonth, setCurrentMonth] = useState(1);
-  const [currentYear, setCurrentYear] = useState(2026);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth());
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
   const [searchQuery, setSearchQuery] = useState("");
   const [desktopView, setDesktopView] = useState("Monthly");
   const [showDesktopViewDropdown, setShowDesktopViewDropdown] = useState(false);
@@ -3890,27 +3913,54 @@ export function SchedulePage() {
         minHeight: 0,
       }}
     >
-      {/* ── Top toolbar ──────────────────────────────────────────────
-          Mirrors the calendar + side-rail flex split below so the month
-          navigation can be centered over the calendar's 3/4 column. */}
+      {/* ── Main row: left column (toolbar + calendar) + Upcoming Today rail
+          The Upcoming Today rail spans the full row height so it fills the
+          toolbar-row void created when AddReservation moved into the
+          calendar-zone right slot below. */}
       <div
         style={{
           display: "flex",
-          alignItems: "center",
-          gap: "20px",
-          padding: "12px 0",
-          flex: "0 0 auto",
+          alignItems: "stretch",
+          // No gap here — the spacing between the calendar and the rail
+          // lives on the rail's marginLeft so it can animate to 0 when the
+          // rail collapses (otherwise a 20px gap would persist as visible
+          // empty space between the calendar and the side panel).
+          flex: "1 1 0",
+          minHeight: 0,
         }}
       >
-        {/* Calendar zone — same flex basis as the calendar container below.
-            Internally a 3-column grid: [View+Today | DatePicker centered |
-            right-slot]. The right slot stays empty when the side rail is
-            visible (because AddReservation lives there), and holds
-            AddReservation when the side panel is open and the calendar
-            expands to full width. */}
+        {/* Left column — toolbar (calendar zone) above, calendar grid below.
+            Stacked vertically; the calendar claims the remaining height.
+            flex:1 grows to fill whatever main-row width is left after the
+            rail slot. As the rail's width animates to 0 (when the side
+            panel opens), the left column smoothly grows to fill the gap —
+            offsetting the marginRight push so the calendar zone stays at
+            roughly the same absolute width throughout the transition. */}
         <div
           style={{
-            flex: "3 1 0",
+            flex: "1 1 0",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+          }}
+        >
+        {/* ── Top toolbar ──────────────────────────────────────────── */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "12px 0",
+            flex: "0 0 auto",
+          }}
+        >
+        {/* Calendar zone — internally a 3-column grid: [View+Today |
+            DatePicker centered | AddReservation]. AddReservation lives in
+            the right slot so its right edge aligns with the calendar's
+            top-right corner below. */}
+        <div
+          style={{
+            flex: "1 1 0",
             minWidth: 0,
             display: "grid",
             gridTemplateColumns: "1fr auto 1fr",
@@ -4013,49 +4063,20 @@ export function SchedulePage() {
           </button>
         </div>
 
-        {/* Calendar-zone right slot. Holds AddReservation only when the side
-            rail is hidden (i.e. side panel is open and calendar takes 100%).
-            Otherwise stays empty so the date picker remains centered. */}
+        {/* Calendar-zone right slot — always holds AddReservation so it
+            aligns with the top-right corner of the calendar grid below. */}
         <div style={{ justifySelf: "end", display: "flex", alignItems: "center" }}>
-          {isSidePanelOpen && addReservationBtn}
+          {addReservationBtn}
         </div>
         </div>
-
-        {/* Side-rail zone — same flex basis as the UpcomingTodayPanel below.
-            Holds AddReservation right-aligned so it stays at the page's right
-            edge when the side rail is visible. */}
-        {!isSidePanelOpen && (
-          <div
-            style={{
-              flex: "1 1 0",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-end",
-            }}
-          >
-            {addReservationBtn}
-          </div>
-        )}
       </div>
 
-      {/* ── Calendar + Upcoming Today side rail ───────────────────────
-          flex:1 takes the remaining viewport height under the toolbar,
-          letting the calendar grid stretch vertically. */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "stretch",
-          gap: "20px",
-          flex: "1 1 0",
-          minHeight: 0,
-        }}
-      >
       {/* ── Calendar container ───────────────────────────────────────
           Becomes a flex-col container so the sub-header keeps its
           intrinsic height and the grid below claims the rest. */}
       <div
         style={{
-          flex: "3 1 0",
+          flex: "1 1 0",
           minWidth: 0,
           borderRadius: "12px",
           border: `1px solid ${sc.border}`,
@@ -4204,13 +4225,44 @@ export function SchedulePage() {
         </div>
         </div>
       </div>
-      {/* ── Upcoming Today side rail (1/4 width) ───────────────────
-         Hidden whenever the side panel is open (i.e. an event has been
-         selected from the calendar or from this rail), so the calendar
-         can expand into the freed-up space. Mobile breakpoint is also
-         handled — MobileScheduleView is rendered above for isMobile,
-         so this rail never appears below 768px. */}
-      {!isSidePanelOpen && (
+        </div> {/* end Left column */}
+      {/* ── Upcoming Today side rail ────────────────────────────────
+         Spans the full main-row height (toolbar row + calendar row) so it
+         fills the void created when AddReservation moved into the
+         calendar-zone right slot. Hidden when the side panel is open so
+         the calendar can expand into the freed-up space. Mobile breakpoint
+         is handled above by MobileScheduleView. */}
+      {/* Right column (Upcoming Today rail) — always rendered, but its
+          width animates between 25% and 0 in sync with Layout's
+          marginRight push (same 0.3s easing). When the panel opens the
+          rail's slot shrinks at the same rate the page is pushed left,
+          so the calendar zone's absolute width stays roughly constant
+          (no full-width snap, no empty-slot pushing the calendar inward).
+          overflow:hidden + flex:0 0 auto keeps the contents clipped as
+          the slot collapses. */}
+      <div
+        style={{
+          flex: "0 0 auto",
+          width: isSidePanelOpen ? "0%" : "25%",
+          // marginLeft is the calendar↔rail gap. It collapses with the
+          // rail so the calendar doesn't leave a 20px dead zone on its
+          // right when the panel opens.
+          marginLeft: isSidePanelOpen ? "0px" : "20px",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          // Match the toolbar's 12px top padding so the panel's top edge
+          // aligns with the calendar zone (View/DatePicker/AddReservation),
+          // not the very top of the main row.
+          paddingTop: "12px",
+          overflow: "hidden",
+          // Fade the contents out faster than the slot collapses so the
+          // rail's text/cards don't visibly clip mid-animation.
+          opacity: isSidePanelOpen ? 0 : 1,
+          transition:
+            "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease",
+        }}
+      >
         <UpcomingTodayPanel
           events={upcomingToday}
           sc={sc}
@@ -4218,7 +4270,7 @@ export function SchedulePage() {
           isDark={isDark}
           onSelectEvent={handleSelectUpcomingEvent}
         />
-      )}
+      </div>
       </div>
 
       {/* ── Hover Popover ──────────────────────────────────────────── */}
