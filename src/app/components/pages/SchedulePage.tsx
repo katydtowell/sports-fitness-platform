@@ -34,6 +34,8 @@ import {
   Trophy,
   Hourglass,
   Info,
+  ExternalLink,
+  ArrowUpDown,
 } from "lucide-react";
 import { useTheme, type ThemePalette } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
@@ -44,14 +46,15 @@ import { CancelConfirmModal } from "../client-profile/CancelConfirmModal";
    TYPES
    ═══════════════════════════════════════════════════════════════════════ */
 
+// A reservation type is the activity category — e.g. "Power Yoga" the
+// session is a "Yoga" reservation type, "Stretch & Restore" the session
+// is a "Meditation" reservation type. Specific session names live on
+// `event.title`; this enum drives color and grouping.
 type ReservationType =
   | "yoga"
-  | "power-yoga"
-  | "morning-yoga"
   | "meditation"
   | "pilates"
   | "hiit"
-  | "stretch"
   | "league"
   | "closed";
 
@@ -91,24 +94,18 @@ interface BadgeColors {
 
 const LIGHT_EVENT_STYLES: Record<ReservationType, BadgeColors> = {
   yoga:          { bg: "#fef0f2", border: "#ffccd3", text: "#8b0836" },
-  "power-yoga":  { bg: "#fef0f2", border: "#ffccd3", text: "#8b0836" },
-  "morning-yoga":{ bg: "#fef0f2", border: "#ffccd3", text: "#8b0836" },
   meditation:    { bg: "#f0fdff", border: "#a2f4fd", text: "#0092b8" },
   pilates:       { bg: "#f7f0ff", border: "#e9d4ff", text: "#9810fa" },
   hiit:          { bg: "#fff8f1", border: "#fcd9bd", text: "#771d1d" },
-  stretch:       { bg: "#f0fdff", border: "#a2f4fd", text: "#0092b8" },
   league:        { bg: "#ffffff", border: "#e5e7eb", text: "#101828" },
   closed:        { bg: "#f3f4f6", border: "#e5e7eb", text: "#6b7280" },
 };
 
 const DARK_EVENT_STYLES: Record<ReservationType, BadgeColors> = {
   yoga:          { bg: "rgba(139,8,54,0.20)",  border: "rgba(139,8,54,0.40)",  text: "#f5a0b8" },
-  "power-yoga":  { bg: "rgba(139,8,54,0.20)",  border: "rgba(139,8,54,0.40)",  text: "#f5a0b8" },
-  "morning-yoga":{ bg: "rgba(139,8,54,0.20)",  border: "rgba(139,8,54,0.40)",  text: "#f5a0b8" },
   meditation:    { bg: "rgba(0,146,184,0.15)",  border: "rgba(0,146,184,0.35)", text: "#5dd8f0" },
   pilates:       { bg: "rgba(152,16,250,0.15)", border: "rgba(152,16,250,0.30)",text: "#d4a0ff" },
   hiit:          { bg: "rgba(119,29,29,0.20)",  border: "rgba(252,217,189,0.30)",text: "#fcd9bd" },
-  stretch:       { bg: "rgba(0,146,184,0.15)",  border: "rgba(0,146,184,0.35)", text: "#5dd8f0" },
   league:        { bg: "rgba(161,189,198,0.08)",border: "rgba(161,189,198,0.20)",text: "#dfe9ec" },
   closed:        { bg: "rgba(161,189,198,0.06)",border: "rgba(161,189,198,0.15)",text: "#6e8b94" },
 };
@@ -188,6 +185,10 @@ function semanticColors(palette: ThemePalette, isDark: boolean): SemanticColors 
 function generateMockEvents(): DayEvents {
   const events: DayEvents = {};
 
+  // booked/capacity default to -1 (sentinel). The post-processor below fills
+  // in varied, type-appropriate values for any event that didn't pass
+  // explicit values, so the demo schedule shows realistic variety in
+  // booking levels rather than every "default" event reading 32/36.
   const makeEvent = (
     id: string,
     title: string,
@@ -195,8 +196,8 @@ function generateMockEvents(): DayEvents {
     type: ReservationType,
     instructor = "Alan Alda",
     venue = "Studio B",
-    booked = 32,
-    capacity = 36,
+    booked = -1,
+    capacity = -1,
     fullWidth = false,
     waitlistEnabled = false,
     preBuffer = 0,
@@ -206,19 +207,19 @@ function generateMockEvents(): DayEvents {
   // Week 1: days 1-7
   // Day 1 — mix of all states + buffer variants (pre-only, post-only, both, none)
   events[1] = [
-    makeEvent("1a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 12, 36, false, false, 15, 0),     // pre-buffer only
+    makeEvent("1a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 12, 36, false, false, 15, 0),     // pre-buffer only
     makeEvent("1b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true, 0, 15),       // post-buffer only
     makeEvent("1c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 28, 36, false, false, 15, 15),                  // both buffers
     makeEvent("1d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),                      // no buffer
     makeEvent("1e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 8, 24, false, false, 30, 0),              // pre-buffer only (longer)
     makeEvent("1f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 24, 24, false, true),               // no buffer
-    makeEvent("1g", "Power Yoga", "5pm", "power-yoga", "Alan Alda", "Studio B", 18, 18, false, false, 15, 30),      // both, asymmetric
+    makeEvent("1g", "Power Yoga", "5pm", "yoga", "Alan Alda", "Studio B", 18, 18, false, false, 15, 30),      // both, asymmetric
   ];
   events[2] = [
-    makeEvent("2a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 10, 36, false, false, 15, 15),     // both
+    makeEvent("2a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 10, 36, false, false, 15, 15),     // both
     makeEvent("2b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
     makeEvent("2c", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 36, 36, false, false, 30, 0),                  // pre only
-    makeEvent("2d", "Stretch & Restore", "2pm", "stretch", "Lisa Park", "Studio A", 5, 20, false, false, 0, 15),    // post only
+    makeEvent("2d", "Stretch & Restore", "2pm", "meditation", "Lisa Park", "Studio A", 5, 20, false, false, 0, 15),    // post only
     makeEvent("2e", "HIIT", "3pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true, 15, 15),               // both
     makeEvent("2f", "Pilates", "4pm", "pilates", "Lisa Park", "Studio A", 15, 24, false, false),                    // none
   ];
@@ -231,21 +232,21 @@ function generateMockEvents(): DayEvents {
     makeEvent("3f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 6, 20, false, false, 0, 30),        // post only
   ];
   events[4] = [
-    makeEvent("4a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 0, 36, false, false, 15, 0),       // pre only
+    makeEvent("4a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 0, 36, false, false, 15, 0),       // pre only
     makeEvent("4b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
     makeEvent("4c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 30, 36, false, false, 30, 30),                  // both
     makeEvent("4d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),                      // none
     makeEvent("4e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 10, 24, false, false, 0, 15),             // post only
   ];
   events[5] = [
-    makeEvent("5a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 15, 36, false, false, 15, 0),  // pre only
+    makeEvent("5a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 15, 36, false, false, 15, 0),  // pre only
     makeEvent("5b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 18, 20, false, false),             // none
     makeEvent("5c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true, 0, 15),                    // post only
     makeEvent("5d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 25, 30, false, false, 15, 15),              // both
     makeEvent("5e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 24, 24, false, false),                    // none
   ];
   events[6] = [
-    makeEvent("6a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 20, 36, false, false),   // none
+    makeEvent("6a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 20, 36, false, false),   // none
     makeEvent("6b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true, 15, 0),       // pre only
     makeEvent("6c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, false, 0, 30),                   // post only
     makeEvent("6d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 8, 30, false, false, 15, 15),               // both
@@ -262,13 +263,13 @@ function generateMockEvents(): DayEvents {
   events[8] = [
     makeEvent("8a", "Yoga", "11am", "yoga"),
     makeEvent("8b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20),
-    makeEvent("8c", "Power Yoga", "1pm", "power-yoga"),
+    makeEvent("8c", "Power Yoga", "1pm", "yoga"),
     makeEvent("8d", "HIIT", "2pm", "hiit"),
     makeEvent("8e", "Pilates", "3pm", "pilates"),
   ];
   events[9] = [
     makeEvent("9a", "Yoga", "11am", "yoga"),
-    makeEvent("9b", "Stretch & Restore", "12pm", "stretch"),
+    makeEvent("9b", "Stretch & Restore", "12pm", "meditation"),
     makeEvent("9c", "Meditation", "1pm", "meditation"),
     makeEvent("9d", "Pilates", "3pm", "pilates"),
   ];
@@ -281,14 +282,14 @@ function generateMockEvents(): DayEvents {
     makeEvent("11a", "CLOSED", "", "closed", "", "", 0, 0, true),
   ];
   events[12] = [
-    makeEvent("12a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 32, 36),
+    makeEvent("12a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 32, 36),
     makeEvent("12b", "Meditation", "12am", "meditation"),
     makeEvent("12c", "Yoga", "1pm", "yoga"),
     makeEvent("12d", "HIIT", "2pm", "hiit"),
     makeEvent("12e", "Pilates", "3pm", "pilates"),
   ];
   events[13] = [
-    makeEvent("13a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 0, 36),
+    makeEvent("13a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 0, 36),
     makeEvent("13b", "Meditation", "12am", "meditation"),
     makeEvent("13c", "Yoga", "1pm", "yoga"),
     makeEvent("13d", "HIIT", "2pm", "hiit"),
@@ -306,7 +307,7 @@ function generateMockEvents(): DayEvents {
   events[15] = [
     makeEvent("15a", "Yoga", "11am", "yoga"),
     makeEvent("15b", "Meditation", "12am", "meditation"),
-    makeEvent("15c", "Power Yoga", "1pm", "power-yoga"),
+    makeEvent("15c", "Power Yoga", "1pm", "yoga"),
     makeEvent("15d", "HIIT", "2pm", "hiit"),
     makeEvent("15e", "Pilates", "3pm", "pilates"),
   ];
@@ -320,20 +321,20 @@ function generateMockEvents(): DayEvents {
   events[17] = [
     makeEvent("17a", "Yoga", "11am", "yoga"),
     makeEvent("17b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("17c", "Power Yoga", "1pm", "power-yoga"),
+    makeEvent("17c", "Power Yoga", "1pm", "yoga"),
     makeEvent("17d", "HIIT", "2pm", "hiit"),
     makeEvent("17e", "Meditation", "3pm", "meditation"),
   ];
   events[18] = [
-    makeEvent("18a", "Morning Yoga Reset", "11am", "morning-yoga"),
+    makeEvent("18a", "Morning Yoga Reset", "11am", "yoga"),
     makeEvent("18b", "Meditation", "12am", "meditation"),
     makeEvent("18c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("18d", "Power Yoga", "2pm", "power-yoga"),
+    makeEvent("18d", "Power Yoga", "2pm", "yoga"),
     makeEvent("18e", "HIIT", "3pm", "hiit"),
   ];
   events[19] = [
     makeEvent("19a", "Yoga", "11am", "yoga"),
-    makeEvent("19b", "Stretch & Restore", "12pm", "stretch"),
+    makeEvent("19b", "Stretch & Restore", "12pm", "meditation"),
     makeEvent("19c", "Meditation", "1pm", "meditation", "Sara Chen", "Studio A", 0, 20),
     makeEvent("19d", "HIIT", "2pm", "hiit"),
     makeEvent("19e", "Pilates", "3pm", "pilates"),
@@ -368,7 +369,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("23e", "Pilates", "3pm", "pilates"),
   ];
   events[24] = [
-    makeEvent("24a", "Morning Yoga Reset", "11am", "morning-yoga"),
+    makeEvent("24a", "Morning Yoga Reset", "11am", "yoga"),
     makeEvent("24b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("24c", "Yoga", "1pm", "yoga"),
     makeEvent("24d", "HIIT", "2pm", "hiit"),
@@ -388,7 +389,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("26e", "Pilates", "3pm", "pilates"),
   ];
   events[27] = [
-    makeEvent("27a", "Stretch & Restore", "12pm", "stretch", "Lisa Park", "Studio A", 0, 20),
+    makeEvent("27a", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 0, 20),
     makeEvent("27b", "Yoga", "1pm", "yoga"),
     makeEvent("27c", "Meditation", "2pm", "meditation"),
     makeEvent("27d", "HIIT", "3pm", "hiit"),
@@ -397,21 +398,24 @@ function generateMockEvents(): DayEvents {
   events[28] = [
     makeEvent("28a", "Yoga", "11am", "yoga"),
     makeEvent("28b", "Meditation", "12am", "meditation"),
-    makeEvent("28c", "Power Yoga", "2pm", "power-yoga"),
+    makeEvent("28c", "Power Yoga", "2pm", "yoga"),
     makeEvent("28d", "HIIT", "3pm", "hiit"),
+    makeEvent("28e", "Yoga", "4pm", "yoga"),
+    makeEvent("28f", "Pilates", "5pm", "pilates"),
+    makeEvent("28g", "HIIT", "6pm", "hiit"),
   ];
 
   // Week 5: days 29-31 (only render in months with 29+ days)
   events[29] = [
-    makeEvent("29a", "Morning Yoga Reset", "11am", "morning-yoga", "Alan Alda", "Studio B", 18, 36, false, false),
+    makeEvent("29a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 18, 36, false, false),
     makeEvent("29b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 14, 20, false, false),
     makeEvent("29c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 26, 36, false, false),
     makeEvent("29d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 22, 30, false, false),
     makeEvent("29e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 16, 24, false, false),
   ];
   events[30] = [
-    makeEvent("30a", "Power Yoga", "11am", "power-yoga", "Alan Alda", "Studio B", 30, 36, false, false),
-    makeEvent("30b", "Stretch & Restore", "12pm", "stretch", "Lisa Park", "Studio A", 8, 20, false, false),
+    makeEvent("30a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 30, 36, false, false),
+    makeEvent("30b", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 8, 20, false, false),
     makeEvent("30c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("30d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true),
     makeEvent("30e", "Meditation", "3pm", "meditation", "Sara Chen", "Studio A", 12, 20, false, false),
@@ -419,10 +423,121 @@ function generateMockEvents(): DayEvents {
   events[31] = [
     makeEvent("31a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 24, 36, false, false),
     makeEvent("31b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),
-    makeEvent("31c", "Power Yoga", "1pm", "power-yoga", "Alan Alda", "Studio B", 18, 36, false, false),
+    makeEvent("31c", "Power Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 18, 36, false, false),
     makeEvent("31d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 26, 30, false, false),
     makeEvent("31e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 20, 24, false, false),
   ];
+
+  // ── Post-process: distribute instructors and venues across realistic
+  // pools per reservation type. The original makeEvent calls used
+  // "Alan Alda" / "Studio B" as lazy defaults (and many were never
+  // overridden), which made the by-resource sort look like one giant
+  // Alan Alda / Studio B group. We override those values here based on
+  // a deterministic hash of the event id so the demo schedule has
+  // realistic variety while staying stable across renders.
+  const INSTRUCTORS_FOR: Partial<Record<ReservationType, string[]>> = {
+    yoga:       ["Alan Alda", "Derek Thompson", "Olivia Nguyen"],
+    meditation: ["Sara Chen", "James Kim"],
+    pilates:    ["Lisa Park", "Mia Rodriguez"],
+    hiit:       ["Marcus Jones", "Derek Thompson"],
+  };
+  const VENUES_FOR: Partial<Record<ReservationType, string[]>> = {
+    yoga:       ["Studio A", "Studio B", "Multipurpose Room"],
+    meditation: ["Studio A", "Studio B", "Multipurpose Room"],
+    pilates:    ["Studio A", "Multipurpose Room"],
+    hiit:       ["Gym Floor", "Multipurpose Room", "Court 1", "Court 2"],
+  };
+  const hashId = (id: string): number => {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  };
+  // Default capacity per reservation type — used when an event was
+  // created without explicit capacity. Reflects realistic studio sizing.
+  const CAPACITY_FOR: Partial<Record<ReservationType, number>> = {
+    yoga:       36,
+    meditation: 20,
+    pilates:    24,
+    hiit:       30,
+  };
+  // Pool of booking-level percentages. Spans nearly-empty through fully
+  // booked, weighted toward partially-full so the demo schedule looks
+  // active without every class showing the same "almost-full" state.
+  const BOOKING_LEVELS = [
+    0.15, 0.25, 0.35, 0.45, 0.50, 0.55, 0.60, 0.65,
+    0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0,
+  ];
+  // Per-day, per-type instructor/venue distribution. Within each
+  // day+type bucket we pick one of three modes deterministically:
+  //   0 = "all same"   → every session of that type on that day shares
+  //                      one instructor (or venue). Demonstrates the
+  //                      multi-sessions-per-resource case clearly when
+  //                      sorting by resource.
+  //   1 = "paired"     → consecutive pairs share, so a 3-session bucket
+  //                      becomes [A, A, B] etc.
+  //   2 = "distributed"→ round-robin across the pool — different
+  //                      resource for each session.
+  // This produces realistic variety: some days have busy instructors
+  // teaching multiple back-to-backs, others spread sessions across the
+  // staff, and the same is true for venues.
+  const pickIdx = (mode: number, base: number, i: number, poolSize: number): number => {
+    if (poolSize <= 0) return 0;
+    if (mode === 0) return base % poolSize;                      // all same
+    if (mode === 1) return (base + Math.floor(i / 2)) % poolSize; // paired
+    return (base + i) % poolSize;                                 // distributed
+  };
+  for (const dayKey of Object.keys(events)) {
+    const dayEvents = events[Number(dayKey)];
+
+    // Bucket non-closed/non-league events by type so we can pick a
+    // cluster mode per (day, type).
+    const byType: Map<ReservationType, CalendarEvent[]> = new Map();
+    for (const ev of dayEvents) {
+      if (ev.type === "closed") continue;
+      if (ev.type === "league") {
+        // Standardize league venue on a value that's also in
+        // VENUE_OPTIONS so the filter dropdown matches the data.
+        ev.venue = "Outdoor Field";
+        continue;
+      }
+      const arr = byType.get(ev.type) ?? [];
+      arr.push(ev);
+      byType.set(ev.type, arr);
+    }
+
+    for (const [type, evs] of byType.entries()) {
+      const insts = INSTRUCTORS_FOR[type];
+      const vens = VENUES_FOR[type];
+      const dayTypeHash = hashId(`${dayKey}-${type}`);
+      // Independent modes for instructor and venue so they don't lock
+      // together (e.g. avoid "all-same instructor always lines up with
+      // all-same venue").
+      const instMode = dayTypeHash % 3;
+      const venueMode = (hashId(`${dayKey}-${type}-v`)) % 3;
+      const instBase = dayTypeHash;
+      const venueBase = hashId(`${dayKey}-${type}-vbase`);
+
+      evs.forEach((ev, i) => {
+        if (insts && insts.length > 0) {
+          ev.instructor = insts[pickIdx(instMode, instBase, i, insts.length)];
+        }
+        if (vens && vens.length > 0) {
+          ev.venue = vens[pickIdx(venueMode, venueBase, i, vens.length)];
+        }
+
+        // Fill in capacity / booked when they weren't set explicitly
+        // (sentinel = -1). Hash the id with separate salts so capacity
+        // and booking level vary independently across events.
+        if (ev.capacity === -1) {
+          ev.capacity = CAPACITY_FOR[ev.type] ?? 30;
+        }
+        if (ev.booked === -1) {
+          const pct = BOOKING_LEVELS[hashId(ev.id + "b") % BOOKING_LEVELS.length];
+          ev.booked = Math.min(ev.capacity, Math.round(ev.capacity * pct));
+        }
+      });
+    }
+  }
 
   return events;
 }
@@ -1503,27 +1618,32 @@ function MobileReservationDetail({
 interface MobileToolbarProps {
   sc: SemanticColors;
   isDark: boolean;
+  /** Mini-calendar visibility. The Date button on the toolbar's left
+   *  acts as the toggle (the old standalone "calendar" icon button on
+   *  the right is gone — its job moved here). */
   showCalendar: boolean;
   onToggleCalendar: () => void;
+  /** Pre-formatted label for the Date button — single date or range.
+   *  e.g. "Tue, Apr 28" or "Apr 25 – May 2". */
+  dateButtonLabel: string;
   showSearch: boolean;
   setShowSearch: (show: boolean) => void;
   showFilter: boolean;
   setShowFilter: (show: boolean) => void;
-  showViewDropdown: boolean;
-  setShowViewDropdown: (show: boolean) => void;
-  currentView: string;
-  onChangeView: (view: string) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
-  /** Whether the user has navigated away from today (different month, year,
-   *  or selected day). When true, the Today button is rendered. */
+  /** Whether the user has navigated away from today. */
   showTodayButton: boolean;
-  /** Resets the calendar to the real-world current date. */
+  /** Resets the calendar to today and clears any active range. */
   onGoToToday: () => void;
-  /** Number of active filter dimensions — drives the count badge on
-   *  the Filters icon button so the user can see at a glance that the
-   *  calendar is showing a filtered subset (mirrors desktop). */
+  /** Active filter count for the Filters icon's badge. */
   activeFilterCount: number;
+  /** Current sort/grouping for the events list — opens via a
+   *  dropdown button in the toolbar. */
+  sortBy: "time" | "name" | "type" | "resource";
+  setSortBy: (s: "time" | "name" | "type" | "resource") => void;
+  showSortMenu: boolean;
+  setShowSortMenu: (show: boolean) => void;
 }
 
 function MobileToolbar({
@@ -1531,33 +1651,43 @@ function MobileToolbar({
   isDark,
   showCalendar,
   onToggleCalendar,
+  dateButtonLabel,
   showSearch,
   setShowSearch,
   showFilter,
   setShowFilter,
-  showViewDropdown,
-  setShowViewDropdown,
-  currentView,
-  onChangeView,
   searchQuery,
   setSearchQuery,
   showTodayButton,
   onGoToToday,
   activeFilterCount,
+  sortBy,
+  setSortBy,
+  showSortMenu,
+  setShowSortMenu,
 }: MobileToolbarProps) {
-  const viewDropdownRef = useRef<HTMLDivElement>(null);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
 
-  /* close dropdown on outside click */
+  // Close sort popover on outside click.
   useEffect(() => {
-    if (!showViewDropdown) return;
+    if (!showSortMenu) return;
     function handleClick(e: MouseEvent) {
-      if (viewDropdownRef.current && !viewDropdownRef.current.contains(e.target as Node)) {
-        setShowViewDropdown(false);
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setShowSortMenu(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [showViewDropdown, setShowViewDropdown]);
+  }, [showSortMenu, setShowSortMenu]);
+
+  const sortOptions: { value: "time" | "name" | "type" | "resource"; label: string }[] = [
+    { value: "time", label: "Time" },
+    { value: "name", label: "Reservation name" },
+    { value: "type", label: "Reservation type" },
+    { value: "resource", label: "Resource" },
+  ];
+  const sortLabel = sortOptions.find((o) => o.value === sortBy)?.label ?? "Time";
+  const isNonDefaultSort = sortBy !== "time";
 
   return (
     <>
@@ -1572,72 +1702,36 @@ function MobileToolbar({
           borderBottom: `1px solid ${sc.border}`,
         }}
       >
-        {/* View dropdown trigger + Today button */}
+        {/* Left group: Date button (label = selected date or range,
+            calendar icon prefix). Tapping it opens the mini calendar
+            so the user can pick a different date. The Today button
+            stays adjacent and only appears when the selection isn't
+            "just today". */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {/* View dropdown trigger — mirrors desktop "Month view" button */}
-          <div ref={viewDropdownRef} style={{ position: "relative" }}>
-            <button
-              onClick={() => setShowViewDropdown(!showViewDropdown)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "10px 16px",
-                borderRadius: "8px",
-                border: `1px solid ${sc.border}`,
-                background: sc.controlBg,
-                fontSize: "15px",
-                fontWeight: 500,
-                color: sc.body,
-                cursor: "pointer",
-                boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
-              }}
-            >
-              {currentView} <ChevronDown size={15} />
-            </button>
+          <button
+            onClick={onToggleCalendar}
+            aria-expanded={showCalendar}
+            aria-label="Pick date"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              border: `1px solid ${showCalendar ? sc.brand : sc.border}`,
+              background: showCalendar
+                ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+                : sc.controlBg,
+              fontSize: "15px",
+              fontWeight: 500,
+              color: showCalendar ? sc.brand : sc.body,
+              cursor: "pointer",
+              boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
+            }}
+          >
+            <CalendarIcon size={16} /> {dateButtonLabel}
+          </button>
 
-            {/* Dropdown options */}
-            {showViewDropdown && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 4px)",
-                  left: 0,
-                  minWidth: "160px",
-                  background: sc.cellBg,
-                  border: `1px solid ${sc.border}`,
-                  borderRadius: "8px",
-                  boxShadow: `0px 8px 16px -4px ${sc.shadow}`,
-                  padding: "4px",
-                  zIndex: 100,
-                }}
-              >
-                {["Monthly", "Weekly", "Daily", "Resources"].map((view) => (
-                  <div
-                    key={view}
-                    onClick={() => {
-                      onChangeView(view);
-                      setShowViewDropdown(false);
-                    }}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      background: view === currentView ? `${sc.brand}20` : "transparent",
-                      color: view === currentView ? sc.brand : sc.body,
-                    }}
-                  >
-                    {view}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* "Today" — only shown when the calendar isn't already on the
-              real-world current month/year/day. Clicking returns to today. */}
           {showTodayButton && (
             <button
               onClick={onGoToToday}
@@ -1660,29 +1754,99 @@ function MobileToolbar({
           )}
         </div>
 
-        {/* Right-side icon buttons — Calendar toggle / Search / Filter.
-            Add Reservation lives in the results-count row below
-            (alongside the Info legend button), so the toolbar's right
-            group stays purely view-navigation. */}
+        {/* Right-side icon buttons — Sort dropdown / Search /
+            Filter. The sort button replaces the previous "view by
+            resource" toggle: "Resource" is now one of the four sort
+            options instead of a separate layout. */}
         <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            onClick={onToggleCalendar}
-            aria-label="Toggle calendar"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "40px",
-              height: "40px",
-              borderRadius: "8px",
-              border: `1px solid ${showCalendar ? sc.brand : sc.border}`,
-              background: showCalendar ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)") : sc.controlBg,
-              cursor: "pointer",
-              color: showCalendar ? sc.brand : sc.body,
-            }}
-          >
-            <CalendarIcon size={18} />
-          </button>
+          <div ref={sortMenuRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              aria-expanded={showSortMenu}
+              aria-label={`Sort: ${sortLabel}`}
+              title={`Sort: ${sortLabel}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "40px",
+                height: "40px",
+                borderRadius: "8px",
+                border: `1px solid ${(showSortMenu || isNonDefaultSort) ? sc.brand : sc.border}`,
+                background: (showSortMenu || isNonDefaultSort)
+                  ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+                  : sc.controlBg,
+                cursor: "pointer",
+                color: (showSortMenu || isNonDefaultSort) ? sc.brand : sc.body,
+              }}
+            >
+              <ArrowUpDown size={18} />
+            </button>
+            {showSortMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  width: "220px",
+                  background: sc.cellBg,
+                  border: `1px solid ${sc.border}`,
+                  borderRadius: "10px",
+                  boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+                  padding: "6px",
+                  zIndex: 100,
+                  display: "flex",
+                  flexDirection: "column",
+                  fontFamily: "var(--font-family)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: sc.muted,
+                    padding: "6px 10px 4px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Sort by
+                </span>
+                {sortOptions.map((opt) => {
+                  const isActive = opt.value === sortBy;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setSortBy(opt.value);
+                        setShowSortMenu(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "8px 10px",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: isActive
+                          ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+                          : "transparent",
+                        color: isActive ? sc.brand : sc.body,
+                        fontSize: "13px",
+                        fontWeight: isActive ? 600 : 500,
+                        fontFamily: "var(--font-family)",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      {opt.label}
+                      {isActive && <span style={{ fontSize: "12px" }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setShowSearch(!showSearch)}
             aria-label="Search"
@@ -1804,10 +1968,16 @@ function MobileToolbar({
 interface MiniCalendarProps {
   currentMonth: number;
   currentYear: number;
-  selectedDate: number;
-  onSelectDate: (day: number) => void;
-  onPrevMonth: () => void;
-  onNextMonth: () => void;
+  /** Range-aware selection. `selectedEnd === null` means single date. */
+  selectedStart: Date;
+  selectedEnd: Date | null;
+  onSelectDay: (day: number) => void;
+  rangeMode: boolean;
+  onToggleRangeMode: () => void;
+  /** Open the month/year picker popover (replaces prev/next arrows). */
+  onPickMonth: (month: number, year: number) => void;
+  showMonthPicker: boolean;
+  setShowMonthPicker: (show: boolean) => void;
   sc: SemanticColors;
   isDark: boolean;
 }
@@ -1815,10 +1985,14 @@ interface MiniCalendarProps {
 function MiniCalendar({
   currentMonth,
   currentYear,
-  selectedDate,
-  onSelectDate,
-  onPrevMonth,
-  onNextMonth,
+  selectedStart,
+  selectedEnd,
+  onSelectDay,
+  rangeMode,
+  onToggleRangeMode,
+  onPickMonth,
+  showMonthPicker,
+  setShowMonthPicker,
   sc,
   isDark,
 }: MiniCalendarProps) {
@@ -1829,16 +2003,35 @@ function MiniCalendar({
   for (let i = 0; i < firstDay; i++) days.push(null);
   for (let day = 1; day <= daysInMonth; day++) days.push(day);
 
-  // Get all dates with events for current month, and the subset of those
-  // where every event is a closure (i.e. "closed all day"). Closed-all-day
-  // days get a gray dot rather than the brand-color one to signal that the
-  // facility isn't actually open that day, even though something is on the
-  // calendar.
   const datesWithEvents = Object.keys(MOCK_EVENTS).map((k) => parseInt(k));
   const closedAllDayDates = datesWithEvents.filter((d) => {
     const dayEvents = MOCK_EVENTS[d] ?? [];
     return dayEvents.length > 0 && dayEvents.every((e) => e.type === "closed");
   });
+
+  const monthPickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showMonthPicker) return;
+    function handleClick(e: MouseEvent) {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(e.target as Node)) {
+        setShowMonthPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showMonthPicker, setShowMonthPicker]);
+
+  // Helpers to compare a (month, day) cell against the selected start/end.
+  const cellToTime = (day: number) => new Date(currentYear, currentMonth, day).getTime();
+  const startTime = new Date(selectedStart.getFullYear(), selectedStart.getMonth(), selectedStart.getDate()).getTime();
+  const endTime = selectedEnd
+    ? new Date(selectedEnd.getFullYear(), selectedEnd.getMonth(), selectedEnd.getDate()).getTime()
+    : null;
+
+  const isStart = (day: number) => cellToTime(day) === startTime;
+  const isEnd = (day: number) => endTime !== null && cellToTime(day) === endTime;
+  const isInRange = (day: number) =>
+    endTime !== null && cellToTime(day) > startTime && cellToTime(day) < endTime;
 
   return (
     <div
@@ -1848,63 +2041,83 @@ function MiniCalendar({
         borderBottom: `1px solid ${sc.border}`,
       }}
     >
-      {/* Month navigation */}
+      {/* Header row — Month/Year picker trigger + Range mode toggle. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           marginBottom: "12px",
+          gap: "8px",
         }}
       >
+        <div ref={monthPickerRef} style={{ position: "relative" }}>
+          <button
+            onClick={() => setShowMonthPicker(!showMonthPicker)}
+            aria-expanded={showMonthPicker}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "6px 10px",
+              borderRadius: "6px",
+              border: `1px solid ${showMonthPicker ? sc.brand : "transparent"}`,
+              background: showMonthPicker
+                ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
+                : "transparent",
+              fontSize: "15px",
+              fontWeight: 600,
+              color: sc.heading,
+              cursor: "pointer",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            {MONTH_NAMES[currentMonth]} {currentYear}
+            <ChevronDown
+              size={14}
+              style={{
+                transform: showMonthPicker ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.15s ease",
+                color: sc.muted,
+              }}
+            />
+          </button>
+
+          {showMonthPicker && (
+            <MonthYearPicker
+              currentMonth={currentMonth}
+              currentYear={currentYear}
+              onPick={onPickMonth}
+              sc={sc}
+              isDark={isDark}
+            />
+          )}
+        </div>
+
+        {/* Range-mode toggle. When on, taps build a range; when off,
+            taps just set a single date. Toggling off resets back to
+            the current start as the single selection. */}
         <button
-          onClick={onPrevMonth}
+          onClick={onToggleRangeMode}
+          aria-pressed={rangeMode}
           style={{
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            justifyContent: "center",
-            width: "32px",
-            height: "32px",
-            borderRadius: "6px",
-            border: "none",
-            background: sc.brand,
-            color: isDark ? "#0a0e0f" : "#101828",
+            gap: "6px",
+            padding: "6px 10px",
+            borderRadius: "999px",
+            border: `1px solid ${rangeMode ? sc.brand : sc.border}`,
+            background: rangeMode
+              ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+              : "transparent",
+            fontSize: "12px",
+            fontWeight: 600,
+            color: rangeMode ? sc.brand : sc.body,
             cursor: "pointer",
-            fontSize: "14px",
-            fontWeight: 600,
+            fontFamily: "var(--font-family)",
           }}
         >
-          <ChevronLeft size={16} />
-        </button>
-        <span
-          style={{
-            fontSize: "14px",
-            fontWeight: 600,
-            color: sc.heading,
-            minWidth: "140px",
-            textAlign: "center",
-          }}
-        >
-          {MONTH_NAMES[currentMonth]} {currentYear}
-        </span>
-        <button
-          onClick={onNextMonth}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "32px",
-            height: "32px",
-            borderRadius: "6px",
-            border: "none",
-            background: sc.brand,
-            color: isDark ? "#0a0e0f" : "#101828",
-            cursor: "pointer",
-            fontSize: "14px",
-            fontWeight: 600,
-          }}
-        >
-          <ChevronRight size={16} />
+          Date range
         </button>
       </div>
 
@@ -1947,12 +2160,15 @@ function MiniCalendar({
         {days.map((day, idx) => {
           const hasEvents = day !== null && datesWithEvents.includes(day);
           const isClosedAllDay = day !== null && closedAllDayDates.includes(day);
-          const isSelected = day === selectedDate;
+          const cellIsStart = day !== null && isStart(day);
+          const cellIsEnd = day !== null && isEnd(day);
+          const cellInRange = day !== null && isInRange(day);
+          const cellSelected = cellIsStart || cellIsEnd;
 
           return (
             <div
               key={idx}
-              onClick={() => day !== null && onSelectDate(day)}
+              onClick={() => day !== null && onSelectDay(day)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1962,8 +2178,12 @@ function MiniCalendar({
                 height: "42px",
                 borderRadius: "50%",
                 cursor: day !== null ? "pointer" : "default",
-                background: isSelected ? sc.brand : "transparent",
-                color: isSelected
+                background: cellSelected
+                  ? sc.brand
+                  : cellInRange
+                  ? (isDark ? "rgba(0,196,160,0.18)" : "rgba(0,196,160,0.14)")
+                  : "transparent",
+                color: cellSelected
                   ? isDark ? "#0a0e0f" : "#ffffff"
                   : day !== null
                     ? sc.heading
@@ -1974,7 +2194,7 @@ function MiniCalendar({
               }}
             >
               {day}
-              {hasEvents && !isSelected && (
+              {hasEvents && !cellSelected && (
                 <div
                   style={{
                     position: "absolute",
@@ -1994,20 +2214,135 @@ function MiniCalendar({
   );
 }
 
+/* ─── Month / Year picker popover (used by MiniCalendar header). ─── */
+function MonthYearPicker({
+  currentMonth,
+  currentYear,
+  onPick,
+  sc,
+  isDark,
+}: {
+  currentMonth: number;
+  currentYear: number;
+  onPick: (month: number, year: number) => void;
+  sc: SemanticColors;
+  isDark: boolean;
+}) {
+  const [pickerYear, setPickerYear] = useState(currentYear);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "calc(100% + 6px)",
+        left: 0,
+        width: "260px",
+        background: sc.cellBg,
+        border: `1px solid ${sc.border}`,
+        borderRadius: "10px",
+        boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+        padding: "12px",
+        zIndex: 200,
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        fontFamily: "var(--font-family)",
+      }}
+    >
+      {/* Year stepper */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          onClick={() => setPickerYear((y) => y - 1)}
+          aria-label="Previous year"
+          style={{
+            width: "28px",
+            height: "28px",
+            borderRadius: "6px",
+            border: `1px solid ${sc.border}`,
+            background: sc.controlBg,
+            color: sc.body,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ChevronLeft size={14} />
+        </button>
+        <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>{pickerYear}</span>
+        <button
+          onClick={() => setPickerYear((y) => y + 1)}
+          aria-label="Next year"
+          style={{
+            width: "28px",
+            height: "28px",
+            borderRadius: "6px",
+            border: `1px solid ${sc.border}`,
+            background: sc.controlBg,
+            color: sc.body,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      {/* 12-month grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "6px" }}>
+        {MONTH_NAMES.map((name, idx) => {
+          const isCurrent = idx === currentMonth && pickerYear === currentYear;
+          return (
+            <button
+              key={name}
+              onClick={() => onPick(idx, pickerYear)}
+              style={{
+                padding: "8px 4px",
+                borderRadius: "6px",
+                border: `1px solid ${isCurrent ? sc.brand : "transparent"}`,
+                background: isCurrent
+                  ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+                  : "transparent",
+                color: isCurrent ? sc.brand : sc.body,
+                fontSize: "13px",
+                fontWeight: 500,
+                fontFamily: "var(--font-family)",
+                cursor: "pointer",
+              }}
+            >
+              {name.slice(0, 3)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface MobileEventRowProps {
   event: CalendarEvent;
+  /** When set, renders a small date prefix above the row so the user
+   *  can tell which day in a multi-day range the event falls on. */
+  dateLabel?: string;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
   onClick: () => void;
+  /** Hide the instructor/venue middle column. Used when the row is
+   *  rendered inside a ResourceGroup, where the resource it belongs
+   *  to is already shown in the dedicated left column. */
+  hideMiddleColumn?: boolean;
 }
 
 function MobileEventRow({
   event,
+  dateLabel,
   sc,
   colors,
   isDark,
   onClick,
+  hideMiddleColumn = false,
 }: MobileEventRowProps) {
   const style = colors[event.type] || colors.yoga;
   const available = Math.max(0, event.capacity - event.booked);
@@ -2064,7 +2399,7 @@ function MobileEventRow({
         alignItems: "center",
         gap: "12px",
         padding: "12px 16px",
-        borderBottom: `1px solid ${sc.border}`,
+        borderBottom: hideMiddleColumn ? "none" : `1px solid ${sc.border}`,
         cursor: "pointer",
       }}
     >
@@ -2096,6 +2431,20 @@ function MobileEventRow({
             minWidth: 0,
           }}
         >
+          {dateLabel && (
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: sc.muted,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                lineHeight: 1.2,
+              }}
+            >
+              {dateLabel}
+            </span>
+          )}
           <div
             style={{
               display: "flex",
@@ -2139,7 +2488,11 @@ function MobileEventRow({
         </div>
       </div>
 
-      {/* Middle: instructor + venue — fixed-position column */}
+      {/* Middle: instructor + venue — hidden when the row sits inside
+          a ResourceGroup (the resource is shown in the group's left
+          column there, so repeating it here would just add visual
+          noise). */}
+      {!hideMiddleColumn && (
       <div
         style={{
           display: "flex",
@@ -2175,6 +2528,7 @@ function MobileEventRow({
           {event.venue}
         </span>
       </div>
+      )}
 
       {/* Right: status button — fixed width so columns don't shift */}
       <div style={{ width: "62px", flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
@@ -2193,8 +2547,116 @@ function MobileEventRow({
   );
 }
 
+/* ─── ResourceGroup — used by MobileEventList when sortBy="resource".
+   Renders a group title (e.g. "By Instructor") followed by a series
+   of sub-headers (one per resource, alphabetized) with their events
+   stacked beneath. Same MobileEventRow used for each event so the
+   row content stays consistent across sort modes. */
+function ResourceGroup({
+  title,
+  resourceKeys,
+  bucket,
+  showDate,
+  sc,
+  colors,
+  isDark,
+  onSelectEvent,
+}: {
+  title: string;
+  resourceKeys: string[];
+  bucket: Map<string, { event: CalendarEvent; date: Date }[]>;
+  showDate: boolean;
+  sc: SemanticColors;
+  colors: Record<ReservationType, BadgeColors>;
+  isDark: boolean;
+  onSelectEvent: (event: CalendarEvent) => void;
+}) {
+  return (
+    <div>
+      {/* Group section header — renders once per group (instructors,
+          venues). The brand-tinted background separates the two
+          stacked groups visually so the user can tell where the
+          instructor list ends and the venue list begins. */}
+      <div
+        style={{
+          padding: "10px 16px",
+          background: isDark ? "rgba(0,196,160,0.06)" : "rgba(0,196,160,0.04)",
+          borderTop: `1px solid ${sc.border}`,
+          borderBottom: `1px solid ${sc.border}`,
+          fontSize: "11px",
+          fontWeight: 700,
+          color: sc.brand,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          fontFamily: "var(--font-family)",
+        }}
+      >
+        {title}
+      </div>
+      {/* Each resource is a horizontal row: name in a fixed-width left
+          column (subtly tinted so it reads as a separate region), the
+          resource's events stacked in the column to its right. The row
+          uses align-items:stretch so the name cell visually spans the
+          full height of its events block. */}
+      {resourceKeys.map((key, rowIdx) => (
+        <div
+          key={`${title}-${key}`}
+          style={{
+            display: "flex",
+            alignItems: "stretch",
+            borderTop: rowIdx === 0 ? "none" : `1px solid ${sc.border}`,
+          }}
+        >
+          {/* Left column: resource name. */}
+          <div
+            style={{
+              width: "104px",
+              flexShrink: 0,
+              padding: "12px 10px",
+              borderRight: `1px solid ${sc.border}`,
+              background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: sc.heading,
+              fontFamily: "var(--font-family)",
+              lineHeight: 1.3,
+              wordBreak: "break-word",
+            }}
+          >
+            {key}
+          </div>
+
+          {/* Right column: events for this resource. */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {(bucket.get(key) ?? []).map((item, evIdx) => (
+              <div
+                key={`${title}-${key}-${item.event.id}-${item.date.getTime()}`}
+                style={{
+                  borderTop: evIdx === 0 ? "none" : `1px solid ${sc.border}`,
+                }}
+              >
+                <MobileEventRow
+                  event={item.event}
+                  dateLabel={showDate ? item.date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : undefined}
+                  sc={sc}
+                  colors={colors}
+                  isDark={isDark}
+                  onClick={() => onSelectEvent(item.event)}
+                  hideMiddleColumn
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface MobileEventListProps {
-  selectedDate: number;
+  /** Selection — supports a single date (selectedEnd null) or a range. */
+  selectedStart: Date;
+  selectedEnd: Date | null;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
@@ -2208,10 +2670,24 @@ interface MobileEventListProps {
    *  sits immediately after the count text. */
   showLegend: boolean;
   setShowLegend: (show: boolean) => void;
+  /** How to sort/group the events list. */
+  sortBy: "time" | "name" | "type" | "resource";
+}
+
+// Stable display order for "sort by reservation type" — alphabetical
+// by display label. Closures are excluded since they're shown in a
+// dedicated section above the sorted list.
+const TYPE_SORT_ORDER: ReservationType[] = ["hiit", "league", "meditation", "pilates", "yoga"];
+
+// Strip out placeholder values like "—" or "" that mean "no resource".
+function isRealResource(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed !== "" && trimmed !== "—";
 }
 
 function MobileEventList({
-  selectedDate,
+  selectedStart,
+  selectedEnd,
   sc,
   colors,
   isDark,
@@ -2221,6 +2697,7 @@ function MobileEventList({
   searchQuery,
   showLegend,
   setShowLegend,
+  sortBy,
 }: MobileEventListProps) {
   const legendRef = useRef<HTMLDivElement>(null);
 
@@ -2235,15 +2712,105 @@ function MobileEventList({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showLegend, setShowLegend]);
+
+  // Walk every day in the selected range (inclusive on both ends) and
+  // collect each event with the date it occurs on. When selectedEnd is
+  // null the range collapses to a single day.
   const source = eventsByDay ?? MOCK_EVENTS;
-  const events = source[selectedDate] || [];
-  const closedEvents = events.filter((e) => e.type === "closed");
-  const nonClosedEvents = events.filter((e) => e.type !== "closed");
-  // Disable Add Reservation on any day with a closure on the books —
-  // for now the mock data only has all-day closures, so any closed
-  // entry blocks new reservations on that day.
-  const isClosed = closedEvents.length > 0;
+  const datedEvents: { event: CalendarEvent; date: Date }[] = [];
+  {
+    const start = new Date(selectedStart.getFullYear(), selectedStart.getMonth(), selectedStart.getDate());
+    const end = selectedEnd
+      ? new Date(selectedEnd.getFullYear(), selectedEnd.getMonth(), selectedEnd.getDate())
+      : start;
+    const cursor = new Date(start);
+    while (cursor.getTime() <= end.getTime()) {
+      const day = cursor.getDate();
+      const dayEvents = source[day] ?? [];
+      for (const ev of dayEvents) {
+        datedEvents.push({ event: ev, date: new Date(cursor) });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+  const closedItems = datedEvents.filter((d) => d.event.type === "closed");
+  const nonClosedItems = datedEvents.filter((d) => d.event.type !== "closed");
+
+  // Disable Add Reservation when ANY day in the range has a closure
+  // (mock data is currently all-day closures only).
+  const isClosed = closedItems.length > 0;
   const isFiltering = !!(searchQuery && searchQuery.trim());
+
+  // Apply sort. "resource" is special — it returns a grouped layout
+  // (handled separately below); the other three sorts produce a flat
+  // ordered list.
+  const sortedFlat: { event: CalendarEvent; date: Date }[] = [...nonClosedItems];
+  if (sortBy === "time") {
+    sortedFlat.sort((a, b) => {
+      const ad = a.date.getTime() - b.date.getTime();
+      if (ad !== 0) return ad;
+      return parseEventTimeToMinutes(a.event.time) - parseEventTimeToMinutes(b.event.time);
+    });
+  } else if (sortBy === "name") {
+    sortedFlat.sort((a, b) => a.event.title.localeCompare(b.event.title, undefined, { sensitivity: "base" }));
+  } else if (sortBy === "type") {
+    sortedFlat.sort((a, b) => {
+      const ai = TYPE_SORT_ORDER.indexOf(a.event.type as ReservationType);
+      const bi = TYPE_SORT_ORDER.indexOf(b.event.type as ReservationType);
+      const aRank = ai === -1 ? 999 : ai;
+      const bRank = bi === -1 ? 999 : bi;
+      if (aRank !== bRank) return aRank - bRank;
+      // Tie-breaker: earlier date, then earlier time
+      const dd = a.date.getTime() - b.date.getTime();
+      if (dd !== 0) return dd;
+      return parseEventTimeToMinutes(a.event.time) - parseEventTimeToMinutes(b.event.time);
+    });
+  }
+
+  // For the "resource" sort, build two grouped maps — one keyed by
+  // instructor, one keyed by venue. An event with N instructors and
+  // M venues appears N times in the instructor group and M times in
+  // the venue group, so the two halves often overlap. Closures and
+  // empty/placeholder resource values are skipped.
+  const byInstructor = new Map<string, { event: CalendarEvent; date: Date }[]>();
+  const byVenue = new Map<string, { event: CalendarEvent; date: Date }[]>();
+  if (sortBy === "resource") {
+    for (const item of nonClosedItems) {
+      const inst = item.event.instructor;
+      if (isRealResource(inst)) {
+        if (!byInstructor.has(inst)) byInstructor.set(inst, []);
+        byInstructor.get(inst)!.push(item);
+      }
+      const ven = item.event.venue;
+      if (isRealResource(ven)) {
+        if (!byVenue.has(ven)) byVenue.set(ven, []);
+        byVenue.get(ven)!.push(item);
+      }
+    }
+    // Within each resource bucket, sort by date+time so each grouping
+    // is internally chronological.
+    const sortByDateTime = (a: { event: CalendarEvent; date: Date }, b: { event: CalendarEvent; date: Date }) => {
+      const dd = a.date.getTime() - b.date.getTime();
+      if (dd !== 0) return dd;
+      return parseEventTimeToMinutes(a.event.time) - parseEventTimeToMinutes(b.event.time);
+    };
+    for (const arr of byInstructor.values()) arr.sort(sortByDateTime);
+    for (const arr of byVenue.values()) arr.sort(sortByDateTime);
+  }
+  // Instructors are listed by last name (the convention for people
+  // lists) — venues stay alphabetical by full string. Last-name
+  // extraction takes the final whitespace-separated token; same-last-
+  // name ties fall back to the full string so "Anna Park" sorts
+  // before "Lisa Park".
+  const lastNameOf = (full: string): string => {
+    const parts = full.trim().split(/\s+/);
+    return parts[parts.length - 1] || full;
+  };
+  const instructorKeys = [...byInstructor.keys()].sort((a, b) => {
+    const byLast = lastNameOf(a).localeCompare(lastNameOf(b), undefined, { sensitivity: "base" });
+    return byLast !== 0 ? byLast : a.localeCompare(b);
+  });
+  const venueKeys = [...byVenue.keys()].sort((a, b) => a.localeCompare(b));
 
   return (
     <div
@@ -2321,12 +2888,15 @@ function MobileEventList({
                   Legend
                 </span>
                 {[
-                  { type: "yoga" as ReservationType, label: "Yoga / Power Yoga / Morning Yoga" },
-                  { type: "meditation" as ReservationType, label: "Meditation / Stretch & Restore" },
-                  { type: "pilates" as ReservationType, label: "Pilates" },
+                  // Alphabetized by label. Specific session names like
+                  // "Power Yoga" or "Stretch & Restore" aren't listed —
+                  // those are session titles, not reservation types.
+                  { type: "closed" as ReservationType, label: "Closed" },
                   { type: "hiit" as ReservationType, label: "HIIT" },
                   { type: "league" as ReservationType, label: "League Game" },
-                  { type: "closed" as ReservationType, label: "Closed" },
+                  { type: "meditation" as ReservationType, label: "Meditation" },
+                  { type: "pilates" as ReservationType, label: "Pilates" },
+                  { type: "yoga" as ReservationType, label: "Yoga" },
                 ].map((row) => {
                   const c = colors[row.type];
                   return (
@@ -2362,7 +2932,7 @@ function MobileEventList({
               color: sc.body,
             }}
           >
-            Found {nonClosedEvents.length} reservation(s)
+            Found {nonClosedItems.length} reservation(s)
           </span>
         </div>
         {/* Add Reservation — back in its original spot on the right of
@@ -2397,10 +2967,12 @@ function MobileEventList({
           overflow: "auto",
         }}
       >
-        {/* Closures rendered first as a minimal row (no time / instructor / button). */}
-        {closedEvents.map((event) => (
+        {/* Closures rendered first as a minimal row. In range mode
+            each closure shows the date it falls on so the user can
+            tell them apart. */}
+        {closedItems.map((item, i) => (
           <div
-            key={event.id}
+            key={`${item.event.id}-${item.date.getTime()}`}
             style={{
               display: "flex",
               alignItems: "center",
@@ -2420,35 +2992,71 @@ function MobileEventList({
             />
             <span style={{ fontSize: "13px", fontWeight: 700, color: sc.heading }}>
               Closed all day
+              {selectedEnd ? ` · ${item.date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}` : ""}
             </span>
+            {/* Spacing key for stable map render */}
+            <span style={{ display: "none" }}>{i}</span>
           </div>
         ))}
 
-        {nonClosedEvents.length > 0
-          ? nonClosedEvents.map((event) => (
-              <MobileEventRow
-                key={event.id}
-                event={event}
-                sc={sc}
-                colors={colors}
-                isDark={isDark}
-                onClick={() => onSelectEvent(event)}
-              />
-            ))
-          : closedEvents.length === 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "120px",
-                  color: sc.muted,
-                  fontSize: "14px",
-                }}
-              >
-                {isFiltering ? "No events match your search" : "No events on this date"}
+        {/* Resource sort = two stacked groups (instructors, then
+            venues), each alphabetized. Other sorts produce a flat
+            list. Each item carries its date so we can prefix it in
+            range mode. */}
+        {sortBy === "resource" ? (
+          (instructorKeys.length === 0 && venueKeys.length === 0) ? (
+            closedItems.length === 0 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "120px", color: sc.muted, fontSize: "14px" }}>
+                {isFiltering ? "No events match your search" : "No events in this date range"}
               </div>
-            )}
+            )
+          ) : (
+            <>
+              {instructorKeys.length > 0 && (
+                <ResourceGroup
+                  title="By Instructor"
+                  resourceKeys={instructorKeys}
+                  bucket={byInstructor}
+                  showDate={!!selectedEnd}
+                  sc={sc}
+                  colors={colors}
+                  isDark={isDark}
+                  onSelectEvent={onSelectEvent}
+                />
+              )}
+              {venueKeys.length > 0 && (
+                <ResourceGroup
+                  title="By Venue"
+                  resourceKeys={venueKeys}
+                  bucket={byVenue}
+                  showDate={!!selectedEnd}
+                  sc={sc}
+                  colors={colors}
+                  isDark={isDark}
+                  onSelectEvent={onSelectEvent}
+                />
+              )}
+            </>
+          )
+        ) : sortedFlat.length > 0 ? (
+          sortedFlat.map((item) => (
+            <MobileEventRow
+              key={`${item.event.id}-${item.date.getTime()}`}
+              event={item.event}
+              dateLabel={selectedEnd ? item.date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : undefined}
+              sc={sc}
+              colors={colors}
+              isDark={isDark}
+              onClick={() => onSelectEvent(item.event)}
+            />
+          ))
+        ) : (
+          closedItems.length === 0 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "120px", color: sc.muted, fontSize: "14px" }}>
+              {isFiltering ? "No events match your search" : (selectedEnd ? "No events in this date range" : "No events on this date")}
+            </div>
+          )
+        )}
       </div>
     </div>
   );
@@ -2507,12 +3115,32 @@ function MobileScheduleView({
 
   const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
-  const [selectedDate, setSelectedDate] = useState(() => new Date().getDate());
-  const [currentView, setCurrentView] = useState("Monthly");
+  // Selected date(s). When `selectedEnd` is null the user is viewing a
+  // single day; when set, they're viewing a range. Range mode is
+  // opt-in via a toggle inside the mini calendar — by default tapping
+  // a day just sets `selectedStart` and clears `selectedEnd`.
+  const [selectedStart, setSelectedStart] = useState<Date>(() => {
+    const t = new Date();
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  });
+  const [selectedEnd, setSelectedEnd] = useState<Date | null>(null);
+  const [rangeMode, setRangeMode] = useState(false);
+  // How the events list is sorted/grouped. "time" is the default
+  // (chronological). "resource" is special: it splits the list into
+  // two stacked groups (by instructor, by venue), each alphabetized
+  // and with events filed under every resource they reference — so a
+  // session with one instructor + one venue appears once in each group.
+  const [sortBy, setSortBy] = useState<"time" | "name" | "type" | "resource">("time");
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
-  const [showCalendar, setShowCalendar] = useState(true);
-  const [showViewDropdown, setShowViewDropdown] = useState(false);
+  // Mini calendar visibility — toggled by tapping the Date button in
+  // the toolbar (which replaced the old "Monthly" view dropdown).
+  const [showCalendar, setShowCalendar] = useState(false);
+  // Month/year picker popover — opens when the user taps the month
+  // name in the mini calendar header (replacing the old prev/next
+  // arrows).
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   // Color-by-type legend popover. On mobile the Info button lives in
@@ -2594,44 +3222,104 @@ function MobileScheduleView({
     setShowCalendar((v) => !v);
   }, []);
 
-  const handlePrevMonth = useCallback(() => {
-    setCurrentMonth((m) => {
-      if (m === 0) {
-        setCurrentYear((y) => y - 1);
-        return 11;
-      }
-      return m - 1;
-    });
-  }, []);
-
-  const handleNextMonth = useCallback(() => {
-    setCurrentMonth((m) => {
-      if (m === 11) {
-        setCurrentYear((y) => y + 1);
-        return 0;
-      }
-      return m + 1;
-    });
-  }, []);
-
-  // "Today" — jumps the calendar back to the real-world current month/year
-  // AND sets the selected day to today's date. Mobile selects a specific day
-  // (unlike desktop, which only navigates by month), so we sync all three.
+  // "Today" — jumps the calendar back to the real-world current
+  // month/year AND sets the selected start to today, clearing any
+  // active range. Single-date semantics for the Today button.
   const handleGoToToday = useCallback(() => {
     const now = new Date();
+    const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     setCurrentMonth(now.getMonth());
     setCurrentYear(now.getFullYear());
-    setSelectedDate(now.getDate());
+    setSelectedStart(today0);
+    setSelectedEnd(null);
+    setRangeMode(false);
   }, []);
 
-  // The Today button shows whenever the user has navigated away from today —
-  // either to a different month/year or to a different day within the
-  // current month.
+  // The Today button shows whenever the selection is anything other
+  // than just today (different month/year, different day, or an
+  // active range).
   const today = new Date();
+  const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+  const startKey = `${selectedStart.getFullYear()}-${selectedStart.getMonth()}-${selectedStart.getDate()}`;
   const isViewingToday =
+    !selectedEnd &&
+    startKey === todayKey &&
     currentMonth === today.getMonth() &&
-    currentYear === today.getFullYear() &&
-    selectedDate === today.getDate();
+    currentYear === today.getFullYear();
+
+  // Format the Date button label. Single date → "Tue, Apr 28";
+  // range → "Apr 25 – May 2" (or include year if start/end span
+  // years).
+  const formatDateButton = (): string => {
+    const fmtSingle = (d: Date) =>
+      d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    if (!selectedEnd) return fmtSingle(selectedStart);
+    const fmtShort = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const fmtFull = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    if (selectedStart.getFullYear() === selectedEnd.getFullYear()) {
+      return `${fmtShort(selectedStart)} – ${fmtShort(selectedEnd)}`;
+    }
+    return `${fmtFull(selectedStart)} – ${fmtFull(selectedEnd)}`;
+  };
+
+  // Day-tap handler from the mini calendar. In single mode, just
+  // updates `selectedStart` and clears any prior end. In range mode,
+  // the first tap sets start (clears end); the second tap fills in
+  // end (auto-swapping if the user picked a date earlier than start);
+  // a third tap restarts the range.
+  const handleSelectDay = useCallback(
+    (day: number) => {
+      const picked = new Date(currentYear, currentMonth, day);
+      if (!rangeMode) {
+        setSelectedStart(picked);
+        setSelectedEnd(null);
+        return;
+      }
+      // Range mode
+      if (!selectedEnd) {
+        // We have only a start. Treat this tap as the end (or restart
+        // if the user re-tapped the same day).
+        if (picked.getTime() === selectedStart.getTime()) {
+          // re-tapped same day → leave as single until user taps a
+          // different day
+          return;
+        }
+        if (picked < selectedStart) {
+          // User picked an earlier day — swap
+          setSelectedEnd(selectedStart);
+          setSelectedStart(picked);
+        } else {
+          setSelectedEnd(picked);
+        }
+      } else {
+        // Range already set — restart with this tap as the new start.
+        setSelectedStart(picked);
+        setSelectedEnd(null);
+      }
+    },
+    [currentYear, currentMonth, rangeMode, selectedStart, selectedEnd]
+  );
+
+  // Toggle between single-date and range selection. Turning range
+  // mode off keeps the existing start as the active single date.
+  const handleToggleRangeMode = useCallback(() => {
+    setRangeMode((prev) => {
+      if (prev) {
+        // Switching off range mode → drop the end so the selection
+        // collapses back to a single date (the start).
+        setSelectedEnd(null);
+      }
+      return !prev;
+    });
+  }, []);
+
+  // Month/year picker handlers (replaces the old prev/next month
+  // arrow buttons in the mini calendar header).
+  const handlePickMonth = useCallback((month: number, year: number) => {
+    setCurrentMonth(month);
+    setCurrentYear(year);
+    setShowMonthPicker(false);
+  }, []);
 
   const handleSelectEvent = useCallback(
     (event: CalendarEvent) => {
@@ -2671,19 +3359,20 @@ function MobileScheduleView({
         isDark={isDark}
         showCalendar={showCalendar}
         onToggleCalendar={handleToggleCalendar}
+        dateButtonLabel={formatDateButton()}
         showSearch={showSearch}
         setShowSearch={setShowSearch}
         showFilter={showFilter}
         setShowFilter={setShowFilter}
-        showViewDropdown={showViewDropdown}
-        setShowViewDropdown={setShowViewDropdown}
-        currentView={currentView}
-        onChangeView={setCurrentView}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         showTodayButton={!isViewingToday}
         onGoToToday={handleGoToToday}
         activeFilterCount={activeFilterCount}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        showSortMenu={showSortMenu}
+        setShowSortMenu={setShowSortMenu}
       />
 
       {/* Filters drawer — same content as the desktop popover. The
@@ -2731,21 +3420,30 @@ function MobileScheduleView({
         </div>
       )}
 
-      {/* Mini Calendar — toggleable via toolbar button */}
-      {showCalendar && <MiniCalendar
-        currentMonth={currentMonth}
-        currentYear={currentYear}
-        selectedDate={selectedDate}
-        onSelectDate={setSelectedDate}
-        onPrevMonth={handlePrevMonth}
-        onNextMonth={handleNextMonth}
-        sc={sc}
-        isDark={isDark}
-      />}
+      {/* Mini Calendar — opens via the Date button in the toolbar.
+          Range-aware; month/year picker replaces prev/next arrows. */}
+      {showCalendar && (
+        <MiniCalendar
+          currentMonth={currentMonth}
+          currentYear={currentYear}
+          selectedStart={selectedStart}
+          selectedEnd={selectedEnd}
+          onSelectDay={handleSelectDay}
+          rangeMode={rangeMode}
+          onToggleRangeMode={handleToggleRangeMode}
+          onPickMonth={handlePickMonth}
+          showMonthPicker={showMonthPicker}
+          setShowMonthPicker={setShowMonthPicker}
+          sc={sc}
+          isDark={isDark}
+        />
+      )}
 
-      {/* Event List */}
+      {/* Event List — single date or range; sortBy controls the
+          flat-vs-grouped rendering inside. */}
       <MobileEventList
-        selectedDate={selectedDate}
+        selectedStart={selectedStart}
+        selectedEnd={selectedEnd}
         sc={sc}
         colors={colors}
         isDark={isDark}
@@ -2755,13 +3453,14 @@ function MobileScheduleView({
         searchQuery={searchQuery}
         showLegend={showLegend}
         setShowLegend={setShowLegend}
+        sortBy={sortBy}
       />
 
       {/* Full-page reservation detail */}
       {selectedEvent && (
         <MobileReservationDetail
           event={selectedEvent}
-          day={selectedDate}
+          day={selectedStart.getDate()}
           month={currentMonth}
           year={currentYear}
           onClose={handleCloseDetail}
@@ -2779,36 +3478,43 @@ function MobileScheduleView({
    MOCK DATA — Venues, Instructors, Reservation types
    ═══════════════════════════════════════════════════════════════════════ */
 
+// Lists are pre-sorted alphabetically so SearchableMultiSelect /
+// dropdown menus render in a predictable order without runtime sorting.
 const VENUE_OPTIONS = [
-  "Studio A",
-  "Studio B",
-  "Gym Floor",
-  "Outdoor Field",
-  "Pool Deck",
   "Court 1",
   "Court 2",
+  "Gym Floor",
   "Multipurpose Room",
+  "Outdoor Field",
+  "Pool Deck",
+  "Studio A",
+  "Studio B",
 ];
 
 const INSTRUCTOR_OPTIONS = [
   "Alan Alda",
-  "Sara Chen",
-  "Marcus Jones",
-  "Lisa Park",
   "Derek Thompson",
-  "Mia Rodriguez",
   "James Kim",
+  "Lisa Park",
+  "Marcus Jones",
+  "Mia Rodriguez",
   "Olivia Nguyen",
+  "Sara Chen",
 ];
 
+// Activity categories for the form's "Reservation type" select.
+// Mirrors the calendar's ReservationType enum (yoga / meditation /
+// pilates / hiit / league). "Group Class" was dropped because most
+// events are group classes by default; class size = 1 implies a
+// private session without needing its own type. Session-specific
+// names like "Power Yoga" or "Stretch & Restore" go in the title
+// field, not here.
 const RESERVATION_TYPE_OPTIONS = [
-  "Group Class",
-  "Private Session",
-  "Open Gym",
+  "HIIT",
   "League Game",
-  "Tournament",
-  "Workshop",
-  "Camp",
+  "Meditation",
+  "Pilates",
+  "Yoga",
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -3319,7 +4025,16 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const initRecurring = "no";
   const initVenues = event.venue ? [event.venue] : [];
   const initInstructors = event.instructor ? [event.instructor] : [];
-  const initReservationType = event.type === "league" ? "League Game" : "Group Class";
+  // Derive the form's "Reservation type" value from the event's
+  // category — Power Yoga the session is a "Yoga" reservation type,
+  // Stretch & Restore is "Meditation", and so on.
+  const initReservationType =
+    event.type === "league" ? "League Game"
+      : event.type === "hiit" ? "HIIT"
+      : event.type === "meditation" ? "Meditation"
+      : event.type === "pilates" ? "Pilates"
+      : event.type === "yoga" ? "Yoga"
+      : "";
   const initTitle = event.title;
   const initStartDate = new Date().toISOString().slice(0, 10);
   const initEndDate = new Date().toISOString().slice(0, 10);
@@ -3691,6 +4406,48 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         </div>
       )}
 
+      {/* ── League games — no edit / book affordances. Bar mirrors
+          the availability bar's structure: contextual content on the
+          left (Trophy icon + "Managed in EZLeagues" line so the user
+          understands why the button leads elsewhere) and the action
+          button on the right. */}
+      {event.type === "league" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "10px 14px", borderRadius: "8px", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", border: `1px solid ${palette.borderLight}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+            <Trophy size={16} style={{ color: palette.textTertiary, flexShrink: 0 }} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0 }}>
+              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textPrimary, lineHeight: 1.2 }}>
+                Managed in EZLeagues
+              </span>
+              <span style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", color: palette.textTertiary, lineHeight: 1.3 }}>
+                Roster, scoring, and standings
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => { /* Hook up to EZLeagues navigation when wired. */ }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 14px",
+              borderRadius: "6px",
+              border: `1px solid ${palette.borderMedium}`,
+              background: "transparent",
+              color: palette.textPrimary,
+              fontSize: "var(--text-sm)",
+              fontWeight: 600,
+              fontFamily: "var(--font-family)",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            Go to EZLeagues <ExternalLink size={13} />
+          </button>
+        </div>
+      )}
+
       {/* ── Registered clients list ── */}
       {bookedClients.length > 0 && (
         <div>
@@ -3785,6 +4542,27 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
           </div>
         </div>
 
+        {/* Buffer — only renders when at least one of pre/post is set.
+            Uses the same Hourglass icon and "15min pre · 30min post"
+            format as the calendar's hover popover, so the two views
+            stay visually consistent. */}
+        {(preBuffer || postBuffer) && (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Hourglass size={18} style={iconStyle} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+              <span style={detailLabel}>Buffer</span>
+              <span style={detailValue}>
+                {[
+                  preBuffer ? `${preBuffer}min pre` : null,
+                  postBuffer ? `${postBuffer}min post` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <User size={18} style={iconStyle} />
           <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
@@ -3810,16 +4588,20 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         </div>
       </div>
 
-      {/* ── Separator ── */}
-      <div style={{ height: "1px", background: palette.borderLight }} />
-
-      {/* ── Additional compact details ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 16px" }}>
-        <div><span style={detailLabel}>Recurring</span><div style={{ ...detailValue, marginTop: "2px" }}>{recurring === "yes" ? "Yes" : "No"}</div></div>
-        <div><span style={detailLabel}>Class size</span><div style={{ ...detailValue, marginTop: "2px" }}>{event.capacity > 0 ? event.capacity : "—"}</div></div>
-        <div><span style={detailLabel}>Pre-buffer</span><div style={{ ...detailValue, marginTop: "2px" }}>{preBuffer ? `${preBuffer} min` : "None"}</div></div>
-        <div><span style={detailLabel}>Post-buffer</span><div style={{ ...detailValue, marginTop: "2px" }}>{postBuffer ? `${postBuffer} min` : "None"}</div></div>
-      </div>
+      {/* ── Additional compact details ── (buffer info moved up
+          alongside Time; this grid keeps the recurring + class size
+          pair). League games have neither a recurrence pattern nor a
+          per-event class size, so the whole grid + its preceding
+          separator are skipped for league events. */}
+      {event.type !== "league" && (
+        <>
+          <div style={{ height: "1px", background: palette.borderLight }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 16px" }}>
+            <div><span style={detailLabel}>Recurring</span><div style={{ ...detailValue, marginTop: "2px" }}>{recurring === "yes" ? "Yes" : "No"}</div></div>
+            <div><span style={detailLabel}>Class size</span><div style={{ ...detailValue, marginTop: "2px" }}>{event.capacity > 0 ? event.capacity : "—"}</div></div>
+          </div>
+        </>
+      )}
 
       {/* ── Notes ── */}
       {notes && (
@@ -3829,25 +4611,31 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         </>
       )}
 
-      {/* ── Scheduled on & Additional options ── */}
+      {/* ── Additional options & Scheduled on ── (Scheduled on sits
+          below Additional options to match the order used in edit
+          mode and Add Reservation). League games skip Additional
+          options entirely — their booking rules are managed in
+          EZLeagues, not here — so only Scheduled on shows for them. */}
       <div style={{ height: "1px", background: palette.borderLight }} />
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div><span style={detailLabel}>Scheduled on</span><div style={{ ...detailValue, marginTop: "2px" }}>02/26/2021</div></div>
-        <div>
-          <span style={detailLabel}>Additional options</span>
-          <div style={{ marginTop: "4px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {[
-              onlineDescription ? `Online description: ${onlineDescription}` : null,
-              allowSelfBooking ? "Allow self booking" : null,
-              allowFreeBookings ? "Allow free bookings" : null,
-              showOnEZLeagues ? "Show on EZ Leagues" : null,
-            ]
-              .filter((opt): opt is string => Boolean(opt))
-              .map((opt) => (
-                <span key={opt} style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", padding: "3px 8px", borderRadius: "4px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", color: palette.textTertiary }}>{opt}</span>
-              ))}
+        {event.type !== "league" && (
+          <div>
+            <span style={detailLabel}>Additional options</span>
+            <div style={{ marginTop: "4px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
+              {[
+                onlineDescription ? `Online description: ${onlineDescription}` : null,
+                allowSelfBooking ? "Allow self booking" : null,
+                allowFreeBookings ? "Allow free bookings" : null,
+                showOnEZLeagues ? "Show on EZ Leagues" : null,
+              ]
+                .filter((opt): opt is string => Boolean(opt))
+                .map((opt) => (
+                  <span key={opt} style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", padding: "3px 8px", borderRadius: "4px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", color: palette.textTertiary }}>{opt}</span>
+                ))}
+            </div>
           </div>
-        </div>
+        )}
+        <div><span style={detailLabel}>Scheduled on</span><div style={{ ...detailValue, marginTop: "2px" }}>02/26/2021</div></div>
       </div>
 
       </div>
@@ -4630,15 +5418,13 @@ function CalendarFiltersContent({
   palette, isDark, sc, colors,
   mobileLayout = false,
 }: CalendarFiltersContentProps) {
-  // Pretty label for a reservation type — same logic as the chip
-  // rendering, lifted out so the dropdown variant can reuse it.
+  // Pretty label for a reservation type. HIIT keeps its acronym casing;
+  // league reads as "League Game"; the rest get a simple capitalize.
   const typeLabel = (t: ReservationType): string =>
-    t === "power-yoga"
-      ? "Power Yoga"
-      : t === "morning-yoga"
-      ? "Morning Yoga"
-      : t === "hiit"
+    t === "hiit"
       ? "HIIT"
+      : t === "league"
+      ? "League Game"
       : t.charAt(0).toUpperCase() + t.slice(1);
   // Colored dot used as the leading element for each type option in
   // the mobile multiselect — same color tokens as the desktop chips so
@@ -4660,15 +5446,14 @@ function CalendarFiltersContent({
       />
     );
   };
+  // Sorted alphabetically by display label so the chips and the
+  // multiselect both render in a predictable order.
   const TYPE_OPTIONS: ReservationType[] = [
-    "yoga",
-    "power-yoga",
-    "morning-yoga",
+    "hiit",
+    "league",
     "meditation",
     "pilates",
-    "hiit",
-    "stretch",
-    "league",
+    "yoga",
   ];
   return (
     <>
@@ -5648,12 +6433,15 @@ export function SchedulePage() {
                     Legend
                   </span>
                   {[
-                    { types: ["yoga"] as const, label: "Yoga / Power Yoga / Morning Yoga" },
-                    { types: ["meditation"] as const, label: "Meditation / Stretch & Restore" },
-                    { types: ["pilates"] as const, label: "Pilates" },
+                    // Alphabetized by label. Specific session names
+                    // like "Power Yoga" or "Stretch & Restore" aren't
+                    // listed — those are session titles, not types.
+                    { types: ["closed"] as const, label: "Closed" },
                     { types: ["hiit"] as const, label: "HIIT" },
                     { types: ["league"] as const, label: "League Game" },
-                    { types: ["closed"] as const, label: "Closed" },
+                    { types: ["meditation"] as const, label: "Meditation" },
+                    { types: ["pilates"] as const, label: "Pilates" },
+                    { types: ["yoga"] as const, label: "Yoga" },
                   ].map((row) => {
                     const c = colors[row.types[0]];
                     return (
