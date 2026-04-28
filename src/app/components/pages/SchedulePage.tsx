@@ -3019,7 +3019,7 @@ function MobileEventList({
           (instructorKeys.length === 0 && venueKeys.length === 0) ? (
             closedItems.length === 0 && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "120px", color: sc.muted, fontSize: "14px" }}>
-                {isFiltering ? "No events match your search" : "No events in this date range"}
+                {isFiltering ? "No reservations match your search" : "No reservations in this date range"}
               </div>
             )
           ) : (
@@ -3065,7 +3065,7 @@ function MobileEventList({
         ) : (
           closedItems.length === 0 && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "120px", color: sc.muted, fontSize: "14px" }}>
-              {isFiltering ? "No events match your search" : (selectedEnd ? "No events in this date range" : "No events on this date")}
+              {isFiltering ? "No reservations match your search" : (selectedEnd ? "No reservations in this date range" : "No reservations on this date")}
             </div>
           )
         )}
@@ -5221,7 +5221,7 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
           Upcoming Today
         </span>
         <span style={{ fontSize: "13px", color: sc.muted, lineHeight: "16px" }}>
-          {dateLabel} · {events.length} event{events.length === 1 ? "" : "s"}
+          {dateLabel} · {events.length} reservation{events.length === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -5399,7 +5399,7 @@ function DayEventsPanelContent({
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       {events.length === 0 ? (
         <div style={{ padding: "32px 16px", textAlign: "center", color: sc.muted, fontSize: "13px" }}>
-          No events on this day.
+          No reservations on this day.
         </div>
       ) : (
         events.map((event) => {
@@ -5570,7 +5570,7 @@ function CalendarFiltersContent({
     <>
       {/* Header — title + Clear all (when any filter is active). */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>Filter events</span>
+        <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>Filter reservations</span>
         {activeFilterCount > 0 && (
           <button
             onClick={clearAllFilters}
@@ -5990,7 +5990,7 @@ export function SchedulePage() {
             );
           }}
         />,
-        { size: "third", title: `${dateLabel} · ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` }
+        { size: "third", title: `${dateLabel} · ${dayEvents.length} reservation${dayEvents.length === 1 ? "" : "s"}` }
       );
     },
     [openPanel, currentMonth, currentYear]
