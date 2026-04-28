@@ -5479,24 +5479,26 @@ function CalendarFiltersContent({
         )}
       </div>
 
-      {/* Date range */}
-      <div>
-        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Date range</div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <input
-            type="date"
-            value={filterStartDate}
-            onChange={(e) => setFilterStartDate(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
-          />
-          <input
-            type="date"
-            value={filterEndDate}
-            onChange={(e) => setFilterEndDate(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
-          />
+      {/* Date range — hidden on mobile since the mini calendar already controls the date */}
+      {!mobileLayout && (
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Date range</div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <input
+              type="date"
+              value={filterStartDate}
+              onChange={(e) => setFilterStartDate(e.target.value)}
+              style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+            />
+            <input
+              type="date"
+              value={filterEndDate}
+              onChange={(e) => setFilterEndDate(e.target.value)}
+              style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Time range */}
       <div>
@@ -5943,6 +5945,27 @@ export function SchedulePage() {
     setCurrentYear(now.getFullYear());
   }, []);
 
+  // Desktop month/year picker dropdown (replaces prev/next arrows)
+  const [showDesktopMonthPicker, setShowDesktopMonthPicker] = useState(false);
+  const desktopMonthPickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showDesktopMonthPicker) return;
+    function handleClick(e: MouseEvent) {
+      if (desktopMonthPickerRef.current && !desktopMonthPickerRef.current.contains(e.target as Node)) {
+        setShowDesktopMonthPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showDesktopMonthPicker]);
+
+  const handleDesktopPickMonth = useCallback((month: number, year: number) => {
+    setHoveredEvent(null);
+    setCurrentMonth(month);
+    setCurrentYear(year);
+    setShowDesktopMonthPicker(false);
+  }, []);
+
   // Filter events by the search query plus the structured Filters popover
   // criteria (date range, time range, venues, instructors, types, balances
   // owed). All dimensions combine with AND. An empty string / empty array
@@ -6320,26 +6343,50 @@ export function SchedulePage() {
           )}
         </div>
 
-        {/* Date picker — centered within the calendar zone */}
+        {/* Date picker — centered month/year dropdown */}
         <div style={{ justifySelf: "center", display: "flex", alignItems: "center", padding: "8px" }}>
-          <button onClick={handlePrevMonth} style={{ ...controlBtn, width: "32px", height: "32px" }}>
-            <ChevronLeft size={14} />
-          </button>
-          <span
-            style={{
-              width: "180px",
-              textAlign: "center",
-              fontSize: "16px",
-              fontWeight: 600,
-              color: sc.heading,
-              lineHeight: "20px",
-            }}
-          >
-            {MONTH_NAMES[currentMonth]} {currentYear}
-          </span>
-          <button onClick={handleNextMonth} style={{ ...controlBtn, width: "32px", height: "32px" }}>
-            <ChevronRight size={14} />
-          </button>
+          <div ref={desktopMonthPickerRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowDesktopMonthPicker(!showDesktopMonthPicker)}
+              aria-expanded={showDesktopMonthPicker}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 14px",
+                borderRadius: "8px",
+                border: `1px solid ${showDesktopMonthPicker ? sc.brand : "transparent"}`,
+                background: showDesktopMonthPicker
+                  ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
+                  : "transparent",
+                fontSize: "16px",
+                fontWeight: 600,
+                color: sc.heading,
+                cursor: "pointer",
+                fontFamily: "var(--font-family)",
+              }}
+            >
+              {MONTH_NAMES[currentMonth]} {currentYear}
+              <ChevronDown
+                size={14}
+                style={{
+                  transform: showDesktopMonthPicker ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.15s ease",
+                  color: sc.muted,
+                }}
+              />
+            </button>
+
+            {showDesktopMonthPicker && (
+              <MonthYearPicker
+                currentMonth={currentMonth}
+                currentYear={currentYear}
+                onPick={handleDesktopPickMonth}
+                sc={sc}
+                isDark={isDark}
+              />
+            )}
+          </div>
         </div>
 
         {/* Calendar-zone right slot — always holds AddReservation so it
