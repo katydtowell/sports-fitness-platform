@@ -2816,6 +2816,9 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const [activeSection, setActiveSection] = useState("Details");
   const [isEditing, setIsEditing] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  // Additional options accordion — closed by default in edit mode so the
+  // checkbox/description fields don't dominate the form's vertical rhythm.
+  const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
 
   // Editable state — initialized from the event data
   const initScheduleType = "session";
@@ -2836,6 +2839,12 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const initPreBuffer = event.preBuffer && event.preBuffer > 0 ? String(event.preBuffer) : "";
   const initPostBuffer = event.postBuffer && event.postBuffer > 0 ? String(event.postBuffer) : "";
   const initNotes = "";
+  // Additional options — currently mock defaults; once backed by real data
+  // these initial values would derive from the event/reservation record.
+  const initOnlineDescription = event.type === "league" ? "League Game" : "Yoga";
+  const initAllowSelfBooking = true;
+  const initAllowFreeBookings = true;
+  const initShowOnEZLeagues = true;
 
   const [scheduleType, setScheduleType] = useState<"session" | "rental">(initScheduleType);
   const [recurring, setRecurring] = useState<"yes" | "no">(initRecurring);
@@ -2852,6 +2861,10 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const [preBuffer, setPreBuffer] = useState(initPreBuffer);
   const [postBuffer, setPostBuffer] = useState(initPostBuffer);
   const [notes, setNotes] = useState(initNotes);
+  const [onlineDescription, setOnlineDescription] = useState(initOnlineDescription);
+  const [allowSelfBooking, setAllowSelfBooking] = useState(initAllowSelfBooking);
+  const [allowFreeBookings, setAllowFreeBookings] = useState(initAllowFreeBookings);
+  const [showOnEZLeagues, setShowOnEZLeagues] = useState(initShowOnEZLeagues);
 
   // Track whether any field has been modified
   const hasChanges =
@@ -2869,7 +2882,11 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
     useDefaultBuffer !== initUseDefaultBuffer ||
     preBuffer !== initPreBuffer ||
     postBuffer !== initPostBuffer ||
-    notes !== initNotes;
+    notes !== initNotes ||
+    onlineDescription !== initOnlineDescription ||
+    allowSelfBooking !== initAllowSelfBooking ||
+    allowFreeBookings !== initAllowFreeBookings ||
+    showOnEZLeagues !== initShowOnEZLeagues;
 
   // Attempt to exit editing — shows confirmation if there are unsaved changes
   const handleCancelEditing = () => {
@@ -2897,6 +2914,10 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
     setPreBuffer(initPreBuffer);
     setPostBuffer(initPostBuffer);
     setNotes(initNotes);
+    setOnlineDescription(initOnlineDescription);
+    setAllowSelfBooking(initAllowSelfBooking);
+    setAllowFreeBookings(initAllowFreeBookings);
+    setShowOnEZLeagues(initShowOnEZLeagues);
     setShowCancelConfirm(false);
     setIsEditing(false);
   };
@@ -3040,8 +3061,73 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         <div><div style={labelBoldStyle}>Recurring*</div><div style={{ display: "flex", gap: "16px", alignItems: "center", marginTop: "4px" }}><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailRecurring" checked={recurring === "yes"} onChange={() => setRecurring("yes")} style={{ accentColor: palette.primary }} /> Yes</label><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailRecurring" checked={recurring === "no"} onChange={() => setRecurring("no")} style={{ accentColor: palette.primary }} /> No</label></div></div>
         <div style={{ opacity: 0.5 }}><div style={labelStyle}>Split session</div><select style={disabledInputStyle} disabled defaultValue=""><option value="" disabled>—Set the session length before selecting split increments—</option></select></div>
         <div><div style={labelStyle}>Notes</div><input type="text" placeholder="Enter notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={inputStyle} /></div>
-        <div><div style={{ ...labelBoldStyle, marginBottom: "2px" }}>Scheduled on</div><span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>02/26/2021 <span style={{ fontWeight: 600, color: palette.primary, cursor: "pointer" }}>Update?</span></span></div>
-        <div><div style={{ ...labelBoldStyle, marginBottom: "8px" }}>Additional options</div><div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><span>Online description: Yoga</span><span>Allow self booking</span><span>Allow free bookings</span><span>Show on EZ Leagues</span></div><span style={{ display: "inline-block", marginTop: "8px", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span></div>
+        {/* Additional options — bordered accordion container, closed by default.
+            Uses a left-side ChevronRight that rotates 90° when open (the
+            classic file-tree / disclosure pattern) so it can't be mistaken
+            for a dropdown selector, which would have a static chevron-down
+            on the right. */}
+        <div
+          style={{
+            border: `1px solid ${palette.borderMedium}`,
+            borderRadius: "8px",
+            overflow: "hidden",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setShowAdditionalOptions((v) => !v)}
+            aria-expanded={showAdditionalOptions}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              width: "100%",
+              padding: "12px 14px",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "var(--font-family)",
+              color: palette.textPrimary,
+              textAlign: "left",
+            }}
+          >
+            <ChevronRight
+              size={16}
+              style={{
+                color: palette.textTertiary,
+                flexShrink: 0,
+                transform: showAdditionalOptions ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 0.2s ease",
+              }}
+            />
+            <span style={{ ...labelBoldStyle, marginBottom: 0, flex: 1 }}>Additional options</span>
+          </button>
+          {showAdditionalOptions && (
+            <div
+              style={{
+                padding: "14px",
+                borderTop: `1px solid ${palette.borderLight}`,
+              }}
+            >
+              <div style={{ marginBottom: "12px" }}>
+                <div style={labelStyle}>Online description</div>
+                <input type="text" value={onlineDescription} onChange={(e) => setOnlineDescription(e.target.value)} placeholder="e.g. Yoga" style={inputStyle} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+                  <input type="checkbox" checked={allowSelfBooking} onChange={(e) => setAllowSelfBooking(e.target.checked)} style={{ accentColor: palette.primary }} /> Allow self booking
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+                  <input type="checkbox" checked={allowFreeBookings} onChange={(e) => setAllowFreeBookings(e.target.checked)} style={{ accentColor: palette.primary }} /> Allow free bookings
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+                  <input type="checkbox" checked={showOnEZLeagues} onChange={(e) => setShowOnEZLeagues(e.target.checked)} style={{ accentColor: palette.primary }} /> Show on EZ Leagues
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+        <div><div style={{ ...labelBoldStyle, marginBottom: "2px" }}>Scheduled on</div><span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>02/26/2021</span></div>
 
         </div>
         <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
@@ -3082,7 +3168,6 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
             <Users size={14} style={{ opacity: 0.5, color: palette.textTertiary }} />
             <span style={{ flex: 1, fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>Registered Clients ({bookedClients.length})</span>
-            <span onClick={() => { setActiveSection("Registered Clients"); }} style={{ fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span>
           </div>
           {/* Filter toggles */}
           <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
@@ -3189,9 +3274,16 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
         <div>
           <span style={detailLabel}>Additional options</span>
           <div style={{ marginTop: "4px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {["Online description: Yoga", "Allow self booking", "Allow free bookings", "Show on EZ Leagues"].map((opt) => (
-              <span key={opt} style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", padding: "3px 8px", borderRadius: "4px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", color: palette.textTertiary }}>{opt}</span>
-            ))}
+            {[
+              onlineDescription ? `Online description: ${onlineDescription}` : null,
+              allowSelfBooking ? "Allow self booking" : null,
+              allowFreeBookings ? "Allow free bookings" : null,
+              showOnEZLeagues ? "Show on EZ Leagues" : null,
+            ]
+              .filter((opt): opt is string => Boolean(opt))
+              .map((opt) => (
+                <span key={opt} style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", padding: "3px 8px", borderRadius: "4px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", color: palette.textTertiary }}>{opt}</span>
+              ))}
           </div>
         </div>
       </div>
@@ -3234,6 +3326,12 @@ function AddReservationPanelContent() {
   const [useDefaultBuffer, setUseDefaultBuffer] = useState(true);
   const [preBuffer, setPreBuffer] = useState("15");
   const [postBuffer, setPostBuffer] = useState("15");
+  // Additional options (editable on new reservation) — accordion closed by default
+  const [onlineDescription, setOnlineDescription] = useState("");
+  const [allowSelfBooking, setAllowSelfBooking] = useState(true);
+  const [allowFreeBookings, setAllowFreeBookings] = useState(false);
+  const [showOnEZLeagues, setShowOnEZLeagues] = useState(false);
+  const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
 
   const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
 
@@ -3528,25 +3626,78 @@ function AddReservationPanelContent() {
         <input type="text" placeholder="Enter notes" style={inputStyle} />
       </div>
 
-      {/* Scheduled on */}
+      {/* Additional options — bordered accordion container, closed by default.
+          Uses a left-side ChevronRight that rotates 90° when open (the
+          classic file-tree / disclosure pattern) so it can't be mistaken
+          for a dropdown selector. */}
+      <div
+        style={{
+          border: `1px solid ${palette.borderMedium}`,
+          borderRadius: "8px",
+          overflow: "hidden",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowAdditionalOptions((v) => !v)}
+          aria-expanded={showAdditionalOptions}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            width: "100%",
+            padding: "12px 14px",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: "var(--font-family)",
+            color: palette.textPrimary,
+            textAlign: "left",
+          }}
+        >
+          <ChevronRight
+            size={16}
+            style={{
+              color: palette.textTertiary,
+              flexShrink: 0,
+              transform: showAdditionalOptions ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
+            }}
+          />
+          <span style={{ ...labelBoldStyle, marginBottom: 0, flex: 1 }}>Additional options</span>
+        </button>
+        {showAdditionalOptions && (
+          <div
+            style={{
+              padding: "14px",
+              borderTop: `1px solid ${palette.borderLight}`,
+            }}
+          >
+            <div style={{ marginBottom: "12px" }}>
+              <div style={labelStyle}>Online description</div>
+              <input type="text" value={onlineDescription} onChange={(e) => setOnlineDescription(e.target.value)} placeholder="e.g. Yoga" style={inputStyle} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+                <input type="checkbox" checked={allowSelfBooking} onChange={(e) => setAllowSelfBooking(e.target.checked)} style={{ accentColor: palette.primary }} /> Allow self booking
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+                <input type="checkbox" checked={allowFreeBookings} onChange={(e) => setAllowFreeBookings(e.target.checked)} style={{ accentColor: palette.primary }} /> Allow free bookings
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+                <input type="checkbox" checked={showOnEZLeagues} onChange={(e) => setShowOnEZLeagues(e.target.checked)} style={{ accentColor: palette.primary }} /> Show on EZ Leagues
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Scheduled on — placed below Additional options per design */}
       <div>
         <div style={{ ...labelBoldStyle, marginBottom: "2px" }}>Scheduled on</div>
         <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-          02/26/2021{" "}
-          <span style={{ fontWeight: 600, color: palette.primary, cursor: "pointer" }}>Update?</span>
+          02/26/2021
         </span>
-      </div>
-
-      {/* Additional options */}
-      <div>
-        <div style={{ ...labelBoldStyle, marginBottom: "8px" }}>Additional options</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-          <span>Online description: Yoga</span>
-          <span>Allow self booking</span>
-          <span>Allow free bookings</span>
-          <span>Show on EZ Leagues</span>
-        </div>
-        <span style={{ display: "inline-block", marginTop: "8px", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.primary, cursor: "pointer" }}>Edit</span>
       </div>
 
       </div>
