@@ -1710,8 +1710,16 @@ function MiniCalendar({
   for (let i = 0; i < firstDay; i++) days.push(null);
   for (let day = 1; day <= daysInMonth; day++) days.push(day);
 
-  // Get all dates with events for current month
+  // Get all dates with events for current month, and the subset of those
+  // where every event is a closure (i.e. "closed all day"). Closed-all-day
+  // days get a gray dot rather than the brand-color one to signal that the
+  // facility isn't actually open that day, even though something is on the
+  // calendar.
   const datesWithEvents = Object.keys(MOCK_EVENTS).map((k) => parseInt(k));
+  const closedAllDayDates = datesWithEvents.filter((d) => {
+    const dayEvents = MOCK_EVENTS[d] ?? [];
+    return dayEvents.length > 0 && dayEvents.every((e) => e.type === "closed");
+  });
 
   return (
     <div
@@ -1819,6 +1827,7 @@ function MiniCalendar({
       >
         {days.map((day, idx) => {
           const hasEvents = day !== null && datesWithEvents.includes(day);
+          const isClosedAllDay = day !== null && closedAllDayDates.includes(day);
           const isSelected = day === selectedDate;
 
           return (
@@ -1854,7 +1863,7 @@ function MiniCalendar({
                     width: "5px",
                     height: "5px",
                     borderRadius: "50%",
-                    background: sc.brand,
+                    background: isClosedAllDay ? sc.muted : sc.brand,
                   }}
                 />
               )}
@@ -2088,7 +2097,11 @@ function MobileEventList({
 }: MobileEventListProps) {
   const source = eventsByDay ?? MOCK_EVENTS;
   const events = source[selectedDate] || [];
+  const closedEvents = events.filter((e) => e.type === "closed");
   const nonClosedEvents = events.filter((e) => e.type !== "closed");
+  // Disable adding a reservation on any day with a closure on the books — for
+  // now mock data only has all-day closures, so any closed entry blocks it.
+  const isClosed = closedEvents.length > 0;
   const isFiltering = !!(searchQuery && searchQuery.trim());
 
   return (
@@ -2121,7 +2134,9 @@ function MobileEventList({
           Found {nonClosedEvents.length} reservation(s)
         </span>
         <button
-          onClick={onAddReservation}
+          onClick={isClosed ? undefined : onAddReservation}
+          disabled={isClosed}
+          title={isClosed ? "Facility is closed — reservations can't be added on this day" : undefined}
           style={{
             display: "flex",
             alignItems: "center",
@@ -2129,11 +2144,12 @@ function MobileEventList({
             padding: "6px 12px",
             borderRadius: "6px",
             border: "none",
-            background: sc.brand,
+            background: isClosed ? sc.muted : sc.brand,
             fontSize: "12px",
             fontWeight: 500,
             color: isDark ? "#0a0e0f" : "#101828",
-            cursor: "pointer",
+            cursor: isClosed ? "not-allowed" : "pointer",
+            opacity: isClosed ? 0.5 : 1,
           }}
         >
           <Plus size={14} /> Add Reservation
@@ -2147,31 +2163,58 @@ function MobileEventList({
           overflow: "auto",
         }}
       >
-        {nonClosedEvents.length > 0 ? (
-          nonClosedEvents.map((event) => (
-            <MobileEventRow
-              key={event.id}
-              event={event}
-              sc={sc}
-              colors={colors}
-              isDark={isDark}
-              onClick={() => onSelectEvent(event)}
-            />
-          ))
-        ) : (
+        {/* Closures rendered first as a minimal row (no time / instructor / button). */}
+        {closedEvents.map((event) => (
           <div
+            key={event.id}
             style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              height: "120px",
-              color: sc.muted,
-              fontSize: "14px",
+              gap: "10px",
+              padding: "14px 16px",
+              borderBottom: `1px solid ${sc.border}`,
             }}
           >
-            {isFiltering ? "No events match your search" : "No events on this date"}
+            <div
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: sc.muted,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 700, color: sc.heading }}>
+              Closed all day
+            </span>
           </div>
-        )}
+        ))}
+
+        {nonClosedEvents.length > 0
+          ? nonClosedEvents.map((event) => (
+              <MobileEventRow
+                key={event.id}
+                event={event}
+                sc={sc}
+                colors={colors}
+                isDark={isDark}
+                onClick={() => onSelectEvent(event)}
+              />
+            ))
+          : closedEvents.length === 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "120px",
+                  color: sc.muted,
+                  fontSize: "14px",
+                }}
+              >
+                {isFiltering ? "No events match your search" : "No events on this date"}
+              </div>
+            )}
       </div>
     </div>
   );
