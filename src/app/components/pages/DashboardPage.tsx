@@ -566,6 +566,7 @@ export function DashboardPage() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{ rowIdx: number; colIdx: number } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ rowIdx: number; colIdx: number } | null>(null);
+  const [insertTarget, setInsertTarget] = useState<{ rowIdx: number; insertPos: number } | null>(null);
   const { openPanel, closePanel } = useSidePanel();
 
   const flatWidgets = widgets.flat();
@@ -606,6 +607,23 @@ export function DashboardPage() {
   const handleDragEnd = () => {
     setDragState(null);
     setDropTarget(null);
+    setInsertTarget(null);
+  };
+
+  // Inserts the dragged widget at a specific position within a target row
+  const handleDropInsert = (e: React.DragEvent, toRow: number, insertPos: number) => {
+    e.preventDefault();
+    if (!dragState) return;
+    const { rowIdx: fromRow, colIdx: fromCol } = dragState;
+    const newWidgets = widgets.map((r) => [...r]);
+    const [draggedWidget] = newWidgets[fromRow].splice(fromCol, 1);
+    // If reordering within the same row, removing an earlier item shifts the insertion index
+    const adjustedPos = fromRow === toRow && fromCol < insertPos ? insertPos - 1 : insertPos;
+    newWidgets[toRow].splice(adjustedPos, 0, draggedWidget);
+    setWidgets(newWidgets.filter((r) => r.length > 0));
+    setDragState(null);
+    setDropTarget(null);
+    setInsertTarget(null);
   };
 
   /* widget actions */
@@ -883,13 +901,43 @@ export function DashboardPage() {
           </div>
         )}
 
-        {widgets.map((row, rowIdx) => (
-          <div key={rowIdx} style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20, marginBottom: 20 }}>
-            {row.map((widget, colIdx) => {
+        {widgets.map((row, rowIdx) => {
+          const showZones = !isMobile && dragState !== null && row.length < 4 && dragState.rowIdx !== rowIdx;
+          const makeZone = (insertPos: number) => {
+            const isActive = insertTarget?.rowIdx === rowIdx && insertTarget?.insertPos === insertPos;
+            return (
+              <div
+                key={`z-${rowIdx}-${insertPos}`}
+                onDragOver={(e) => { e.preventDefault(); setInsertTarget({ rowIdx, insertPos }); }}
+                onDrop={(e) => handleDropInsert(e, rowIdx, insertPos)}
+                onDragLeave={() => setInsertTarget(null)}
+                style={{
+                  width: isActive ? 40 : 8,
+                  flexShrink: 0,
+                  alignSelf: "stretch",
+                  borderRadius: 10,
+                  border: `2px dashed ${isActive ? palette.primary : palette.outlineSecondary}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: isActive ? palette.primary : "transparent",
+                  background: isActive ? `${palette.primary}06` : "transparent",
+                  transition: "all .2s",
+                  overflow: "hidden",
+                }}
+              >
+                <Plus size={14} />
+              </div>
+            );
+          };
+          return (
+          <div key={rowIdx} style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20, marginBottom: 20, alignItems: "stretch" }}>
+            {showZones && makeZone(0)}
+            {row.flatMap((widget, colIdx) => {
               const def = ALL_WIDGET_DEFS.find((d) => d.type === widget.type);
               const Renderer = WIDGET_RENDERERS[widget.type];
               const isDragOver = dropTarget?.rowIdx === rowIdx && dropTarget?.colIdx === colIdx;
-              return (
+              return [
                 <div
                   key={widget.id}
                   draggable={!isMobile}
@@ -1008,11 +1056,13 @@ export function DashboardPage() {
                   ) : (
                     <div style={{ color: palette.textDisabled, padding: 20 }}>Widget not found</div>
                   )}
-                </div>
-              );
+                </div>,
+                ...(showZones ? [makeZone(colIdx + 1)] : []),
+              ];
             })}
           </div>
-        ))}
+          );
+        })}
 
         {/* drop zone for new row (desktop/tablet only) */}
         {widgets.length > 0 && !isMobile && (
