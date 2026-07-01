@@ -5598,17 +5598,6 @@ function UpcomingTodayPanel({
           {/* ── Filters tab ─────────────────────────────────────────── */}
           {sidebarTab === "Filters" && (
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
-              {/* Clear-all header */}
-              {nonResourceFilterCount > 0 && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-                  <button
-                    onClick={clearAllFilters}
-                    style={{ background: "none", border: "none", padding: 0, fontSize: "12px", fontWeight: 600, fontFamily: "var(--font-family)", color: sc.brand, cursor: "pointer" }}
-                  >
-                    Clear all
-                  </button>
-                </div>
-              )}
               <CalendarFiltersContent
                 filterStartDate={filterStartDate}
                 setFilterStartDate={setFilterStartDate}
@@ -5628,7 +5617,7 @@ function UpcomingTodayPanel({
                 setFilterPaymentStatus={setFilterPaymentStatus}
                 filterRegistrations={filterRegistrations}
                 setFilterRegistrations={setFilterRegistrations}
-                activeFilterCount={activeFilterCount}
+                activeFilterCount={nonResourceFilterCount}
                 clearAllFilters={clearAllFilters}
                 palette={palette}
                 isDark={isDark}
@@ -5636,6 +5625,7 @@ function UpcomingTodayPanel({
                 colors={colors}
                 hideResourceFilters
                 hideHeader
+                inlineClearAll={nonResourceFilterCount > 0}
               />
             </div>
           )}
@@ -5788,6 +5778,9 @@ interface CalendarFiltersContentProps {
   hideResourceFilters?: boolean;
   /** When true, the "Filter reservations" header row is hidden. */
   hideHeader?: boolean;
+  /** When true, a "Clear all" link is rendered inline with the first
+   *  visible section label (matches the Resources tab pattern). */
+  inlineClearAll?: boolean;
 }
 
 function CalendarFiltersContent({
@@ -5806,6 +5799,7 @@ function CalendarFiltersContent({
   mobileLayout = false,
   hideResourceFilters = false,
   hideHeader = false,
+  inlineClearAll = false,
 }: CalendarFiltersContentProps) {
   // Pretty label for a reservation type. HIIT keeps its acronym casing;
   // league reads as "League Game"; the rest get a simple capitalize.
@@ -5873,7 +5867,17 @@ function CalendarFiltersContent({
       {/* Date range — hidden on mobile since the mini calendar already controls the date */}
       {!mobileLayout && (
         <div>
-          <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Date range</div>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span>Date range</span>
+            {inlineClearAll && (
+              <button
+                onClick={clearAllFilters}
+                style={{ background: "none", border: "none", padding: 0, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", color: sc.brand, cursor: "pointer" }}
+              >
+                Clear all
+              </button>
+            )}
+          </div>
           <div style={{ display: "flex", gap: "8px" }}>
             <input
               type="date"
@@ -5893,7 +5897,18 @@ function CalendarFiltersContent({
 
       {/* Time range */}
       <div>
-        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Time range</div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span>Time range</span>
+          {/* On mobile, Date range is hidden so Clear all appears here instead */}
+          {inlineClearAll && mobileLayout && (
+            <button
+              onClick={clearAllFilters}
+              style={{ background: "none", border: "none", padding: 0, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", color: sc.brand, cursor: "pointer" }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <input
             type="time"
@@ -6008,7 +6023,7 @@ function CalendarFiltersContent({
             fontFamily: "var(--font-family)",
             border: `1px solid ${palette.borderMedium}`,
             borderRadius: "6px",
-            background: palette.surfaceBg,
+            backgroundColor: palette.surfaceBg,
             color: palette.textPrimary,
             colorScheme: isDark ? "dark" : "light",
             cursor: "pointer",
@@ -6361,7 +6376,33 @@ function ResourcesView({
             {event.title}
           </span>
           {showSecondLine && (
-            showStatusPill ? (
+            showStatusPill && isFull ? (
+              // Full / waitlisted: show time alongside the status pill
+              <div style={{ display: "flex", alignItems: "center", gap: "4px", overflow: "hidden" }}>
+                <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  {event.time}
+                </span>
+                <span
+                  style={{
+                    display: "inline-block",
+                    flexShrink: 0,
+                    background: isHovered
+                      ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
+                      : statusBg,
+                    color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    lineHeight: "13px",
+                    padding: "0px 4px",
+                    borderRadius: "3px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {event.waitlistEnabled ? "Waitlist" : "Full"}
+                </span>
+              </div>
+            ) : showStatusPill ? (
+              // Available / nearly full: time shown inside the colored pill (existing behavior)
               <span
                 style={{
                   display: "inline-block",
@@ -6384,6 +6425,7 @@ function ResourcesView({
                 {statusLabel}
               </span>
             ) : (
+              // No capacity data: plain time
               <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap" }}>
                 {event.time}
               </span>
