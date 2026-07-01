@@ -7383,29 +7383,14 @@ export function SchedulePage() {
             )}
           </div>
 
-          {/* "Today" — only shown when the calendar isn't already on the
-              real-world current month/year. Clicking jumps back to today. */}
-          {!isCurrentMonth && (
-            <button
-              onClick={handleGoToToday}
-              style={{
-                ...controlBtn,
-                padding: "12px 20px",
-                fontSize: "16px",
-                fontWeight: 500,
-                color: sc.body,
-              }}
-            >
-              Today
-            </button>
-          )}
         </div>
 
         {/* Date picker — centered; Resources view shows a day picker,
-            all other views show the existing month/year picker. */}
-        <div style={{ justifySelf: "center", display: "flex", alignItems: "center", padding: "8px" }}>
+            all other views show the existing month/year picker.
+            Today button sits immediately to the right of the nav group. */}
+        <div style={{ justifySelf: "center", display: "flex", alignItems: "center", gap: "8px", padding: "8px" }}>
           {desktopView === "Resources" ? (
-            /* ── Resources: prev-day / clickable-date / next-day ── */
+            /* ── Resources: prev-day / clickable-date / next-day / Today ── */
             <div ref={resourcesDayPickerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
               {/* Prev day */}
               <button
@@ -7537,6 +7522,26 @@ export function SchedulePage() {
                 />
               )}
             </div>
+          )}
+
+          {/* Today — hidden when already on today.
+              For Resources: today = current day in current month/year.
+              For Monthly/other: today = current month/year. */}
+          {!(desktopView === "Resources"
+            ? (isCurrentMonth && clampedResourcesDay === today.getDate())
+            : isCurrentMonth) && (
+            <button
+              onClick={handleGoToToday}
+              style={{
+                ...controlBtn,
+                padding: "8px 14px",
+                fontSize: "14px",
+                fontWeight: 500,
+                color: sc.body,
+              }}
+            >
+              Today
+            </button>
           )}
         </div>
 
