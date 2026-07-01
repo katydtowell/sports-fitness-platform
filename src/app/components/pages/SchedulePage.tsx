@@ -5205,9 +5205,44 @@ interface UpcomingTodayPanelProps {
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
   onSelectEvent: (event: CalendarEvent) => void;
+  palette: ThemePalette;
+  // Filter state (Filters tab)
+  filterStartDate: string;
+  setFilterStartDate: (v: string) => void;
+  filterEndDate: string;
+  setFilterEndDate: (v: string) => void;
+  filterStartTime: string;
+  setFilterStartTime: (v: string) => void;
+  filterEndTime: string;
+  setFilterEndTime: (v: string) => void;
+  filterTypes: ReservationType[];
+  setFilterTypes: (v: ReservationType[]) => void;
+  filterPaymentStatus: "" | "Owed" | "Paid";
+  setFilterPaymentStatus: (v: "" | "Owed" | "Paid") => void;
+  filterRegistrations: string[];
+  setFilterRegistrations: (v: string[]) => void;
+  // Resource state (Resources tab)
+  filterInstructors: string[];
+  setFilterInstructors: (v: string[]) => void;
+  filterVenues: string[];
+  setFilterVenues: (v: string[]) => void;
+  activeFilterCount: number;
+  clearAllFilters: () => void;
 }
 
-function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: UpcomingTodayPanelProps) {
+function UpcomingTodayPanel({
+  events, sc, colors, isDark, onSelectEvent, palette,
+  filterStartDate, setFilterStartDate,
+  filterEndDate, setFilterEndDate,
+  filterStartTime, setFilterStartTime,
+  filterEndTime, setFilterEndTime,
+  filterTypes, setFilterTypes,
+  filterPaymentStatus, setFilterPaymentStatus,
+  filterRegistrations, setFilterRegistrations,
+  filterInstructors, setFilterInstructors,
+  filterVenues, setFilterVenues,
+  activeFilterCount, clearAllFilters,
+}: UpcomingTodayPanelProps) {
   const today = new Date();
   const dateLabel = today.toLocaleDateString("en-US", {
     weekday: "long",
@@ -5215,14 +5250,70 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
     day: "numeric",
   });
 
+  const [sidebarTab, setSidebarTab] = useState<"Resources" | "Filters">("Resources");
+
+  // Resource checkbox toggle helpers ──────────────────────────────────
+  // Empty array = "no filter" = show all (all unchecked).
+  // Checking an item adds it to the include list; only checked items show.
+  const toggleInstructor = (name: string) => {
+    if (filterInstructors.includes(name)) {
+      setFilterInstructors(filterInstructors.filter((n) => n !== name));
+    } else {
+      setFilterInstructors([...filterInstructors, name]);
+    }
+  };
+
+  const toggleVenue = (name: string) => {
+    if (filterVenues.includes(name)) {
+      setFilterVenues(filterVenues.filter((n) => n !== name));
+    } else {
+      setFilterVenues([...filterVenues, name]);
+    }
+  };
+
+  // Non-resource filter count (used for the Filters tab badge)
+  const nonResourceFilterCount =
+    (filterStartDate ? 1 : 0) +
+    (filterEndDate ? 1 : 0) +
+    (filterStartTime ? 1 : 0) +
+    (filterEndTime ? 1 : 0) +
+    (filterTypes.length > 0 ? 1 : 0) +
+    (filterPaymentStatus ? 1 : 0) +
+    (filterRegistrations.length > 0 ? 1 : 0);
+
+  const resourceFilterCount =
+    (filterInstructors.length > 0 ? 1 : 0) +
+    (filterVenues.length > 0 ? 1 : 0);
+
+  // Section-label style (uppercase, muted, small)
+  const groupLabelStyle: CSSProperties = {
+    fontSize: "10px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: sc.muted,
+    padding: "10px 16px 6px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  };
+
+  const checkRowStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "5px 16px",
+    cursor: "pointer",
+    borderRadius: "6px",
+    margin: "0 4px",
+    transition: "background 0.1s ease",
+  };
+
   return (
     <aside
       style={{
         flex: "1 1 0",
         minWidth: 0,
-        // No alignSelf override — the parent row uses alignItems:"stretch",
-        // so the rail matches the calendar's height. A min-height:0 lets the
-        // inner list scroll instead of pushing the rail past the row bounds.
         minHeight: 0,
         borderRadius: "12px",
         border: `1px solid ${sc.border}`,
@@ -5232,35 +5323,34 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
         flexDirection: "column",
       }}
     >
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────── */}
       <div
         style={{
-          padding: "20px",
+          padding: "16px 20px",
           background: sc.headerBg,
           borderBottom: `1px solid ${sc.border}`,
-          display: "flex",
-          flexDirection: "column",
-          gap: "4px",
+          flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: "16px", fontWeight: 600, color: sc.heading, lineHeight: "20px" }}>
+        <span style={{ fontSize: "15px", fontWeight: 600, color: sc.heading, lineHeight: "20px" }}>
           Upcoming Today
         </span>
-        <span style={{ fontSize: "13px", color: sc.muted, lineHeight: "16px" }}>
+        <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", marginTop: "2px" }}>
           {dateLabel} · {events.length} reservation{events.length === 1 ? "" : "s"}
-        </span>
+        </div>
       </div>
 
-      {/* List */}
+      {/* ── Top section: event list ─────────────────────────────────── */}
       <div
         className="always-show-scrollbar"
         style={{
-          flex: 1,
+          flex: "1 1 0",
+          minHeight: 0,
+          overflowY: "auto",
           padding: "8px",
           display: "flex",
           flexDirection: "column",
           gap: "6px",
-          minHeight: 0,
         }}
       >
         {events.length === 0 ? (
@@ -5279,7 +5369,14 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
           events.map((event) => {
             const ec = colors[event.type];
             const remaining = Math.max(0, event.capacity - event.booked);
-            const isFull = remaining === 0;
+            const hasCapacity  = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
+            const attendPct    = hasCapacity ? event.booked / event.capacity : 0;
+            const isFull       = hasCapacity && event.booked >= event.capacity;
+            const isNearlyFull = !isFull && hasCapacity && attendPct >= 0.8;
+            const isEmpty      = hasCapacity && event.booked === 0;
+            const statusLabel  = isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null;
+            const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
+            const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
             return (
               <button
                 key={event.id}
@@ -5308,86 +5405,33 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
                   e.currentTarget.style.borderColor = sc.border;
                 }}
               >
-                {/* Color-coded dot */}
                 <span
-                  style={{
-                    width: "10px",
-                    height: "10px",
-                    marginTop: "5px",
-                    borderRadius: "50%",
-                    background: ec.text,
-                    flexShrink: 0,
-                  }}
+                  style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: ec.text, flexShrink: 0 }}
                 />
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
-                  {/* Title + time */}
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
-                    <span
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: sc.heading,
-                        lineHeight: "18px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 0", minWidth: 0 }}>
                       {event.title}
                     </span>
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: 500,
-                        color: sc.body,
-                        lineHeight: "16px",
-                        flexShrink: 0,
-                      }}
-                    >
+                    {statusLabel && (
+                      <span style={{ flexShrink: 0, fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText }}>
+                        {statusLabel}
+                      </span>
+                    )}
+                    <span style={{ fontSize: "12px", fontWeight: 500, color: sc.body, lineHeight: "16px", flexShrink: 0 }}>
                       {event.time}
                     </span>
                   </div>
-                  {/* Instructor + venue */}
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: sc.muted,
-                      lineHeight: "16px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                      <User size={12} /> {event.instructor}
-                    </span>
+                  <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><User size={12} /> {event.instructor}</span>
                     <span style={{ opacity: 0.5 }}>·</span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                      <MapPin size={12} /> {event.venue}
-                    </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><MapPin size={12} /> {event.venue}</span>
                   </div>
-                  {/* Booked / availability */}
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      color: sc.body,
-                    }}
-                  >
+                  <div style={{ fontSize: "12px", lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", color: sc.body }}>
                     <Users size={12} style={{ color: sc.muted }} />
-                    <span style={{ fontWeight: 600 }}>
-                      {event.booked}/{event.capacity}
-                    </span>
+                    <span style={{ fontWeight: 600 }}>{event.booked}/{event.capacity}</span>
                     <span style={{ color: sc.muted }}>
-                      {isFull
-                        ? event.waitlistEnabled
-                          ? "(Waitlist open)"
-                          : "(Full)"
-                        : `(${remaining} available)`}
+                      {isFull ? (event.waitlistEnabled ? "(Waitlist open)" : "(Full)") : `(${remaining} available)`}
                     </span>
                   </div>
                 </div>
@@ -5395,6 +5439,207 @@ function UpcomingTodayPanel({ events, sc, colors, isDark, onSelectEvent }: Upcom
             );
           })
         )}
+      </div>
+
+      {/* ── Divider ─────────────────────────────────────────────────── */}
+      <div style={{ height: "1px", background: sc.border, flexShrink: 0 }} />
+
+      {/* ── Bottom section: tabs + content ─────────────────────────── */}
+      <div
+        style={{
+          flex: "1 1 0",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* Tab row */}
+        <div
+          style={{
+            display: "flex",
+            borderBottom: `1px solid ${sc.border}`,
+            flexShrink: 0,
+            background: sc.headerBg,
+          }}
+        >
+          {(["Resources", "Filters"] as const).map((tab) => {
+            const isActive = sidebarTab === tab;
+            const badge = tab === "Resources" ? resourceFilterCount : nonResourceFilterCount;
+            return (
+              <button
+                key={tab}
+                onClick={() => setSidebarTab(tab)}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  border: "none",
+                  borderBottom: isActive ? `2px solid ${sc.brand}` : "2px solid transparent",
+                  background: "transparent",
+                  fontSize: "13px",
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? sc.brand : sc.muted,
+                  fontFamily: "var(--font-family)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+                }}
+              >
+                {tab}
+                {badge > 0 && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: "16px",
+                      height: "16px",
+                      padding: "0 4px",
+                      borderRadius: "8px",
+                      background: sc.brand,
+                      color: isDark ? "#0a0e0f" : "#101828",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab content — scrolls independently */}
+        <div
+          className="always-show-scrollbar"
+          style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}
+        >
+          {/* ── Resources tab ───────────────────────────────────────── */}
+          {sidebarTab === "Resources" && (
+            <div style={{ paddingBottom: "12px" }}>
+              {/* Instructors group */}
+              <div style={groupLabelStyle}>
+                <span>Instructors</span>
+                {filterInstructors.length > 0 && (
+                  <button
+                    onClick={() => setFilterInstructors([])}
+                    style={{ background: "none", border: "none", fontSize: "11px", fontWeight: 600, color: sc.brand, cursor: "pointer", padding: 0, fontFamily: "var(--font-family)" }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {INSTRUCTOR_OPTIONS.map((name) => {
+                const isChecked = filterInstructors.includes(name);
+                return (
+                  <label
+                    key={name}
+                    style={checkRowStyle}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleInstructor(name)}
+                      style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
+                      {name}
+                    </span>
+                  </label>
+                );
+              })}
+
+              {/* Divider */}
+              <div style={{ height: "1px", background: sc.border, margin: "8px 16px" }} />
+
+              {/* Venues group */}
+              <div style={groupLabelStyle}>
+                <span>Venues</span>
+                {filterVenues.length > 0 && (
+                  <button
+                    onClick={() => setFilterVenues([])}
+                    style={{ background: "none", border: "none", fontSize: "11px", fontWeight: 600, color: sc.brand, cursor: "pointer", padding: 0, fontFamily: "var(--font-family)" }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {VENUE_OPTIONS.map((name) => {
+                const isChecked = filterVenues.includes(name);
+                return (
+                  <label
+                    key={name}
+                    style={checkRowStyle}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleVenue(name)}
+                      style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
+                      {name}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Filters tab ─────────────────────────────────────────── */}
+          {sidebarTab === "Filters" && (
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* Clear-all header */}
+              {nonResourceFilterCount > 0 && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={clearAllFilters}
+                    style={{ background: "none", border: "none", padding: 0, fontSize: "12px", fontWeight: 600, fontFamily: "var(--font-family)", color: sc.brand, cursor: "pointer" }}
+                  >
+                    Clear all
+                  </button>
+                </div>
+              )}
+              <CalendarFiltersContent
+                filterStartDate={filterStartDate}
+                setFilterStartDate={setFilterStartDate}
+                filterEndDate={filterEndDate}
+                setFilterEndDate={setFilterEndDate}
+                filterStartTime={filterStartTime}
+                setFilterStartTime={setFilterStartTime}
+                filterEndTime={filterEndTime}
+                setFilterEndTime={setFilterEndTime}
+                filterVenues={filterVenues}
+                setFilterVenues={setFilterVenues}
+                filterInstructors={filterInstructors}
+                setFilterInstructors={setFilterInstructors}
+                filterTypes={filterTypes}
+                setFilterTypes={setFilterTypes}
+                filterPaymentStatus={filterPaymentStatus}
+                setFilterPaymentStatus={setFilterPaymentStatus}
+                filterRegistrations={filterRegistrations}
+                setFilterRegistrations={setFilterRegistrations}
+                activeFilterCount={activeFilterCount}
+                clearAllFilters={clearAllFilters}
+                palette={palette}
+                isDark={isDark}
+                sc={sc}
+                colors={colors}
+                hideResourceFilters
+                hideHeader
+              />
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   );
@@ -5538,6 +5783,11 @@ interface CalendarFiltersContentProps {
    *  multiselect with a colored dot per option (mobile layout) instead
    *  of the inline colored chips (desktop layout). */
   mobileLayout?: boolean;
+  /** When true, the Venues and Instructors sections are hidden (they
+   *  live in the Resources tab of the sidebar instead). */
+  hideResourceFilters?: boolean;
+  /** When true, the "Filter reservations" header row is hidden. */
+  hideHeader?: boolean;
 }
 
 function CalendarFiltersContent({
@@ -5554,6 +5804,8 @@ function CalendarFiltersContent({
   clearAllFilters,
   palette, isDark, sc, colors,
   mobileLayout = false,
+  hideResourceFilters = false,
+  hideHeader = false,
 }: CalendarFiltersContentProps) {
   // Pretty label for a reservation type. HIIT keeps its acronym casing;
   // league reads as "League Game"; the rest get a simple capitalize.
@@ -5595,26 +5847,28 @@ function CalendarFiltersContent({
   return (
     <>
       {/* Header — title + Clear all (when any filter is active). */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>Filter reservations</span>
-        {activeFilterCount > 0 && (
-          <button
-            onClick={clearAllFilters}
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: 0,
-              fontSize: "12px",
-              fontWeight: 600,
-              fontFamily: "var(--font-family)",
-              color: sc.brand,
-              cursor: "pointer",
-            }}
-          >
-            Clear all
-          </button>
-        )}
-      </div>
+      {!hideHeader && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>Filter reservations</span>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={clearAllFilters}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                fontSize: "12px",
+                fontWeight: 600,
+                fontFamily: "var(--font-family)",
+                color: sc.brand,
+                cursor: "pointer",
+              }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Date range — hidden on mobile since the mini calendar already controls the date */}
       {!mobileLayout && (
@@ -5657,28 +5911,32 @@ function CalendarFiltersContent({
       </div>
 
       {/* Venues */}
-      <div>
-        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Venues</div>
-        <SearchableMultiSelect
-          options={VENUE_OPTIONS}
-          selected={filterVenues}
-          onChange={setFilterVenues}
-          placeholder="—Any venue—"
-          palette={palette}
-        />
-      </div>
+      {!hideResourceFilters && (
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Venues</div>
+          <SearchableMultiSelect
+            options={VENUE_OPTIONS}
+            selected={filterVenues}
+            onChange={setFilterVenues}
+            placeholder="—Any venue—"
+            palette={palette}
+          />
+        </div>
+      )}
 
       {/* Instructors */}
-      <div>
-        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Instructors</div>
-        <SearchableMultiSelect
-          options={INSTRUCTOR_OPTIONS}
-          selected={filterInstructors}
-          onChange={setFilterInstructors}
-          placeholder="—Any instructor—"
-          palette={palette}
-        />
-      </div>
+      {!hideResourceFilters && (
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Instructors</div>
+          <SearchableMultiSelect
+            options={INSTRUCTOR_OPTIONS}
+            selected={filterInstructors}
+            onChange={setFilterInstructors}
+            placeholder="—Any instructor—"
+            palette={palette}
+          />
+        </div>
+      )}
 
       {/* Reservation types — searchable multiselect with a color-coded dot
           per option so each type stays visually anchored to its calendar color. */}
@@ -5771,6 +6029,613 @@ function CalendarFiltersContent({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — ResourcesDayPicker
+   Mini calendar popover for picking a single day in the Resources view.
+   Clicking a day fires onPick(day, month, year) and the parent closes it.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function ResourcesDayPicker({
+  selectedDay,
+  selectedMonth,
+  selectedYear,
+  onPick,
+  sc,
+  isDark,
+}: {
+  selectedDay: number;
+  selectedMonth: number;
+  selectedYear: number;
+  onPick: (day: number, month: number, year: number) => void;
+  sc: SemanticColors;
+  isDark: boolean;
+}) {
+  const [pickerMonth, setPickerMonth] = useState(selectedMonth);
+  const [pickerYear,  setPickerYear]  = useState(selectedYear);
+
+  const today = new Date();
+
+  const daysInPickerMonth = getDaysInMonth(pickerYear, pickerMonth);
+  const firstDayOfWeek    = getFirstDayOfMonth(pickerYear, pickerMonth);
+
+  // Flat array of (number|null) cells for the grid
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
+  for (let d = 1; d <= daysInPickerMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const prevPickerMonth = () => {
+    if (pickerMonth === 0) { setPickerMonth(11); setPickerYear((y) => y - 1); }
+    else setPickerMonth((m) => m - 1);
+  };
+  const nextPickerMonth = () => {
+    if (pickerMonth === 11) { setPickerMonth(0); setPickerYear((y) => y + 1); }
+    else setPickerMonth((m) => m + 1);
+  };
+
+  const navBtnStyle: CSSProperties = {
+    width: "28px",
+    height: "28px",
+    borderRadius: "6px",
+    border: `1px solid ${sc.border}`,
+    background: sc.controlBg,
+    color: sc.body,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "calc(100% + 6px)",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "264px",
+        background: sc.cellBg,
+        border: `1px solid ${sc.border}`,
+        borderRadius: "10px",
+        boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+        padding: "12px",
+        zIndex: 200,
+        fontFamily: "var(--font-family)",
+      }}
+    >
+      {/* Month / year header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+        <button onClick={prevPickerMonth} aria-label="Previous month" style={navBtnStyle}>
+          <ChevronLeft size={14} />
+        </button>
+        <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
+          {MONTH_NAMES[pickerMonth]} {pickerYear}
+        </span>
+        <button onClick={nextPickerMonth} aria-label="Next month" style={navBtnStyle}>
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "4px" }}>
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+          <div key={i} style={{ textAlign: "center", fontSize: "10px", fontWeight: 700, color: sc.muted, padding: "2px 0" }}>
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px" }}>
+        {cells.map((d, i) => {
+          if (d === null) return <div key={i} />;
+          const isSelected = d === selectedDay && pickerMonth === selectedMonth && pickerYear === selectedYear;
+          const isToday    = d === today.getDate() && pickerMonth === today.getMonth() && pickerYear === today.getFullYear();
+          return (
+            <button
+              key={i}
+              onClick={() => onPick(d, pickerMonth, pickerYear)}
+              style={{
+                width: "100%",
+                aspectRatio: "1",
+                borderRadius: "50%",
+                border: isToday && !isSelected ? `1px solid ${sc.brand}` : "1px solid transparent",
+                background: isSelected ? sc.brand : "transparent",
+                color: isSelected
+                  ? (isDark ? "#0a0e0f" : "#101828")
+                  : isToday ? sc.brand : sc.body,
+                fontSize: "12px",
+                fontWeight: isSelected || isToday ? 700 : 400,
+                cursor: "pointer",
+                fontFamily: "var(--font-family)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — ResourcesView (day × resource grid)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** First visible hour (7 am) */
+const RES_START_HOUR = 7;
+/** Last visible hour (10 pm) */
+const RES_END_HOUR   = 22;
+/** Width in px of each 1-hour column */
+const RES_COL_W      = 90;
+/** Height in px of each resource (instructor / venue) row */
+const RES_ROW_H      = 64;
+/** Width in px of the sticky resource-name column */
+const RES_LABEL_W    = 164;
+/** Height in px of the sticky hour header row */
+const RES_HOUR_HDR_H = 36;
+/** Height in px of the "Instructors" / "Venues" section header rows */
+const RES_GRP_HDR_H  = 28;
+
+interface ResourcesViewProps {
+  eventsByDay: DayEvents;
+  /** The currently selected day-of-month (managed by the parent toolbar). */
+  day: number;
+  sc: SemanticColors;
+  colors: Record<ReservationType, BadgeColors>;
+  isDark: boolean;
+  onClickEvent: (event: CalendarEvent, day: number, e: React.MouseEvent) => void;
+  onHoverEvent: (event: CalendarEvent, day: number, e: React.MouseEvent) => void;
+  onHoverLeave: () => void;
+  /** ID of the event currently shown in the hover popover (for highlight ring). */
+  hoveredEventId: string | null;
+  currentMonth: number;
+  currentYear: number;
+}
+
+function ResourcesView({
+  eventsByDay,
+  day,
+  sc,
+  colors,
+  isDark,
+  onClickEvent,
+  onHoverEvent,
+  onHoverLeave,
+  hoveredEventId,
+  currentMonth,
+  currentYear,
+}: ResourcesViewProps) {
+  const daysInMonth = getDaysInMonth(currentYear, currentMonth);
+  const clampedDay = Math.min(Math.max(day, 1), daysInMonth);
+
+  // Only non-closed events for this day
+  const events: CalendarEvent[] = (eventsByDay[clampedDay] ?? []).filter(
+    (e) => e.type !== "closed"
+  );
+
+  // Build hours axis
+  const hours: number[] = [];
+  for (let h = RES_START_HOUR; h <= RES_END_HOUR; h++) hours.push(h);
+  const totalW = hours.length * RES_COL_W;
+
+  const formatHour = (h: number) => {
+    if (h === 0)  return "12am";
+    if (h === 12) return "12pm";
+    return h < 12 ? `${h}am` : `${h - 12}pm`;
+  };
+
+  /** Convert a time string (e.g. "11am") to an X pixel offset in the grid. */
+  const timeToLeft = (time: string): number => {
+    const mins = parseEventTimeToMinutes(time);
+    if (mins < 0) return -9999; // out of range sentinel
+    return ((mins - RES_START_HOUR * 60) / 60) * RES_COL_W;
+  };
+
+  /** Render a positioned event chip inside a resource row.
+   *  Structure: outer absolutely-positioned placement shell → inner
+   *  position:relative chip (the containing block for stripe overlays).
+   *  This guarantees the stripe's top/bottom:0 resolve correctly on
+   *  first paint, since the chip's height comes from its own flex sizing
+   *  rather than from a parent-relative top+bottom calculation. */
+  const renderEventBlock = (event: CalendarEvent) => {
+    const left = timeToLeft(event.time);
+    if (left < 0 || left >= totalW) return null;
+    const style     = colors[event.type] || colors.yoga;
+    const isHovered = event.id === hoveredEventId;
+
+    const width = Math.min(RES_COL_W - 4, totalW - left - 2);
+    if (width <= 0) return null;
+
+    const showSecondLine = width > 60;
+
+    // ── Buffer stripes — fixed 12px, inside the chip (mirrors EventBadge) ──
+    const STRIPE_W  = 12;
+    const hasPre    = (event.preBuffer  ?? 0) > 0;
+    const hasPost   = (event.postBuffer ?? 0) > 0;
+    const padL      = hasPre  ? STRIPE_W + 2 : 6;
+    const padR      = hasPost ? STRIPE_W + 2 : 6;
+    // Stripe color: contrasts with the chip background in both states.
+    const stripeColor = isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text;
+
+    // ── Attendance indicator (mirrors EventBadge logic) ──────────────
+    const hasCapacityData =
+      event.capacity > 0 && event.type !== "closed" && event.type !== "league";
+    const attendancePct  = hasCapacityData ? event.booked / event.capacity : 0;
+    const isFull         = hasCapacityData && event.booked >= event.capacity;
+    const isNearlyFull   = !isFull && hasCapacityData && attendancePct >= 0.8;
+    const showStatusPill = hasCapacityData && showSecondLine;
+    const statusBg       = isFull
+      ? (isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)")
+      : isNearlyFull ? "#FFE109" : EZ_GREEN;
+    const statusColor    = isFull ? style.text : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+    const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : event.time;
+
+    return (
+      // Outer shell: handles absolute placement within the row
+      <div
+        key={event.id}
+        style={{
+          position: "absolute",
+          top: "6px",
+          bottom: "6px",
+          left: `${left + 2}px`,
+          width: `${width}px`,
+          zIndex: isHovered ? 3 : 1,
+          // display:flex so the inner chip fills the shell's height
+          display: "flex",
+          alignItems: "stretch",
+        }}
+      >
+        {/* Inner chip: position:relative is the containing block for stripes */}
+        <div
+          onClick={(e) => onClickEvent(event, clampedDay, e)}
+          onMouseEnter={(e) => onHoverEvent(event, clampedDay, e)}
+          onMouseLeave={onHoverLeave}
+          title={[
+            event.title,
+            event.instructor && event.instructor !== "—" ? event.instructor : null,
+            event.venue || null,
+            event.time,
+            hasCapacityData ? `${event.booked}/${event.capacity}` : null,
+          ].filter(Boolean).join(" · ")}
+          style={{
+            position: "relative",
+            flex: 1,
+            borderRadius: "5px",
+            background: isHovered ? style.text : style.bg,
+            border: `1px solid ${isHovered ? style.text : style.border}`,
+            color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
+            fontSize: "11px",
+            fontWeight: 600,
+            padding: `4px ${padR}px 4px ${padL}px`,
+            overflow: "hidden",
+            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: "2px",
+            boxSizing: "border-box",
+            transition: "background 0.1s, border-color 0.1s, color 0.1s",
+          }}
+        >
+          {/* Pre-buffer stripe — absolute, left edge of chip */}
+          {hasPre && (
+            <div
+              aria-hidden
+              title={`${event.preBuffer} min pre-buffer`}
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: `${STRIPE_W}px`,
+                pointerEvents: "none",
+                backgroundImage: `repeating-linear-gradient(135deg, ${stripeColor} 0px, ${stripeColor} 1.5px, transparent 1.5px, transparent 5px)`,
+                opacity: 0.5,
+              }}
+            />
+          )}
+          {/* Post-buffer stripe — absolute, right edge of chip */}
+          {hasPost && (
+            <div
+              aria-hidden
+              title={`${event.postBuffer} min post-buffer`}
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                right: 0,
+                width: `${STRIPE_W}px`,
+                pointerEvents: "none",
+                backgroundImage: `repeating-linear-gradient(135deg, ${stripeColor} 0px, ${stripeColor} 1.5px, transparent 1.5px, transparent 5px)`,
+                opacity: 0.5,
+              }}
+            />
+          )}
+
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "14px" }}>
+            {event.title}
+          </span>
+          {showSecondLine && (
+            showStatusPill ? (
+              <span
+                style={{
+                  display: "inline-block",
+                  alignSelf: "flex-start",
+                  background: isHovered
+                    ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
+                    : statusBg,
+                  color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  lineHeight: "13px",
+                  padding: "0px 4px",
+                  borderRadius: "3px",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: "100%",
+                }}
+              >
+                {statusLabel}
+              </span>
+            ) : (
+              <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap" }}>
+                {event.time}
+              </span>
+            )
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  /** Vertical 1px lines at each hour boundary within a content row. */
+  const renderGridLines = () =>
+    hours.map((_, idx) => (
+      <div
+        key={idx}
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: `${idx * RES_COL_W}px`,
+          width: "1px",
+          background: sc.border,
+          opacity: 0.5,
+          pointerEvents: "none",
+        }}
+      />
+    ));
+
+  // Alternating row backgrounds
+  const rowBg   = (i: number) => i % 2 === 1
+    ? (isDark ? "rgba(255,255,255,0.018)" : "rgba(0,0,0,0.016)")
+    : "transparent";
+  const labelBg = (i: number) => i % 2 === 1
+    ? (isDark ? "#1d2a2f" : "#f1f3f4")
+    : (isDark ? sc.cellBg : "#ffffff");
+
+  // Semi-opaque background for sticky section headers so content behind
+  // them is masked as it scrolls under.
+  const sectionHdrBg = isDark
+    ? "rgba(24,32,35,0.97)"
+    : "rgba(247,248,249,0.97)";
+
+  // Reusable label cell style for a resource row
+  const labelCellStyle = (i: number): CSSProperties => ({
+    position: "sticky",
+    left: 0,
+    width: `${RES_LABEL_W}px`,
+    flexShrink: 0,
+    borderRight: `1px solid ${sc.border}`,
+    background: labelBg(i),
+    display: "flex",
+    alignItems: "center",
+    padding: "0 12px",
+    gap: "8px",
+    fontSize: "13px",
+    fontWeight: 500,
+    color: sc.body,
+    zIndex: 2,
+    overflow: "hidden",
+    boxSizing: "border-box",
+  });
+
+  return (
+    <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* ── Main grid — single overflow:auto for sticky in both axes ── */}
+      <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
+        <div style={{ minWidth: `${RES_LABEL_W + totalW}px`, display: "flex", flexDirection: "column" }}>
+
+          {/* Sticky hour header row */}
+          <div
+            style={{
+              display: "flex",
+              position: "sticky",
+              top: 0,
+              zIndex: 5,
+              height: `${RES_HOUR_HDR_H}px`,
+              flexShrink: 0,
+              borderBottom: `1px solid ${sc.border}`,
+            }}
+          >
+            {/* Top-left corner cell — sticky in both axes */}
+            <div
+              style={{
+                position: "sticky",
+                left: 0,
+                width: `${RES_LABEL_W}px`,
+                flexShrink: 0,
+                background: sc.headerBg,
+                borderRight: `1px solid ${sc.border}`,
+                zIndex: 6,
+              }}
+            />
+            {/* Hour column headers */}
+            {hours.map((h) => (
+              <div
+                key={h}
+                style={{
+                  width: `${RES_COL_W}px`,
+                  flexShrink: 0,
+                  background: sc.headerBg,
+                  display: "flex",
+                  alignItems: "center",
+                  paddingLeft: "8px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: sc.muted,
+                  borderRight: `1px solid ${sc.border}`,
+                  boxSizing: "border-box",
+                }}
+              >
+                {formatHour(h)}
+              </div>
+            ))}
+          </div>
+
+          {/* ── INSTRUCTORS section ────────────────────────────────── */}
+          {/* Section header — sticks just below the hour header */}
+          <div
+            style={{
+              display: "flex",
+              position: "sticky",
+              top: `${RES_HOUR_HDR_H}px`,
+              zIndex: 4,
+              height: `${RES_GRP_HDR_H}px`,
+              flexShrink: 0,
+              borderBottom: `1px solid ${sc.border}`,
+              background: sectionHdrBg,
+            }}
+          >
+            <div
+              style={{
+                position: "sticky",
+                left: 0,
+                width: `${RES_LABEL_W}px`,
+                flexShrink: 0,
+                background: sectionHdrBg,
+                borderRight: `1px solid ${sc.border}`,
+                display: "flex",
+                alignItems: "center",
+                paddingLeft: "12px",
+                fontSize: "10px",
+                fontWeight: 700,
+                letterSpacing: "0.07em",
+                textTransform: "uppercase",
+                color: sc.muted,
+                zIndex: 5,
+                boxSizing: "border-box",
+              }}
+            >
+              Instructors
+            </div>
+            <div style={{ flex: 1, background: sectionHdrBg }} />
+          </div>
+
+          {/* Instructor rows */}
+          {INSTRUCTOR_OPTIONS.map((name, i) => (
+            <div
+              key={name}
+              style={{
+                display: "flex",
+                height: `${RES_ROW_H}px`,
+                flexShrink: 0,
+                borderBottom: `1px solid ${sc.border}`,
+                background: rowBg(i),
+              }}
+            >
+              <div style={labelCellStyle(i)}>
+                <User size={13} style={{ color: sc.muted, flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {name}
+                </span>
+              </div>
+              <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
+                {renderGridLines()}
+                {events.filter((e) => e.instructor === name).map(renderEventBlock)}
+              </div>
+            </div>
+          ))}
+
+          {/* ── VENUES section ─────────────────────────────────────── */}
+          {/* Section header */}
+          <div
+            style={{
+              display: "flex",
+              position: "sticky",
+              top: `${RES_HOUR_HDR_H}px`,
+              zIndex: 4,
+              height: `${RES_GRP_HDR_H}px`,
+              flexShrink: 0,
+              borderTop: `2px solid ${sc.border}`,
+              borderBottom: `1px solid ${sc.border}`,
+              background: sectionHdrBg,
+            }}
+          >
+            <div
+              style={{
+                position: "sticky",
+                left: 0,
+                width: `${RES_LABEL_W}px`,
+                flexShrink: 0,
+                background: sectionHdrBg,
+                borderRight: `1px solid ${sc.border}`,
+                display: "flex",
+                alignItems: "center",
+                paddingLeft: "12px",
+                fontSize: "10px",
+                fontWeight: 700,
+                letterSpacing: "0.07em",
+                textTransform: "uppercase",
+                color: sc.muted,
+                zIndex: 5,
+                boxSizing: "border-box",
+              }}
+            >
+              Venues
+            </div>
+            <div style={{ flex: 1, background: sectionHdrBg }} />
+          </div>
+
+          {/* Venue rows */}
+          {VENUE_OPTIONS.map((name, i) => (
+            <div
+              key={name}
+              style={{
+                display: "flex",
+                height: `${RES_ROW_H}px`,
+                flexShrink: 0,
+                borderBottom: `1px solid ${sc.border}`,
+                background: rowBg(i),
+              }}
+            >
+              <div style={labelCellStyle(i)}>
+                <MapPin size={13} style={{ color: sc.muted, flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {name}
+                </span>
+              </div>
+              <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
+                {renderGridLines()}
+                {events.filter((e) => e.venue === name).map(renderEventBlock)}
+              </div>
+            </div>
+          ))}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — SchedulePage (main export)
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -5788,14 +6653,18 @@ export function SchedulePage() {
   const [showDesktopViewDropdown, setShowDesktopViewDropdown] = useState(false);
   const desktopViewRef = useRef<HTMLDivElement>(null);
 
+  // Resources view — selected day (day-of-month within currentMonth/currentYear)
+  const [resourcesDay, setResourcesDay] = useState(() => new Date().getDate());
+  const [showResourcesDayPicker, setShowResourcesDayPicker] = useState(false);
+  const resourcesDayPickerRef = useRef<HTMLDivElement>(null);
+
   // ── Calendar Filters popover state ──
   // Mirrors the criteria available in reservation details: date range,
   // time range, venues, instructors, reservation types, and a balances-owed
   // toggle. All filter dimensions combine with AND in the filteredEvents
   // memo below; an empty value (string "" or empty array) means "no filter"
   // for that dimension.
-  const [showFilters, setShowFilters] = useState(false);
-  const filtersRef = useRef<HTMLDivElement>(null);
+  // (showFilters removed — filters now live in the UpcomingToday sidebar)
   // Color legend popover — opens from an Info button in the sub-header so
   // the user can quickly look up what each event-badge color represents.
   const [showLegend, setShowLegend] = useState(false);
@@ -5869,17 +6738,7 @@ export function SchedulePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showDesktopViewDropdown]);
 
-  // Close filters popover on outside click
-  useEffect(() => {
-    if (!showFilters) return;
-    function handleClick(e: MouseEvent) {
-      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
-        setShowFilters(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showFilters]);
+  // (Filters popover removed — filters live in the sidebar's Filters tab)
 
   // Clear any visible "can't delete" hint when Delete Mode toggles off,
   // so a stale tooltip doesn't linger after the user exits the mode.
@@ -5905,6 +6764,17 @@ export function SchedulePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showLegend]);
 
+  // Close Resources day picker on outside click
+  useEffect(() => {
+    if (!showResourcesDayPicker) return;
+    function handleClick(e: MouseEvent) {
+      if (resourcesDayPickerRef.current && !resourcesDayPickerRef.current.contains(e.target as Node)) {
+        setShowResourcesDayPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showResourcesDayPicker]);
 
   // Hover popover state (with 300ms delay)
   const [hoveredEvent, setHoveredEvent] = useState<{
@@ -6077,6 +6947,7 @@ export function SchedulePage() {
     const now = new Date();
     setCurrentMonth(now.getMonth());
     setCurrentYear(now.getFullYear());
+    setResourcesDay(now.getDate());
   }, []);
 
   // Desktop month/year picker dropdown (replaces prev/next arrows)
@@ -6296,6 +7167,12 @@ export function SchedulePage() {
     0
   );
 
+  // For the Resources view, "Found X" reflects only the selected day.
+  const clampedResourcesDay = Math.min(Math.max(resourcesDay, 1), getDaysInMonth(currentYear, currentMonth));
+  const resourcesDayCount = (filteredEvents[clampedResourcesDay] ?? [])
+    .filter((e: CalendarEvent) => e.type !== "closed").length;
+  const displayedCount = desktopView === "Resources" ? resourcesDayCount : totalReservations;
+
   /* shared button style helper */
   const controlBtn: CSSProperties = {
     display: "flex",
@@ -6482,50 +7359,143 @@ export function SchedulePage() {
           )}
         </div>
 
-        {/* Date picker — centered month/year dropdown */}
+        {/* Date picker — centered; Resources view shows a day picker,
+            all other views show the existing month/year picker. */}
         <div style={{ justifySelf: "center", display: "flex", alignItems: "center", padding: "8px" }}>
-          <div ref={desktopMonthPickerRef} style={{ position: "relative" }}>
-            <button
-              onClick={() => setShowDesktopMonthPicker(!showDesktopMonthPicker)}
-              aria-expanded={showDesktopMonthPicker}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                border: `1px solid ${showDesktopMonthPicker ? sc.brand : "transparent"}`,
-                background: showDesktopMonthPicker
-                  ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
-                  : "transparent",
-                fontSize: "16px",
-                fontWeight: 600,
-                color: sc.heading,
-                cursor: "pointer",
-                fontFamily: "var(--font-family)",
-              }}
-            >
-              {MONTH_NAMES[currentMonth]} {currentYear}
-              <ChevronDown
-                size={14}
+          {desktopView === "Resources" ? (
+            /* ── Resources: prev-day / clickable-date / next-day ── */
+            <div ref={resourcesDayPickerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
+              {/* Prev day */}
+              <button
+                onClick={() => setResourcesDay((d) => Math.max(1, d - 1))}
+                disabled={clampedResourcesDay === 1}
+                aria-label="Previous day"
                 style={{
-                  transform: showDesktopMonthPicker ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 0.15s ease",
-                  color: sc.muted,
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body, cursor: clampedResourcesDay === 1 ? "not-allowed" : "pointer",
+                  opacity: clampedResourcesDay === 1 ? 0.4 : 1,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
                 }}
-              />
-            </button>
+              >
+                <ChevronLeft size={16} />
+              </button>
 
-            {showDesktopMonthPicker && (
-              <MonthYearPicker
-                currentMonth={currentMonth}
-                currentYear={currentYear}
-                onPick={handleDesktopPickMonth}
-                sc={sc}
-                isDark={isDark}
-              />
-            )}
-          </div>
+              {/* Clickable date label — opens day picker popover */}
+              <button
+                onClick={() => setShowResourcesDayPicker((v) => !v)}
+                aria-expanded={showResourcesDayPicker}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  border: `1px solid ${showResourcesDayPicker ? sc.brand : "transparent"}`,
+                  background: showResourcesDayPicker
+                    ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
+                    : "transparent",
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  color: sc.heading,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-family)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {(() => {
+                  const d = new Date(currentYear, currentMonth, clampedResourcesDay);
+                  const DAY_NAMES_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+                  return `${DAY_NAMES_SHORT[d.getDay()]}, ${MONTH_NAMES[currentMonth].slice(0,3)} ${clampedResourcesDay}, ${currentYear}`;
+                })()}
+                <ChevronDown
+                  size={14}
+                  style={{
+                    transform: showResourcesDayPicker ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s ease",
+                    color: sc.muted,
+                  }}
+                />
+              </button>
+
+              {showResourcesDayPicker && (
+                <ResourcesDayPicker
+                  selectedDay={clampedResourcesDay}
+                  selectedMonth={currentMonth}
+                  selectedYear={currentYear}
+                  onPick={(d, m, y) => {
+                    setResourcesDay(d);
+                    setCurrentMonth(m);
+                    setCurrentYear(y);
+                    setShowResourcesDayPicker(false);
+                  }}
+                  sc={sc}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Next day */}
+              <button
+                onClick={() => setResourcesDay((d) => Math.min(getDaysInMonth(currentYear, currentMonth), d + 1))}
+                disabled={clampedResourcesDay === getDaysInMonth(currentYear, currentMonth)}
+                aria-label="Next day"
+                style={{
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body,
+                  cursor: clampedResourcesDay === getDaysInMonth(currentYear, currentMonth) ? "not-allowed" : "pointer",
+                  opacity: clampedResourcesDay === getDaysInMonth(currentYear, currentMonth) ? 0.4 : 1,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          ) : (
+            /* ── Monthly / Weekly / Daily: month/year picker ── */
+            <div ref={desktopMonthPickerRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowDesktopMonthPicker(!showDesktopMonthPicker)}
+                aria-expanded={showDesktopMonthPicker}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  border: `1px solid ${showDesktopMonthPicker ? sc.brand : "transparent"}`,
+                  background: showDesktopMonthPicker
+                    ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
+                    : "transparent",
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  color: sc.heading,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-family)",
+                }}
+              >
+                {MONTH_NAMES[currentMonth]} {currentYear}
+                <ChevronDown
+                  size={14}
+                  style={{
+                    transform: showDesktopMonthPicker ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s ease",
+                    color: sc.muted,
+                  }}
+                />
+              </button>
+
+              {showDesktopMonthPicker && (
+                <MonthYearPicker
+                  currentMonth={currentMonth}
+                  currentYear={currentYear}
+                  onPick={handleDesktopPickMonth}
+                  sc={sc}
+                  isDark={isDark}
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Calendar-zone right slot — always holds AddReservation so it
@@ -6657,7 +7627,7 @@ export function SchedulePage() {
               )}
             </div>
             <span style={{ fontSize: "14px", fontWeight: 500, color: sc.body, lineHeight: "14px" }}>
-              Found {totalReservations} reservations
+              Found {displayedCount} {displayedCount === 1 ? "reservation" : "reservations"}
             </span>
             {/* Subtle vertical divider to visually separate the count
                 (meta-info) from the Delete Mode toggle (mode toggle).
@@ -6778,179 +7748,97 @@ export function SchedulePage() {
                 }}
               />
             </div>
-            {/* Filters — opens a structured popover that mirrors the
-                criteria available in reservation details (date / time
-                ranges, venues, instructors, types) plus a dedicated
-                balances-owed toggle. Active filter dimensions get a count
-                badge on the button so the user knows the calendar is
-                showing a filtered subset. */}
-            <div ref={filtersRef} style={{ position: "relative" }}>
-              <button
-                onClick={() => setShowFilters((v) => !v)}
-                aria-expanded={showFilters}
-                style={{
-                  ...controlBtn,
-                  gap: "6px",
-                  padding: "8px 12px",
-                  fontSize: "14px",
-                  fontWeight: 500,
-                  borderColor: activeFilterCount > 0 ? sc.brand : sc.border,
-                  color: activeFilterCount > 0 ? sc.brand : sc.body,
-                }}
-              >
-                <SlidersHorizontal size={16} /> Filters
-                {activeFilterCount > 0 && (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minWidth: "18px",
-                      height: "18px",
-                      padding: "0 5px",
-                      borderRadius: "9px",
-                      background: sc.brand,
-                      color: isDark ? "#0a0e0f" : "#101828",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {activeFilterCount}
-                  </span>
-                )}
-                <ChevronDown size={16} style={{ transform: showFilters ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }} />
-              </button>
-
-              {showFilters && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 6px)",
-                    right: 0,
-                    width: "360px",
-                    maxHeight: "70vh",
-                    overflowY: "auto",
-                    background: sc.cellBg,
-                    border: `1px solid ${sc.border}`,
-                    borderRadius: "10px",
-                    boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
-                    padding: "16px",
-                    zIndex: 100,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "16px",
-                    fontFamily: "var(--font-family)",
-                  }}
-                >
-                  <CalendarFiltersContent
-                    filterStartDate={filterStartDate}
-                    setFilterStartDate={setFilterStartDate}
-                    filterEndDate={filterEndDate}
-                    setFilterEndDate={setFilterEndDate}
-                    filterStartTime={filterStartTime}
-                    setFilterStartTime={setFilterStartTime}
-                    filterEndTime={filterEndTime}
-                    setFilterEndTime={setFilterEndTime}
-                    filterVenues={filterVenues}
-                    setFilterVenues={setFilterVenues}
-                    filterInstructors={filterInstructors}
-                    setFilterInstructors={setFilterInstructors}
-                    filterTypes={filterTypes}
-                    setFilterTypes={setFilterTypes}
-                    filterPaymentStatus={filterPaymentStatus}
-                    setFilterPaymentStatus={setFilterPaymentStatus}
-                    filterRegistrations={filterRegistrations}
-                    setFilterRegistrations={setFilterRegistrations}
-                    activeFilterCount={activeFilterCount}
-                    clearAllFilters={clearAllFilters}
-                    palette={palette}
-                    isDark={isDark}
-                    sc={sc}
-                    colors={colors}
-                  />
-                </div>
-              )}
-            </div>
+            {/* Filters moved to the sidebar's Filters tab */}
           </div>
         </div>
 
-        {/* Calendar grid — headers + weeks share one grid so all column
-            boundaries land on the exact same x-positions. (When each week was
-            its own flex row, sub-pixel rounding could shift the 1px column
-            borders by a fraction of a pixel between rows, which read as
-            misaligned grid lines — most visible on the first/last weeks.)
-            The wrapper takes flex:1 and scrolls when the grid's minimum
-            height exceeds the available space (e.g. small windows).
-            gridAutoRows distributes height equally across week rows
-            (down to a per-row minimum of 130px). */}
-        <div
-          style={{
-            flex: "1 1 0",
-            minHeight: 0,
-            overflowY: "auto",
-          }}
-        >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-            gridTemplateRows: "auto",
-            gridAutoRows: "minmax(130px, 1fr)",
-            minHeight: "100%",
-          }}
-        >
-          {/* Day headers */}
-          {DAYS_OF_WEEK.map((day) => (
-            <div
-              key={day}
-              style={{
-                minWidth: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "0 20px",
-                height: "36px",
-                background: sc.headerBg,
-                borderBottom: `1px solid ${sc.border}`,
-                borderRight: `1px solid ${sc.border}`,
-                fontSize: "14px",
-                fontWeight: 500,
-                color: sc.body,
-                textTransform: "capitalize",
-              }}
-            >
-              {day}
-            </div>
-          ))}
+        {/* Calendar grid — conditionally renders the monthly grid or the
+            Resources (day × resource) view depending on desktopView. */}
+        {desktopView === "Resources" ? (
+          <ResourcesView
+            eventsByDay={filteredEvents}
+            day={clampedResourcesDay}
+            sc={sc}
+            colors={colors}
+            isDark={isDark}
+            onClickEvent={handleClickEvent}
+            onHoverEvent={handleHoverEvent}
+            onHoverLeave={handleHoverLeave}
+            hoveredEventId={hoveredEvent?.event.id ?? null}
+            currentMonth={currentMonth}
+            currentYear={currentYear}
+          />
+        ) : (
+          /* Monthly grid — headers + weeks share one grid so all column
+             boundaries land on the exact same x-positions. */
+          <div
+            style={{
+              flex: "1 1 0",
+              minHeight: 0,
+              overflowY: "auto",
+            }}
+          >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gridTemplateRows: "auto",
+              gridAutoRows: "minmax(130px, 1fr)",
+              minHeight: "100%",
+            }}
+          >
+            {/* Day headers */}
+            {DAYS_OF_WEEK.map((day) => (
+              <div
+                key={day}
+                style={{
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "0 20px",
+                  height: "36px",
+                  background: sc.headerBg,
+                  borderBottom: `1px solid ${sc.border}`,
+                  borderRight: `1px solid ${sc.border}`,
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: sc.body,
+                  textTransform: "capitalize",
+                }}
+              >
+                {day}
+              </div>
+            ))}
 
-          {/* Week cells, flattened. Each DateCell has its own minHeight: 149px
-              so each week-row stays the same minimum height. */}
-          {weeks.flatMap((week, wi) =>
-            week.map((day, di) => (
-              <DateCell
-                key={`${wi}-${di}`}
-                day={day}
-                isToday={day === todayDate}
-                events={day ? filteredEvents[day] || [] : []}
-                selectedEventId={hoveredEvent?.event.id ?? null}
-                onSelectEvent={(event, e) => {
-                  if (day) handleClickEvent(event, day, e);
-                }}
-                onHoverEvent={(event, e) => {
-                  if (day) handleHoverEvent(event, day, e);
-                }}
-                onHoverLeave={handleHoverLeave}
-                onShowMore={handleShowMore}
-                sc={sc}
-                colors={colors}
-                isDark={isDark}
-                deleteMode={deleteMode}
-              />
-            ))
-          )}
-        </div>
-        </div>
+            {/* Week cells, flattened. Each DateCell has its own minHeight: 149px
+                so each week-row stays the same minimum height. */}
+            {weeks.flatMap((week, wi) =>
+              week.map((day, di) => (
+                <DateCell
+                  key={`${wi}-${di}`}
+                  day={day}
+                  isToday={day === todayDate}
+                  events={day ? filteredEvents[day] || [] : []}
+                  selectedEventId={hoveredEvent?.event.id ?? null}
+                  onSelectEvent={(event, e) => {
+                    if (day) handleClickEvent(event, day, e);
+                  }}
+                  onHoverEvent={(event, e) => {
+                    if (day) handleHoverEvent(event, day, e);
+                  }}
+                  onHoverLeave={handleHoverLeave}
+                  onShowMore={handleShowMore}
+                  sc={sc}
+                  colors={colors}
+                  isDark={isDark}
+                  deleteMode={deleteMode}
+                />
+              ))
+            )}
+          </div>
+          </div>
+        )}
       </div>
         </div> {/* end Left column */}
       {/* ── Upcoming Today side rail ────────────────────────────────
@@ -6996,6 +7884,27 @@ export function SchedulePage() {
           colors={colors}
           isDark={isDark}
           onSelectEvent={handleSelectUpcomingEvent}
+          palette={palette}
+          filterStartDate={filterStartDate}
+          setFilterStartDate={setFilterStartDate}
+          filterEndDate={filterEndDate}
+          setFilterEndDate={setFilterEndDate}
+          filterStartTime={filterStartTime}
+          setFilterStartTime={setFilterStartTime}
+          filterEndTime={filterEndTime}
+          setFilterEndTime={setFilterEndTime}
+          filterTypes={filterTypes}
+          setFilterTypes={setFilterTypes}
+          filterPaymentStatus={filterPaymentStatus}
+          setFilterPaymentStatus={setFilterPaymentStatus}
+          filterRegistrations={filterRegistrations}
+          setFilterRegistrations={setFilterRegistrations}
+          filterInstructors={filterInstructors}
+          setFilterInstructors={setFilterInstructors}
+          filterVenues={filterVenues}
+          setFilterVenues={setFilterVenues}
+          activeFilterCount={activeFilterCount}
+          clearAllFilters={clearAllFilters}
         />
       </div>
       </div>
