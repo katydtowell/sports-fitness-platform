@@ -1,5 +1,22 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 
+/* ── EZFacility brand color rules ────────────────────────────────────────────
+ *
+ *  EZ_GREEN (#00BC8A) and EZ_RED (#E61848) are high-chroma brand colors.
+ *  Per the style guide, labels placed on these backgrounds must always be
+ *  DARK — never white.  Use EZ_GREEN_ON_COLOR and EZ_RED_ON_COLOR for any
+ *  text, icon, or label that sits directly on these fills.
+ *
+ *  ✗  background: EZ_GREEN  +  color: "#ffffff"   ← violates this rule
+ *  ✓  background: EZ_GREEN  +  color: EZ_GREEN_ON_COLOR
+ *  ✓  background: EZ_RED    +  color: EZ_RED_ON_COLOR
+ *
+ * ─────────────────────────────────────────────────────────────────────────── */
+export const EZ_GREEN         = "#00BC8A";
+export const EZ_GREEN_ON_COLOR = "#111111";
+export const EZ_RED           = "#E61848";
+export const EZ_RED_ON_COLOR   = "#111111";
+
 /* ── Light / dark colour palettes from the EZFacility Style Guide ────────── */
 
 export interface ThemePalette {

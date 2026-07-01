@@ -37,7 +37,7 @@ import {
   ExternalLink,
   ArrowUpDown,
 } from "lucide-react";
-import { useTheme, type ThemePalette } from "../layout/ThemeContext";
+import { useTheme, type ThemePalette, EZ_GREEN, EZ_GREEN_ON_COLOR, EZ_RED, EZ_RED_ON_COLOR } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
 import { useIsMobile } from "../ui/use-mobile";
 import { CancelConfirmModal } from "../client-profile/CancelConfirmModal";
@@ -668,6 +668,19 @@ function EventBadge({
   // preserve calendar context but recede from the action.
   const dimNonDeletable = deleteMode && !isDeletable;
 
+  // Attendance status pill on the time label.
+  // Closed / league events are excluded — no per-session capacity.
+  //   available   (<80% booked, including 0) → green pill, dark text
+  //   nearly full (≥80%, <100%)              → yellow pill, dark text
+  //   full        (≥100%)                    → no pill (plain time text)
+  const hasCapacityData = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
+  const attendancePct   = hasCapacityData ? event.booked / event.capacity : 0;
+  const isFull          = hasCapacityData && event.booked >= event.capacity;
+  const isNearlyFull    = !isFull && hasCapacityData && attendancePct >= 0.8;
+  const showStatusDot   = hasCapacityData && !isFull;
+  const statusDotColor  = isNearlyFull ? "#FFE109" : EZ_GREEN;
+  const statusTextColor = isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+
   // Stripe area is 12px wide; bump padding to 14px on the affected side so
   // text starts just past the stripes (mirrors the "diagonal lines next to
   // the title" pattern from the source design).
@@ -776,16 +789,24 @@ function EventBadge({
         <span
           style={{
             flexShrink: 0,
-            fontWeight: 400,
+            fontWeight: showStatusDot ? 700 : 400,
             textAlign: "right",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            ...(showStatusDot && {
+              background: statusDotColor,
+              color: statusTextColor,
+              borderRadius: "3px",
+              padding: "0 3px",
+              lineHeight: "14px",
+            }),
           }}
         >
           {event.time}
         </span>
       )}
+
     </div>
   );
 }
@@ -3098,8 +3119,8 @@ interface MobileScheduleViewProps {
   setFilterTypes: (v: ReservationType[]) => void;
   filterPaymentStatus: "" | "Owed" | "Paid";
   setFilterPaymentStatus: (v: "" | "Owed" | "Paid") => void;
-  filterRegistrations: "" | "Full" | "Some" | "All";
-  setFilterRegistrations: (v: "" | "Full" | "Some" | "All") => void;
+  filterRegistrations: string[];
+  setFilterRegistrations: (v: string[]) => void;
   activeFilterCount: number;
   clearAllFilters: () => void;
 }
@@ -3207,14 +3228,19 @@ function MobileScheduleView({
         if (filterTypes.length > 0 && !filterTypes.includes(e.type)) return false;
         if (filterPaymentStatus === "Owed" && getOwedCount(e) === 0) return false;
         if (filterPaymentStatus === "Paid" && getOwedCount(e) > 0) return false;
-        if (filterRegistrations) {
+        if (filterRegistrations.length > 0) {
           if (e.capacity <= 0) return false;
-          const isFull = e.booked >= e.capacity;
-          const isAllAvailable = e.booked === 0;
-          const isSomeAvailable = !isFull && !isAllAvailable;
-          if (filterRegistrations === "Full" && !isFull) return false;
-          if (filterRegistrations === "Some" && !isSomeAvailable) return false;
-          if (filterRegistrations === "All" && !isAllAvailable) return false;
+          const pct = e.booked / e.capacity;
+          const isFull       = e.booked >= e.capacity;
+          const isNearlyFull = !isFull && pct >= 0.8;
+          const isEmpty      = e.booked === 0;
+          const isAvailable  = !isFull && !isNearlyFull && !isEmpty;
+          const matches =
+            (filterRegistrations.includes("Full")       && isFull)       ||
+            (filterRegistrations.includes("NearlyFull") && isNearlyFull) ||
+            (filterRegistrations.includes("Available")  && isAvailable)  ||
+            (filterRegistrations.includes("Empty")      && isEmpty);
+          if (!matches) return false;
         }
         return true;
       });
@@ -5492,7 +5518,7 @@ interface CalendarFiltersContentProps {
   filterInstructors: string[];
   filterTypes: ReservationType[];
   filterPaymentStatus: "" | "Owed" | "Paid";
-  filterRegistrations: "" | "Full" | "Some" | "All";
+  filterRegistrations: string[];
   setFilterStartDate: (v: string) => void;
   setFilterEndDate: (v: string) => void;
   setFilterStartTime: (v: string) => void;
@@ -5501,7 +5527,7 @@ interface CalendarFiltersContentProps {
   setFilterInstructors: (v: string[]) => void;
   setFilterTypes: (v: ReservationType[]) => void;
   setFilterPaymentStatus: (v: "" | "Owed" | "Paid") => void;
-  setFilterRegistrations: (v: "" | "Full" | "Some" | "All") => void;
+  setFilterRegistrations: (v: string[]) => void;
   activeFilterCount: number;
   clearAllFilters: () => void;
   palette: ThemePalette;
@@ -5654,91 +5680,63 @@ function CalendarFiltersContent({
         />
       </div>
 
-      {/* Reservation types — desktop renders as colored chips that
-          double as the legend; mobile renders as a searchable
-          multiselect with a colored dot per option (the chips would
-          wrap awkwardly in a narrow drawer, but the dot still anchors
-          each row to its calendar color). */}
+      {/* Reservation types — searchable multiselect with a color-coded dot
+          per option so each type stays visually anchored to its calendar color. */}
       <div>
         <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Reservation types</div>
-        {mobileLayout ? (
-          <SearchableMultiSelect
-            options={TYPE_OPTIONS as string[]}
-            selected={filterTypes as string[]}
-            onChange={(values) => setFilterTypes(values as ReservationType[])}
-            placeholder="—Any type—"
-            palette={palette}
-            getLabel={(o) => typeLabel(o as ReservationType)}
-            getLeading={renderTypeDot}
-          />
-        ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-            {TYPE_OPTIONS.map((t) => {
-              const isActive = filterTypes.includes(t);
-              const c = colors[t];
-              const toggle = () => {
-                const next = filterTypes.includes(t)
-                  ? filterTypes.filter((x) => x !== t)
-                  : [...filterTypes, t];
-                setFilterTypes(next);
-              };
-              return (
-                <button
-                  key={t}
-                  onClick={toggle}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "12px",
-                    border: `1px solid ${c.border}`,
-                    background: isActive ? c.bg : "transparent",
-                    color: c.text,
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    fontFamily: "var(--font-family)",
-                    cursor: "pointer",
-                    lineHeight: 1.4,
-                    opacity: isActive ? 1 : 0.7,
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  {typeLabel(t)}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <SearchableMultiSelect
+          options={TYPE_OPTIONS as string[]}
+          selected={filterTypes as string[]}
+          onChange={(values) => setFilterTypes(values as ReservationType[])}
+          placeholder="—Any type—"
+          palette={palette}
+          getLabel={(o) => typeLabel(o as ReservationType)}
+          getLeading={renderTypeDot}
+        />
       </div>
 
       {/* Registrations + Payment status — derived-state filters. */}
       <div style={{ height: "1px", background: sc.border }} />
       <div>
         <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Registrations</div>
-        <select
-          value={filterRegistrations}
-          onChange={(e) => setFilterRegistrations(e.target.value as "" | "Full" | "Some" | "All")}
-          style={{
-            width: "100%",
-            padding: "6px 32px 6px 12px",
-            fontSize: "13px",
-            fontFamily: "var(--font-family)",
-            border: `1px solid ${palette.borderMedium}`,
-            borderRadius: "6px",
-            background: palette.surfaceBg,
-            color: palette.textPrimary,
-            colorScheme: isDark ? "dark" : "light",
-            cursor: "pointer",
-            appearance: "none",
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='${encodeURIComponent(isDark ? "#a1bdc6" : "#475467")}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "right 12px center",
-            minHeight: "42px",
-          }}
-        >
-          <option value="">Any</option>
-          <option value="Full">Full</option>
-          <option value="Some">Some Available</option>
-          <option value="All">All Available</option>
-        </select>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {([
+            { value: "Full",       label: "Full",        pillBg: EZ_RED,   pillBorder: EZ_RED,   pillText: EZ_RED_ON_COLOR   },
+            { value: "NearlyFull", label: "Nearly Full", pillBg: "#FFE109", pillBorder: "#C4A800", pillText: "#111111"          },
+            { value: "Available",  label: "Available",   pillBg: EZ_GREEN,  pillBorder: EZ_GREEN,  pillText: EZ_GREEN_ON_COLOR  },
+            { value: "Empty",      label: "Empty",       pillBg: isDark ? "rgba(255,255,255,0.08)" : "#f3f4f6", pillBorder: palette.borderMedium, pillText: sc.body },
+          ] as const).map(({ value, label, pillBg, pillBorder, pillText }) => {
+            const isActive = filterRegistrations.includes(value);
+            const toggle = () => {
+              const next = isActive
+                ? filterRegistrations.filter((x) => x !== value)
+                : [...filterRegistrations, value];
+              setFilterRegistrations(next);
+            };
+            return (
+              <button
+                key={value}
+                onClick={toggle}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  border: `1px solid ${isActive ? pillBorder : palette.borderMedium}`,
+                  background: isActive ? pillBg : "transparent",
+                  color: isActive ? pillText : sc.body,
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-family)",
+                  cursor: "pointer",
+                  lineHeight: 1.4,
+                  opacity: isActive ? 1 : 0.7,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div>
         <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Payment status</div>
@@ -5829,11 +5827,11 @@ export function SchedulePage() {
   // where at least one registered client has an outstanding balance;
   // "Paid" shows only events where every registered client is paid up.
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<"" | "Owed" | "Paid">("");
-  // Registrations — "" means any. "Full" = booked >= capacity; "Some" =
-  // booked > 0 and < capacity (partial roster); "All" = booked === 0.
-  // Events with no capacity (e.g. league games / closures) are skipped
-  // by this filter, since "available seats" doesn't apply to them.
-  const [filterRegistrations, setFilterRegistrations] = useState<"" | "Full" | "Some" | "All">("");
+  // Registrations — empty array means no filter. Multiple values are OR'd.
+  // "Full" = booked >= capacity; "NearlyFull" = ≥80% booked; "Available" =
+  // 1+ booked and < 80%; "Empty" = 0 booked. Events without capacity
+  // (league games, closures) are excluded when any option is active.
+  const [filterRegistrations, setFilterRegistrations] = useState<string[]>([]);
 
   // Active-filter count for the badge on the Filters button.
   const activeFilterCount =
@@ -5845,7 +5843,7 @@ export function SchedulePage() {
     (filterInstructors.length > 0 ? 1 : 0) +
     (filterTypes.length > 0 ? 1 : 0) +
     (filterPaymentStatus ? 1 : 0) +
-    (filterRegistrations ? 1 : 0);
+    (filterRegistrations.length > 0 ? 1 : 0);
 
   const clearAllFilters = () => {
     setFilterStartDate("");
@@ -5856,7 +5854,7 @@ export function SchedulePage() {
     setFilterInstructors([]);
     setFilterTypes([]);
     setFilterPaymentStatus("");
-    setFilterRegistrations("");
+    setFilterRegistrations([]);
   };
 
   // Close desktop view dropdown on outside click
@@ -6169,14 +6167,19 @@ export function SchedulePage() {
         // dropped by any registration filter since "seats available"
         // doesn't apply. Closures are exempted at the top of this
         // filter callback.
-        if (filterRegistrations) {
+        if (filterRegistrations.length > 0) {
           if (e.capacity <= 0) return false;
-          const isFull = e.booked >= e.capacity;
-          const isAllAvailable = e.booked === 0;
-          const isSomeAvailable = !isFull && !isAllAvailable;
-          if (filterRegistrations === "Full" && !isFull) return false;
-          if (filterRegistrations === "Some" && !isSomeAvailable) return false;
-          if (filterRegistrations === "All" && !isAllAvailable) return false;
+          const pct = e.booked / e.capacity;
+          const isFull       = e.booked >= e.capacity;
+          const isNearlyFull = !isFull && pct >= 0.8;
+          const isEmpty      = e.booked === 0;
+          const isAvailable  = !isFull && !isNearlyFull && !isEmpty;
+          const matches =
+            (filterRegistrations.includes("Full")       && isFull)       ||
+            (filterRegistrations.includes("NearlyFull") && isNearlyFull) ||
+            (filterRegistrations.includes("Available")  && isAvailable)  ||
+            (filterRegistrations.includes("Empty")      && isEmpty);
+          if (!matches) return false;
         }
         return true;
       });
