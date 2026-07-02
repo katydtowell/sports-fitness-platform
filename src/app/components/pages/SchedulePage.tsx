@@ -289,6 +289,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("10a", "Yoga", "11am", "yoga"),
     makeEvent("10b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
     makeEvent("10c", "Pilates", "3pm", "pilates"),
+    makeEvent("10d", "Yoga", "2pm", "yoga", "Sara Chen", "Studio A"),
   ];
   events[11] = [
     makeEvent("11a", "CLOSED", "", "closed", "", "", 0, 0, true),
@@ -4288,6 +4289,206 @@ function SectionHeaderDropdown({
   );
 }
 
+/**
+ * SectionPriorityTabs — priority-tab section navigation for side panels.
+ *
+ * Shows the first `maxVisible` sections as underlined tabs; the rest
+ * collapse into a "More (N)" menu. Selecting an overflow section swaps it
+ * with the last visible tab, so the active section is always visible in
+ * the row and the More count stays constant. Promotion also triggers when
+ * the active section changes externally (e.g. the footer "Next: …"
+ * button), not just via the menu.
+ *
+ * Replaces the header chevron dropdown (SectionHeaderDropdown) for panels
+ * whose sections are long-form — every destination is one click away and
+ * the active section is always labeled on screen.
+ */
+function SectionPriorityTabs({
+  sections,
+  activeSection,
+  onSelectSection,
+  maxVisible = 4,
+}: {
+  sections: string[];
+  activeSection: string;
+  onSelectSection: (s: string) => void;
+  maxVisible?: number;
+}) {
+  const { palette } = useTheme();
+  const [order, setOrder] = useState<string[]>(sections);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  // Re-derive the tab order if the section list itself changes.
+  useEffect(() => {
+    setOrder((prev) =>
+      prev.length === sections.length && sections.every((s) => prev.includes(s))
+        ? prev
+        : sections
+    );
+  }, [sections]);
+
+  // Promote the active section into the visible row when it lives in the
+  // overflow. The displaced tab takes its slot in the menu (a swap), so
+  // the More count never changes and users keep a stable sense of place.
+  useEffect(() => {
+    setOrder((prev) => {
+      const idx = prev.indexOf(activeSection);
+      if (idx === -1 || idx < maxVisible) return prev;
+      const next = [...prev];
+      next[maxVisible - 1] = activeSection;
+      next[idx] = prev[maxVisible - 1];
+      return next;
+    });
+  }, [activeSection, maxVisible]);
+
+  // Close the More menu on outside click.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
+
+  const visible = order.slice(0, maxVisible);
+  const overflow = order.slice(maxVisible);
+
+  // Tabs shrink and ellipsize before the row overflows, so four tabs +
+  // More survive the quarter-width panel; full labels stay available via
+  // the title tooltip.
+  const baseTabStyle: CSSProperties = {
+    background: "none",
+    border: "none",
+    borderBottom: "2px solid transparent",
+    padding: "12px 10px",
+    fontSize: "var(--text-sm)",
+    fontFamily: "var(--font-family)",
+    color: palette.textTertiary,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    minWidth: 0,
+    flex: "0 1 auto",
+    transition: "color 0.15s ease, border-color 0.15s ease, background 0.15s ease",
+  };
+
+  return (
+    <div role="tablist" aria-label="Panel sections" style={{ display: "flex", alignItems: "stretch", gap: "2px" }}>
+      {visible.map((section) => {
+        const isActive = section === activeSection;
+        return (
+          <button
+            key={section}
+            role="tab"
+            aria-selected={isActive}
+            title={section}
+            onClick={() => onSelectSection(section)}
+            style={{
+              ...baseTabStyle,
+              color: isActive ? palette.textPrimary : palette.textTertiary,
+              fontWeight: isActive ? 600 : 400,
+              borderBottom: isActive ? `2px solid ${palette.primary}` : "2px solid transparent",
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive) e.currentTarget.style.color = palette.textPrimary;
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive) e.currentTarget.style.color = palette.textTertiary;
+            }}
+          >
+            {section}
+          </button>
+        );
+      })}
+      {overflow.length > 0 && (
+        <div ref={moreRef} style={{ position: "relative", display: "flex", flexShrink: 0 }}>
+          <button
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            style={{
+              ...baseTabStyle,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              overflow: "visible",
+              flex: "0 0 auto",
+              color: menuOpen ? palette.textPrimary : palette.textTertiary,
+              background: menuOpen ? palette.hoverBg : "none",
+              borderRadius: "6px 6px 0 0",
+            }}
+            onMouseEnter={(e) => {
+              if (!menuOpen) e.currentTarget.style.color = palette.textPrimary;
+            }}
+            onMouseLeave={(e) => {
+              if (!menuOpen) e.currentTarget.style.color = palette.textTertiary;
+            }}
+          >
+            More ({overflow.length})
+            <ChevronDown
+              size={14}
+              style={{ transition: "transform 0.2s ease", transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+            />
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 2px)",
+                right: 0,
+                minWidth: "180px",
+                background: palette.surfacePrimary,
+                border: `1px solid ${palette.borderLight}`,
+                borderRadius: "8px",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+                zIndex: 30,
+                padding: "4px",
+              }}
+            >
+              {overflow.map((section) => (
+                <button
+                  key={section}
+                  role="menuitem"
+                  onClick={() => {
+                    onSelectSection(section);
+                    setMenuOpen(false);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "none",
+                    borderRadius: "6px",
+                    background: "transparent",
+                    color: palette.textPrimary,
+                    fontSize: "var(--text-sm)",
+                    fontFamily: "var(--font-family)",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = palette.hoverBg;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  {section}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
@@ -4958,6 +5159,9 @@ const EZCOACH_VIOLET = "#8B5CF6";
 const EZCOACH_EXAMPLE =
   "Create a half hour HIIT session in Studio A with Jody March for July 30th at 3pm";
 
+const EZCOACH_EXAMPLE_RENTAL =
+  "Create a one hour Pilates rental on Court 1 for August 12th at 6pm";
+
 const EZCOACH_MONTH_NAMES = [
   "january", "february", "march", "april", "may", "june",
   "july", "august", "september", "october", "november", "december",
@@ -5053,7 +5257,72 @@ function parseReservationRequest(msg: string): ParsedReservationRequest | null {
   };
 }
 
-type CoachStep = "request" | "title" | "recurring" | "classSize" | "buffers" | "done" | "created";
+/** A schedule match found by EZCoach's edit lookup. `day` is the mock
+ *  data's day-of-month key (events render in whichever month is shown). */
+interface CoachSearchResult {
+  day: number;
+  event: CalendarEvent;
+}
+
+/** Searches MOCK_EVENTS with whatever criteria the message contains —
+ *  activity type, venue, instructor, day of month, and/or start time.
+ *  Every criterion found must match (AND), so more detail narrows the
+ *  results. `criteria` lets the caller distinguish "nothing to search on"
+ *  from "searched and found nothing". */
+function searchMockEvents(msg: string): { criteria: number; results: CoachSearchResult[] } {
+  const lower = msg.toLowerCase();
+
+  const type =
+    (["yoga", "meditation", "pilates", "hiit", "league"] as ReservationType[])
+      .find((t) => lower.includes(t)) ?? null;
+  const venue = VENUE_OPTIONS.find((v) => lower.includes(v.toLowerCase())) ?? null;
+  const instructor = INSTRUCTOR_OPTIONS.find((i) => lower.includes(i.toLowerCase())) ?? null;
+
+  // Day of month — "July 10th" or a bare ordinal like "the 10th"
+  let day: number | null = null;
+  const monthDay = lower.match(new RegExp(`(?:${EZCOACH_MONTH_NAMES.join("|")})\\s+(\\d{1,2})`));
+  const bareDay = lower.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/);
+  if (monthDay) day = parseInt(monthDay[1], 10);
+  else if (bareDay) day = parseInt(bareDay[1], 10);
+
+  // Start time — "2pm", "2:00 pm"
+  let mins: number | null = null;
+  const tm = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  if (tm) {
+    let h = parseInt(tm[1], 10) % 12;
+    if (tm[3] === "pm") h += 12;
+    mins = h * 60 + (tm[2] ? parseInt(tm[2], 10) : 0);
+  }
+
+  const criteria = [type, venue, instructor, day, mins].filter((c) => c !== null).length;
+  if (criteria === 0) return { criteria, results: [] };
+
+  const days = day !== null ? [day] : Object.keys(MOCK_EVENTS).map(Number);
+  const results: CoachSearchResult[] = [];
+  for (const d of days) {
+    for (const ev of MOCK_EVENTS[d] ?? []) {
+      if (type && ev.type !== type) continue;
+      if (venue && ev.venue !== venue) continue;
+      if (instructor && ev.instructor !== instructor) continue;
+      if (mins !== null && parseEventTimeToMinutes(ev.time) !== mins) continue;
+      results.push({ day: d, event: ev });
+    }
+  }
+  return { criteria, results };
+}
+
+type CoachStep = "request" | "editLookup" | "title" | "recurring" | "classSize" | "buffers" | "done" | "created";
+
+/** Top-level things EZCoach can do — offered when a first message doesn't
+ *  match any action it understands. */
+type CoachIntent = "create-session" | "edit-session" | "create-rental" | "edit-rental";
+
+const COACH_INTENT_OPTIONS: { label: string; intent: CoachIntent }[] = [
+  { label: "Create a Session", intent: "create-session" },
+  { label: "Edit a Session", intent: "edit-session" },
+  { label: "Create a Rental", intent: "create-rental" },
+  { label: "Edit a Rental", intent: "edit-rental" },
+];
 
 interface CoachMessage {
   id: string;
@@ -5065,11 +5334,17 @@ interface CoachMessage {
   quickReplies?: string[];
   /** Terminal action buttons (create / review in manual form). */
   actions?: { label: string; kind: "create" | "manual" }[];
+  /** Intent picker buttons — shown when a request couldn't be matched. */
+  intents?: { label: string; intent: CoachIntent }[];
+  /** Schedule matches from an edit lookup — rendered as cards with an
+   *  Edit button that opens the reservation in the details panel. */
+  results?: CoachSearchResult[];
 }
 
 interface EZCoachChatProps {
   palette: ThemePalette;
   isDark: boolean;
+  onApplyScheduleType: (t: "session" | "rental") => void;
   onApplyRequest: (r: ParsedReservationRequest) => void;
   onApplyTitle: (title: string) => void;
   onApplyRecurring: (yes: boolean) => void;
@@ -5077,12 +5352,14 @@ interface EZCoachChatProps {
   onApplyBuffers: (useDefault: boolean) => void;
   onSwitchToManual: () => void;
   onCreate: () => void;
+  /** Opens a found reservation in the details (edit) panel. */
+  onOpenEvent: (event: CalendarEvent) => void;
 }
 
 function EZCoachChat({
   palette, isDark,
-  onApplyRequest, onApplyTitle, onApplyRecurring, onApplyClassSize, onApplyBuffers,
-  onSwitchToManual, onCreate,
+  onApplyScheduleType, onApplyRequest, onApplyTitle, onApplyRecurring, onApplyClassSize, onApplyBuffers,
+  onSwitchToManual, onCreate, onOpenEvent,
 }: EZCoachChatProps) {
   const [messages, setMessages] = useState<CoachMessage[]>([
     {
@@ -5104,6 +5381,10 @@ function EZCoachChat({
   }>({});
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  /** Set when the user picks an action from the intent menu — a chosen
+   *  create intent forces the schedule type and changes the fallback
+   *  copy from "no matching action" to a gentler field re-prompt. */
+  const intentRef = useRef<CoachIntent | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -5121,12 +5402,28 @@ function EZCoachChat({
       case "request": {
         const parsed = parseReservationRequest(text);
         if (!parsed) {
-          pushCoach({
-            text: "I couldn't catch everything I need. Make sure your message includes the activity (e.g. HIIT, Yoga), a venue, a date, and a start time — or start from the example below.",
-            hint: EZCOACH_EXAMPLE,
-          });
+          const createIntent = intentRef.current === "create-session" || intentRef.current === "create-rental";
+          if (createIntent) {
+            // The user already told us what they want to do — just re-prompt
+            // for the missing details.
+            pushCoach({
+              text: "I couldn't catch everything I need. Make sure your message includes the activity (e.g. HIIT, Yoga), a venue, a date, and a start time — or start from the example below.",
+              hint: intentRef.current === "create-rental" ? EZCOACH_EXAMPLE_RENTAL : EZCOACH_EXAMPLE,
+            });
+          } else {
+            // First unrecognized message — offer the actions EZCoach knows.
+            pushCoach({
+              text: "Hmm — I couldn't find a matching action for that request. Here's what I can help with:",
+              intents: COACH_INTENT_OPTIONS,
+            });
+          }
           return;
         }
+        // A create intent chosen from the menu overrides whatever the
+        // sentence implied (e.g. "Create a Rental" + a message that never
+        // says "rental").
+        if (intentRef.current === "create-session") parsed.scheduleType = "session";
+        if (intentRef.current === "create-rental") parsed.scheduleType = "rental";
         captured.req = parsed;
         onApplyRequest(parsed);
         const lines = [
@@ -5141,6 +5438,41 @@ function EZCoachChat({
           text: `Here's what I captured:\n\n${lines.map((l) => `•  ${l}`).join("\n")}\n\nI've filled those into the form. Next — what should this session be called? That's the title clients will see on the schedule (e.g. "Afternoon HIIT Blast").`,
         });
         setStep("title");
+        return;
+      }
+
+      case "editLookup": {
+        const kind = intentRef.current === "edit-rental" ? "rental" : "session";
+        const { criteria, results } = searchMockEvents(text);
+
+        if (results.length > 0) {
+          const shown = results.slice(0, 3);
+          pushCoach({
+            text:
+              results.length === 1
+                ? "Found it — is this the one you're looking for?"
+                : `I found ${results.length} matches on the schedule${results.length > 3 ? " — here are the first 3. Add more detail (like the instructor or venue) to narrow it down" : ""}. Is one of these it?`,
+            results: shown,
+          });
+          // Stay in editLookup so the user can refine if it's not right.
+          return;
+        }
+
+        if (criteria === 0) {
+          pushCoach({
+            text: `I need a bit more to go on. Tell me anything you remember about the ${kind} — the activity, instructor, venue, date, or time.`,
+          });
+          return;
+        }
+
+        pushCoach({
+          text: `I searched the schedule but couldn't find a ${kind} matching that description. Try adding more detail — the exact title, instructor, or date helps most — or create a new ${kind} instead.`,
+          intents: [
+            kind === "rental"
+              ? { label: "Create a Rental", intent: "create-rental" }
+              : { label: "Create a Session", intent: "create-session" },
+          ],
+        });
         return;
       }
 
@@ -5229,6 +5561,34 @@ function EZCoachChat({
     }, 700);
   };
 
+  /** Intent menu click — echoes the choice as a user message, then routes:
+   *  create intents restart the guided request flow with the schedule type
+   *  locked in; edit intents ask for details to find the reservation. */
+  const handleIntent = (intent: CoachIntent, label: string) => {
+    if (isTyping) return;
+    intentRef.current = intent;
+    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, sender: "user", text: label }]);
+    setIsTyping(true);
+    setTimeout(() => {
+      setIsTyping(false);
+      if (intent === "create-session" || intent === "create-rental") {
+        const kind = intent === "create-rental" ? "rental" : "session";
+        onApplyScheduleType(kind);
+        pushCoach({
+          text: `Let's create a ${kind}. Describe it in one sentence — include the activity, venue, date, and time${kind === "session" ? ", plus an instructor if you'd like" : ""}.`,
+          hint: kind === "rental" ? EZCOACH_EXAMPLE_RENTAL : EZCOACH_EXAMPLE,
+        });
+        setStep("request");
+      } else {
+        const kind = intent === "edit-rental" ? "rental" : "session";
+        pushCoach({
+          text: `Sure — which ${kind} are you looking for? Tell me anything you remember about it: the title, instructor, venue, or date and time, and I'll track it down.`,
+        });
+        setStep("editLookup");
+      }
+    }, 700);
+  };
+
   const handleAction = (kind: "create" | "manual") => {
     if (kind === "manual") {
       onSwitchToManual();
@@ -5244,20 +5604,20 @@ function EZCoachChat({
   const bubbleBase: CSSProperties = {
     maxWidth: "85%",
     borderRadius: "10px",
-    padding: "10px 12px",
-    fontSize: "var(--text-sm)",
-    lineHeight: 1.5,
+    padding: "12px 14px",
+    fontSize: "var(--text-base)",
+    lineHeight: 1.55,
     fontFamily: "var(--font-family)",
     whiteSpace: "pre-line",
   };
 
   const chipStyle: CSSProperties = {
-    padding: "8px 12px",
-    borderRadius: "16px",
+    padding: "10px 16px",
+    borderRadius: "18px",
     border: `1px solid ${EZCOACH_VIOLET}`,
     background: "transparent",
     color: palette.textPrimary,
-    fontSize: "var(--text-sm)",
+    fontSize: "var(--text-base)",
     fontFamily: "var(--font-family)",
     cursor: "pointer",
   };
@@ -5280,10 +5640,10 @@ function EZCoachChat({
             >
               {msg.sender === "coach" && (
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-                  <Sparkles size={12} style={{ color: EZCOACH_VIOLET }} />
+                  <Sparkles size={14} style={{ color: EZCOACH_VIOLET }} />
                   <span
                     style={{
-                      fontSize: "11px",
+                      fontSize: "var(--text-sm)",
                       fontWeight: 700,
                       background: EZCOACH_GRADIENT,
                       WebkitBackgroundClip: "text",
@@ -5314,18 +5674,18 @@ function EZCoachChat({
                   gap: "8px",
                   textAlign: "left",
                   maxWidth: "85%",
-                  padding: "10px 12px",
+                  padding: "12px 14px",
                   background: palette.surfaceBg,
                   border: `1px dashed ${EZCOACH_VIOLET}`,
                   borderRadius: "10px",
                   color: palette.textPrimary,
-                  fontSize: "var(--text-sm)",
+                  fontSize: "var(--text-base)",
                   fontFamily: "var(--font-family)",
-                  lineHeight: 1.5,
+                  lineHeight: 1.55,
                   cursor: "pointer",
                 }}
               >
-                <Copy size={13} style={{ color: EZCOACH_VIOLET, flexShrink: 0, marginTop: "3px" }} />
+                <Copy size={15} style={{ color: EZCOACH_VIOLET, flexShrink: 0, marginTop: "4px" }} />
                 <span><em>"{msg.hint}"</em></span>
               </button>
             )}
@@ -5337,6 +5697,77 @@ function EZCoachChat({
                   <button key={qr} type="button" onClick={() => send(qr)} style={chipStyle}>
                     {qr}
                   </button>
+                ))}
+              </div>
+            )}
+
+            {/* Intent picker — offered when a request couldn't be matched */}
+            {msg.intents && msg === lastMessage && !isTyping && (
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px", maxWidth: "85%" }}>
+                {msg.intents.map((opt) => (
+                  <button
+                    key={opt.intent}
+                    type="button"
+                    onClick={() => handleIntent(opt.intent, opt.label)}
+                    style={chipStyle}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Edit-lookup results — reservation cards with an Edit button
+                that opens the match in the details panel. Kept clickable
+                even after the conversation moves on. */}
+            {msg.results && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px", width: "85%" }}>
+                {msg.results.map(({ day, event }) => (
+                  <div
+                    key={event.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "12px 14px",
+                      background: palette.surfaceBg,
+                      border: `1px solid ${palette.borderMedium}`,
+                      borderRadius: "10px",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: palette.textPrimary, fontFamily: "var(--font-family)" }}>
+                        {event.title}
+                      </div>
+                      <div style={{ fontSize: "var(--text-sm)", color: palette.textTertiary, fontFamily: "var(--font-family)", marginTop: "2px" }}>
+                        {new Date().toLocaleString("en-US", { month: "long" })} {day} · {event.time} · {event.venue}
+                        {event.instructor && event.instructor !== "—" ? ` with ${event.instructor}` : ""}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenEvent(event)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "8px 16px",
+                        border: "none",
+                        borderRadius: "999px",
+                        background: EZCOACH_GRADIENT,
+                        color: "#ffffff",
+                        fontSize: "var(--text-sm)",
+                        fontWeight: 600,
+                        fontFamily: "var(--font-family)",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Pencil size={13} />
+                      Edit
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -5418,16 +5849,16 @@ function EZCoachChat({
           aria-label="Message EZCoach"
           style={{
             flex: 1,
-            padding: "10px 12px",
+            padding: "12px 14px",
             background: palette.surfaceBg,
             border: `1px solid ${palette.borderMedium}`,
             borderRadius: "8px",
             color: palette.textPrimary,
-            fontSize: "var(--text-sm)",
+            fontSize: "var(--text-base)",
             fontFamily: "var(--font-family)",
             resize: "none",
             outline: "none",
-            lineHeight: 1.4,
+            lineHeight: 1.45,
           }}
         />
         <button
@@ -5436,8 +5867,8 @@ function EZCoachChat({
           disabled={!input.trim() || isTyping}
           aria-label="Send message"
           style={{
-            width: "38px",
-            height: "38px",
+            width: "44px",
+            height: "44px",
             border: "none",
             borderRadius: "8px",
             background: input.trim() && !isTyping ? EZCOACH_GRADIENT : palette.hoverBg,
@@ -5449,7 +5880,7 @@ function EZCoachChat({
             flexShrink: 0,
           }}
         >
-          <Send size={16} />
+          <Send size={18} />
         </button>
       </div>
     </div>
@@ -5459,7 +5890,7 @@ function EZCoachChat({
 function AddReservationPanelContent() {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
-  const { closePanel, setHeaderExtras } = useSidePanel();
+  const { openPanel, closePanel, setHeaderExtras } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Details");
   const sc = semanticColors(palette, isDark);
@@ -5558,10 +5989,12 @@ function AddReservationPanelContent() {
 
   const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
 
-  // Register header extras: the section switcher in manual mode, or the
-  // "Switch back to manual" escape hatch (upper right) while EZCoach is
-  // active. `marginLeft: auto` pushes the link to the right edge of the
-  // header's title group, next to the close button.
+  // Register header extras: the "Switch back to manual" escape hatch
+  // (upper right) while EZCoach is active. `marginLeft: auto` pushes the
+  // link to the right edge of the header's title group, next to the close
+  // button. In manual mode the header carries nothing — section switching
+  // moved from the header chevron dropdown to SectionPriorityTabs, a
+  // sticky tab row at the top of the panel body.
   useEffect(() => {
     if (aiMode) {
       setHeaderExtras(
@@ -5588,17 +6021,11 @@ function AddReservationPanelContent() {
         </button>
       );
     } else {
-      setHeaderExtras(
-        <SectionHeaderDropdown
-          sections={sections}
-          activeSection={activeSection}
-          onSelectSection={setActiveSection}
-        />
-      );
+      setHeaderExtras(null);
     }
     return () => setHeaderExtras(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, aiMode, palette, setHeaderExtras]);
+  }, [aiMode, palette, setHeaderExtras]);
 
   const labelStyle: CSSProperties = {
     color: palette.textPrimary,
@@ -5713,6 +6140,7 @@ function AddReservationPanelContent() {
       <EZCoachChat
         palette={palette}
         isDark={isDark}
+        onApplyScheduleType={setScheduleType}
         onApplyRequest={(r) => {
           setScheduleType(r.scheduleType);
           setSelectedVenues([r.venue]);
@@ -5729,6 +6157,14 @@ function AddReservationPanelContent() {
         onApplyBuffers={setUseDefaultBuffer}
         onSwitchToManual={() => setAiMode(false)}
         onCreate={closePanel}
+        onOpenEvent={(event) =>
+          // Same call the calendar makes when a badge is clicked — replaces
+          // this panel's content with the reservation's edit panel.
+          openPanel(
+            <ReservationDetailsPanelContent key={event.id} event={event} />,
+            { size: "third", title: `Reservation Details: ${event.title}` }
+          )
+        }
       />
     );
   }
@@ -5741,8 +6177,29 @@ function AddReservationPanelContent() {
           onKeepEditing={() => setShowCancelConfirm(false)}
         />
       )}
+      {/* Section navigation — priority tabs pinned to the top of the
+          scrollable body. Negative margins bleed the bar across the
+          body's 20px padding so it spans the full panel width and sits
+          flush under the header divider; sticky keeps it available while
+          scrolling long sections. */}
+      <div
+        style={{
+          position: "sticky",
+          top: -20,
+          zIndex: 10,
+          background: palette.surfacePrimary,
+          margin: "-20px -20px 20px",
+          padding: "0 10px",
+          borderBottom: `1px solid ${palette.borderLight}`,
+        }}
+      >
+        <SectionPriorityTabs
+          sections={sections}
+          activeSection={activeSection}
+          onSelectSection={setActiveSection}
+        />
+      </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Section switching now lives in the panel header dropdown. */}
 
       {/* Schedule type — with the EZCoach entry point on the far right.
           The gradient (violet→brand teal) + sparkles signal "AI assistant"
