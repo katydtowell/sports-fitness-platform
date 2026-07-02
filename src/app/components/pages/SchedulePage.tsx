@@ -4176,119 +4176,6 @@ function getStatusPillColors(isDark: boolean): Record<BookedClient["status"], { 
  * outside-click handling so it can live in a different React subtree from
  * the panel content that registered it.
  */
-function SectionHeaderDropdown({
-  sections,
-  activeSection,
-  onSelectSection,
-}: {
-  sections: string[];
-  activeSection: string;
-  onSelectSection: (s: string) => void;
-}) {
-  const { palette, mode } = useTheme();
-  const isDark = mode === "dark";
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  return (
-    <div ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Switch section"
-        title={`Section: ${activeSection}`}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "26px",
-          height: "26px",
-          padding: 0,
-          background: open ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
-          border: "none",
-          borderRadius: "6px",
-          color: palette.textTertiary,
-          cursor: "pointer",
-          outline: "none",
-          transition: "background 0.15s ease, color 0.15s ease",
-        }}
-        onMouseEnter={(e) => {
-          if (!open) {
-            e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)";
-            e.currentTarget.style.color = palette.textPrimary;
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!open) {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = palette.textTertiary;
-          }
-        }}
-      >
-        <ChevronDown
-          size={16}
-          style={{ transition: "transform 0.2s ease", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
-        />
-      </button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            minWidth: "200px",
-            background: palette.surfacePrimary,
-            border: `1px solid ${palette.borderLight}`,
-            borderRadius: "8px",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
-            zIndex: 20,
-            overflow: "hidden",
-            padding: "4px",
-          }}
-        >
-          {sections.map((section) => {
-            const isActive = section === activeSection;
-            return (
-              <button
-                key={section}
-                onClick={() => {
-                  onSelectSection(section);
-                  setOpen(false);
-                }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "8px 12px",
-                  border: "none",
-                  borderRadius: "6px",
-                  background: isActive ? `${palette.primary}20` : "transparent",
-                  color: isActive ? palette.primary : palette.textPrimary,
-                  fontSize: "var(--text-sm)",
-                  fontWeight: isActive ? 600 : 400,
-                  fontFamily: "var(--font-family)",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {section}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /**
  * SectionPriorityTabs — priority-tab section navigation for side panels.
  *
@@ -4299,9 +4186,10 @@ function SectionHeaderDropdown({
  * the active section changes externally (e.g. the footer "Next: …"
  * button), not just via the menu.
  *
- * Replaces the header chevron dropdown (SectionHeaderDropdown) for panels
- * whose sections are long-form — every destination is one click away and
- * the active section is always labeled on screen.
+ * Standard section-navigation pattern for tabbed side panels — every
+ * destination is one click away and the active section is always labeled
+ * on screen. Use this (not a header chevron dropdown) for any new tabbed
+ * side panel.
  */
 function SectionPriorityTabs({
   sections,
@@ -4489,13 +4377,22 @@ function SectionPriorityTabs({
   );
 }
 
-function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
+function ReservationDetailsPanelContent({
+  event,
+  initialEditing = false,
+}: {
+  event: CalendarEvent;
+  // Opens the panel straight into edit mode — used when the entry point
+  // already implies an edit intent (e.g. EZCoach's edit-lookup flow),
+  // so the user isn't dropped into the read-only view first.
+  initialEditing?: boolean;
+}) {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
   const { closePanel, setHeaderExtras } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Details");
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(initialEditing);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   // Additional options accordion — closed by default in edit mode so the
   // checkbox/description fields don't dominate the form's vertical rhythm.
@@ -4614,22 +4511,14 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
 
   const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
 
-  // Register the section switcher into the SidePanel header (chevron next
-  // to the panel title). Re-runs on activeSection change so the dropdown
-  // always reflects the current section. Cleans up on unmount.
+  // Header carries nothing — section switching lives in SectionPriorityTabs,
+  // a sticky tab row pinned to the top of the panel body (same pattern as
+  // AddReservationPanelContent). Still clear on mount/unmount in case a
+  // previously opened panel left header extras behind.
   useEffect(() => {
-    setHeaderExtras(
-      <SectionHeaderDropdown
-        sections={sections}
-        activeSection={activeSection}
-        onSelectSection={setActiveSection}
-      />
-    );
+    setHeaderExtras(null);
     return () => setHeaderExtras(null);
-    // sections is a stable literal; depending on activeSection ensures the
-    // header shows the correct active item highlight.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, setHeaderExtras]);
+  }, [setHeaderExtras]);
 
   // Shared styles for edit mode
   const labelStyle: CSSProperties = { color: palette.textPrimary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", marginBottom: "6px", display: "block" };
@@ -4737,8 +4626,29 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
             onKeepEditing={() => setShowCancelConfirm(false)}
           />
         )}
+        {/* Section navigation — priority tabs pinned to the top of the
+            scrollable body. Negative margins bleed the bar across the
+            body's 20px padding so it spans the full panel width and sits
+            flush under the header divider; sticky keeps it available while
+            scrolling long sections. Matches AddReservationPanelContent. */}
+        <div
+          style={{
+            position: "sticky",
+            top: -20,
+            zIndex: 10,
+            background: palette.surfacePrimary,
+            margin: "-20px -20px 20px",
+            padding: "0 10px",
+            borderBottom: `1px solid ${palette.borderLight}`,
+          }}
+        >
+          <SectionPriorityTabs
+            sections={sections}
+            activeSection={activeSection}
+            onSelectSection={setActiveSection}
+          />
+        </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
-        {/* Section switching now lives in the panel header dropdown. */}
 
         {/* ── Availability + Editing indicator + Book action ── */}
         {event.capacity > 0 && (
@@ -4867,10 +4777,28 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
   }
 
   // ─── Compact read-only view ───
-  // Section switching now lives in the panel header (chevron next to title)
-  // via setHeaderExtras; the panel body opens straight into section content.
+  // Section switching lives in SectionPriorityTabs, a sticky tab row
+  // pinned to the top of the panel body (same pattern as edit mode and
+  // AddReservationPanelContent).
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <div
+        style={{
+          position: "sticky",
+          top: -20,
+          zIndex: 10,
+          background: palette.surfacePrimary,
+          margin: "-20px -20px 20px",
+          padding: "0 10px",
+          borderBottom: `1px solid ${palette.borderLight}`,
+        }}
+      >
+        <SectionPriorityTabs
+          sections={sections}
+          activeSection={activeSection}
+          onSelectSection={setActiveSection}
+        />
+      </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "20px" }}>
       {/* ── Availability + Edit Reservation + Book action ── */}
       {event.capacity > 0 && (
@@ -6158,10 +6086,11 @@ function AddReservationPanelContent() {
         onSwitchToManual={() => setAiMode(false)}
         onCreate={closePanel}
         onOpenEvent={(event) =>
-          // Same call the calendar makes when a badge is clicked — replaces
-          // this panel's content with the reservation's edit panel.
+          // EZCoach's edit-lookup already carries edit intent (the user
+          // asked to edit this reservation), so open straight into edit
+          // mode instead of the read-only view.
           openPanel(
-            <ReservationDetailsPanelContent key={event.id} event={event} />,
+            <ReservationDetailsPanelContent key={event.id} event={event} initialEditing />,
             { size: "third", title: `Reservation Details: ${event.title}` }
           )
         }
