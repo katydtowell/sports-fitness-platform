@@ -32,7 +32,7 @@ import { TimeField } from "../ui/TimeField";
 
 `sc` only needs to satisfy `TimeFieldColors` (`border`, `inputBg`, `heading`, `body`, `muted`, `brand`, `cellBg`, `shadow`) — pass a page's existing semantic-colors object directly.
 
-**Status:** applied to the Schedule filters (Time range). Not yet migrated: the Add Reservation form's Start time / End time fields in `SchedulePage.tsx` (still native `<input type="time">`) — migrate these next time that form is touched.
+**Status:** applied to the Schedule filters (Time range) and the Add Reservation form's Start time / End time fields (`SchedulePage.tsx`).
 
 ## Scrollable columns inside popovers (no visible scrollbars)
 
@@ -43,6 +43,17 @@ When a themed popover contains a scrollable list (e.g. the hour/minute columns i
 - Show a small chevron above/below the list that fades in only when that direction has more to scroll, and scrolls the list a step on click.
 
 This is implemented generically as `TimePickerColumn` inside `TimeField.tsx` — reuse that pattern (rather than a bare `overflow: auto` div) for any future scrollable column in a popover.
+
+## AI-assisted entry (EZCoach)
+
+EZCoach is the conversational alternative to a manual form, first used in the Add Reservation side panel (`EZCoachChat` in `SchedulePage.tsx`). Conventions if extended to other forms:
+
+- **Accent**: all EZCoach affordances use the violet→brand-teal gradient (`EZCOACH_GRADIENT`, `#8B5CF6 → #00C4A0`) plus a `Sparkles` icon — distinct from normal brand-primary actions so AI features are instantly recognizable, but still anchored to the product palette.
+- **Entry point**: a pill-shaped gradient button placed inside the form it replaces (not in global chrome), labeled "Try it with EZCoach".
+- **Escape hatch**: while active, a "Switch back to manual" text link sits in the panel header's upper right (via `setHeaderExtras`, `marginLeft: auto`).
+- **Shared state**: the chat writes into the *same* form state as the manual form, so switching modes never loses captured data and the manual form doubles as a review screen.
+- **Example prompts**: shown as a dashed-border chip with a `Copy` icon; one click inserts the example into the message field (it does not send).
+- **Guided flow**: after the initial free-form request, EZCoach asks only for fields the request didn't cover, in the same order the manual form presents them; yes/no questions offer one-click quick-reply chips.
 
 ## Date fields
 

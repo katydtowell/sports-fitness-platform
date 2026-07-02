@@ -36,6 +36,9 @@ import {
   Info,
   ExternalLink,
   ArrowUpDown,
+  Sparkles,
+  Send,
+  Copy,
 } from "lucide-react";
 import { useTheme, type ThemePalette, EZ_GREEN, EZ_GREEN_ON_COLOR, EZ_RED, EZ_RED_ON_COLOR } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
@@ -3429,8 +3432,16 @@ function MobileScheduleView({
           if (startMins !== null && m < startMins) return false;
           if (endMins !== null && m > endMins) return false;
         }
-        if (filterVenues.length > 0 && !filterVenues.includes(e.venue)) return false;
-        if (filterInstructors.length > 0 && !filterInstructors.includes(e.instructor)) return false;
+        // Resource filters (venue + instructor) are OR'd together, not
+        // AND'd — picking a specific instructor and a specific venue
+        // should surface sessions matching either one, since the two
+        // don't necessarily ever share a session. Only when a resource
+        // axis has no selections is it left out of the check entirely.
+        if (filterVenues.length > 0 || filterInstructors.length > 0) {
+          const matchesVenue = filterVenues.length > 0 && filterVenues.includes(e.venue);
+          const matchesInstructor = filterInstructors.length > 0 && filterInstructors.includes(e.instructor);
+          if (!matchesVenue && !matchesInstructor) return false;
+        }
         if (filterTypes.length > 0 && !filterTypes.includes(e.type)) return false;
         if (filterPaymentStatus === "Owed" && getOwedCount(e) === 0) return false;
         if (filterPaymentStatus === "Paid" && getOwedCount(e) > 0) return false;
@@ -3739,6 +3750,7 @@ const INSTRUCTOR_OPTIONS = [
   "Alan Alda",
   "Derek Thompson",
   "James Kim",
+  "Jody March",
   "Lisa Park",
   "Marcus Jones",
   "Mia Rodriguez",
@@ -4928,12 +4940,534 @@ function ReservationDetailsPanelContent({ event }: { event: CalendarEvent }) {
    Follows the same pattern as PaymentPanel, SupportPanel, etc.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — EZCoachChat
+   Conversational alternative to the manual Add Reservation form. Lives
+   inside the same side panel; entered via the "Try it with EZCoach"
+   button next to Schedule type, exited via the "Switch back to manual"
+   header link. As the guided conversation progresses it writes directly
+   into the same form state the manual form uses, so switching back to
+   manual shows everything EZCoach captured.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** Gradient used for all EZCoach accents — violet→brand-teal reads as
+ *  "AI feature" without leaving the product's color family. */
+const EZCOACH_GRADIENT = "linear-gradient(135deg, #8B5CF6 0%, #00C4A0 100%)";
+const EZCOACH_VIOLET = "#8B5CF6";
+
+const EZCOACH_EXAMPLE =
+  "Create a half hour HIIT session in Studio A with Jody March for July 30th at 3pm";
+
+const EZCOACH_MONTH_NAMES = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+
+interface ParsedReservationRequest {
+  scheduleType: "session" | "rental";
+  reservationType: string;
+  venue: string;
+  instructor: string | null;
+  dateISO: string;   // "YYYY-MM-DD"
+  startHM: string;   // 24h "HH:MM"
+  endHM: string;     // 24h "HH:MM"
+}
+
+/** "15:30" → "3:30 PM" */
+function formatHMLabel(hm: string): string {
+  const [h, m] = hm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/** "2026-07-30" → "Thursday, July 30" */
+function formatDateISOLabel(dateISO: string): string {
+  const d = new Date(`${dateISO}T00:00:00`);
+  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+}
+
+/** Light NL parsing for the demo — matches venues / instructors /
+ *  reservation types against the same option lists the manual form uses,
+ *  plus a date ("July 30th"), a start time ("3pm", "3:30 pm"), and a
+ *  duration ("half hour", "45 minutes", "2 hours"; defaults to 1 hour). */
+function parseReservationRequest(msg: string): ParsedReservationRequest | null {
+  const lower = msg.toLowerCase();
+
+  const venue =
+    VENUE_OPTIONS.find((v) => lower.includes(v.toLowerCase())) ?? null;
+  const reservationType =
+    RESERVATION_TYPE_OPTIONS.find((t) => lower.includes(t.toLowerCase())) ?? null;
+  const instructor =
+    INSTRUCTOR_OPTIONS.find((i) => lower.includes(i.toLowerCase())) ?? null;
+
+  // Date — "July 30th", "july 30". Assumes current year; rolls to next
+  // year if that date has already passed.
+  let dateISO: string | null = null;
+  const dateMatch = lower.match(new RegExp(`(${EZCOACH_MONTH_NAMES.join("|")})\\s+(\\d{1,2})`));
+  if (dateMatch) {
+    const month = EZCOACH_MONTH_NAMES.indexOf(dateMatch[1]);
+    const day = parseInt(dateMatch[2], 10);
+    const now = new Date();
+    let year = now.getFullYear();
+    if (new Date(year, month, day) < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+      year += 1;
+    }
+    dateISO = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  // Start time — "3pm", "3:30 pm"
+  let startMins: number | null = null;
+  const timeMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  if (timeMatch) {
+    let h = parseInt(timeMatch[1], 10) % 12;
+    if (timeMatch[3] === "pm") h += 12;
+    startMins = h * 60 + (timeMatch[2] ? parseInt(timeMatch[2], 10) : 0);
+  }
+
+  // Duration — defaults to an hour
+  let duration = 60;
+  if (/half\s+(an\s+)?hour/.test(lower)) {
+    duration = 30;
+  } else {
+    const minMatch = lower.match(/(\d+)\s*min/);
+    const hourMatch = lower.match(/(\d+(?:\.\d+)?)[\s-]*hour/);
+    if (minMatch) duration = parseInt(minMatch[1], 10);
+    else if (hourMatch) duration = Math.round(parseFloat(hourMatch[1]) * 60);
+  }
+
+  if (!venue || !reservationType || !dateISO || startMins === null) return null;
+
+  const toHM = (mins: number) =>
+    `${String(Math.floor((mins % 1440) / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+
+  return {
+    scheduleType: /\brental\b/.test(lower) ? "rental" : "session",
+    reservationType,
+    venue,
+    instructor,
+    dateISO,
+    startHM: toHM(startMins),
+    endHM: toHM(startMins + duration),
+  };
+}
+
+type CoachStep = "request" | "title" | "recurring" | "classSize" | "buffers" | "done" | "created";
+
+interface CoachMessage {
+  id: string;
+  sender: "user" | "coach";
+  text: string;
+  /** Copyable example — rendered as a one-click "insert into message field" chip. */
+  hint?: string;
+  /** One-click reply chips (active only on the latest coach message). */
+  quickReplies?: string[];
+  /** Terminal action buttons (create / review in manual form). */
+  actions?: { label: string; kind: "create" | "manual" }[];
+}
+
+interface EZCoachChatProps {
+  palette: ThemePalette;
+  isDark: boolean;
+  onApplyRequest: (r: ParsedReservationRequest) => void;
+  onApplyTitle: (title: string) => void;
+  onApplyRecurring: (yes: boolean) => void;
+  onApplyClassSize: (size: string | null) => void;
+  onApplyBuffers: (useDefault: boolean) => void;
+  onSwitchToManual: () => void;
+  onCreate: () => void;
+}
+
+function EZCoachChat({
+  palette, isDark,
+  onApplyRequest, onApplyTitle, onApplyRecurring, onApplyClassSize, onApplyBuffers,
+  onSwitchToManual, onCreate,
+}: EZCoachChatProps) {
+  const [messages, setMessages] = useState<CoachMessage[]>([
+    {
+      id: "intro",
+      sender: "coach",
+      text: "Hi, I'm EZCoach. Describe the reservation you'd like to create in one sentence — include the activity, venue, date, and time — and I'll fill out the form for you, then walk you through the rest.",
+      hint: EZCOACH_EXAMPLE,
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [step, setStep] = useState<CoachStep>("request");
+  const [isTyping, setIsTyping] = useState(false);
+  const capturedRef = useRef<{
+    req?: ParsedReservationRequest;
+    title?: string;
+    recurring?: boolean;
+    classSize?: string | null;
+    useDefaultBuffer?: boolean;
+  }>({});
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
+
+  const pushCoach = (msg: Omit<CoachMessage, "id" | "sender">) => {
+    setMessages((prev) => [...prev, { id: `c-${Date.now()}`, sender: "coach", ...msg }]);
+  };
+
+  /** Scripted responder — mirrors the required fields of the manual form. */
+  const respond = (text: string, atStep: CoachStep) => {
+    const captured = capturedRef.current;
+
+    switch (atStep) {
+      case "request": {
+        const parsed = parseReservationRequest(text);
+        if (!parsed) {
+          pushCoach({
+            text: "I couldn't catch everything I need. Make sure your message includes the activity (e.g. HIIT, Yoga), a venue, a date, and a start time — or start from the example below.",
+            hint: EZCOACH_EXAMPLE,
+          });
+          return;
+        }
+        captured.req = parsed;
+        onApplyRequest(parsed);
+        const lines = [
+          `Schedule type: ${parsed.scheduleType === "session" ? "Session" : "Rental"}`,
+          `Reservation type: ${parsed.reservationType}`,
+          `Venue: ${parsed.venue}`,
+          ...(parsed.instructor ? [`Instructor: ${parsed.instructor}`] : []),
+          `Date: ${formatDateISOLabel(parsed.dateISO)}`,
+          `Time: ${formatHMLabel(parsed.startHM)}–${formatHMLabel(parsed.endHM)}`,
+        ];
+        pushCoach({
+          text: `Here's what I captured:\n\n${lines.map((l) => `•  ${l}`).join("\n")}\n\nI've filled those into the form. Next — what should this session be called? That's the title clients will see on the schedule (e.g. "Afternoon HIIT Blast").`,
+        });
+        setStep("title");
+        return;
+      }
+
+      case "title": {
+        const title = text.trim().replace(/^["']+|["']+$/g, "");
+        captured.title = title;
+        onApplyTitle(title);
+        pushCoach({
+          text: `"${title}" — done. Should this session repeat? Recurring reservations are created weekly at the same time.`,
+          quickReplies: ["Yes, weekly", "No, just once"],
+        });
+        setStep("recurring");
+        return;
+      }
+
+      case "recurring": {
+        const yes = /yes|weekly|repeat/i.test(text) && !/\bno\b|once|one[\s-]?time/i.test(text);
+        captured.recurring = yes;
+        onApplyRecurring(yes);
+        pushCoach({
+          text: `${yes ? "Set to repeat weekly." : "Set as a one-time session."} How many clients can book in? Give me a number, or say "skip" to leave the class size open.`,
+        });
+        setStep("classSize");
+        return;
+      }
+
+      case "classSize": {
+        const numMatch = text.match(/\d+/);
+        const size = /skip|open|none/i.test(text) || !numMatch ? null : numMatch[0];
+        captured.classSize = size;
+        onApplyClassSize(size);
+        pushCoach({
+          text: `${size ? `Class size set to ${size}.` : "Leaving class size open."} Last question — keep the default 15-minute pre/post buffers? Buffers block transitional time around the session.`,
+          quickReplies: ["Keep defaults", "I'll customize later"],
+        });
+        setStep("buffers");
+        return;
+      }
+
+      case "buffers": {
+        const keep = !/custom|later|\bno\b/i.test(text);
+        captured.useDefaultBuffer = keep;
+        onApplyBuffers(keep);
+        const req = captured.req;
+        const summaryLines = req
+          ? [
+              `${captured.title ?? "Untitled"} — ${req.reservationType} ${req.scheduleType}`,
+              `${req.venue}${req.instructor ? ` with ${req.instructor}` : ""}`,
+              `${formatDateISOLabel(req.dateISO)}, ${formatHMLabel(req.startHM)}–${formatHMLabel(req.endHM)}`,
+              `${captured.recurring ? "Repeats weekly" : "One time"} · Class size ${captured.classSize ?? "open"} · ${keep ? "Default buffers" : "Custom buffers"}`,
+            ]
+          : [];
+        pushCoach({
+          text: `That's everything — here's your reservation:\n\n${summaryLines.map((l) => `•  ${l}`).join("\n")}\n\nCreate it now, or review it in the manual form first — everything is already filled in.`,
+          actions: [
+            { label: "Create reservation", kind: "create" },
+            { label: "Review in manual form", kind: "manual" },
+          ],
+        });
+        setStep("done");
+        return;
+      }
+
+      case "done": {
+        pushCoach({
+          text: "You're all set — use the buttons above to create the reservation, or the \"Switch back to manual\" link at the top to review the form.",
+        });
+        return;
+      }
+
+      case "created":
+        return;
+    }
+  };
+
+  const send = (raw?: string) => {
+    const text = (raw ?? input).trim();
+    if (!text || isTyping || step === "created") return;
+    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, sender: "user", text }]);
+    setInput("");
+    setIsTyping(true);
+    const atStep = step;
+    setTimeout(() => {
+      setIsTyping(false);
+      respond(text, atStep);
+    }, 700);
+  };
+
+  const handleAction = (kind: "create" | "manual") => {
+    if (kind === "manual") {
+      onSwitchToManual();
+      return;
+    }
+    setStep("created");
+    pushCoach({ text: "Reservation created — you'll see it on the schedule. Closing this panel…" });
+    setTimeout(onCreate, 1200);
+  };
+
+  const lastMessage = messages[messages.length - 1];
+
+  const bubbleBase: CSSProperties = {
+    maxWidth: "85%",
+    borderRadius: "10px",
+    padding: "10px 12px",
+    fontSize: "var(--text-sm)",
+    lineHeight: 1.5,
+    fontFamily: "var(--font-family)",
+    whiteSpace: "pre-line",
+  };
+
+  const chipStyle: CSSProperties = {
+    padding: "8px 12px",
+    borderRadius: "16px",
+    border: `1px solid ${EZCOACH_VIOLET}`,
+    background: "transparent",
+    color: palette.textPrimary,
+    fontSize: "var(--text-sm)",
+    fontFamily: "var(--font-family)",
+    cursor: "pointer",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      {/* Blinking-dots animation for the typing indicator */}
+      <style>{`@keyframes ezcoachBlink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }`}</style>
+
+      {/* ── Messages ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "12px" }}>
+        {messages.map((msg) => (
+          <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: msg.sender === "user" ? "flex-end" : "flex-start" }}>
+            <div
+              style={{
+                ...bubbleBase,
+                background: msg.sender === "user" ? palette.primary : palette.hoverBg,
+                color: msg.sender === "user" ? (isDark ? "#0a0e0f" : "#101828") : palette.textPrimary,
+              }}
+            >
+              {msg.sender === "coach" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                  <Sparkles size={12} style={{ color: EZCOACH_VIOLET }} />
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      background: EZCOACH_GRADIENT,
+                      WebkitBackgroundClip: "text",
+                      backgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                    }}
+                  >
+                    EZCoach
+                  </span>
+                </div>
+              )}
+              {msg.text}
+            </div>
+
+            {/* Copyable example — one click inserts it into the message field */}
+            {msg.hint && (
+              <button
+                type="button"
+                onClick={() => {
+                  setInput(msg.hint!);
+                  inputRef.current?.focus();
+                }}
+                title="Click to add to the message field"
+                style={{
+                  marginTop: "8px",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "8px",
+                  textAlign: "left",
+                  maxWidth: "85%",
+                  padding: "10px 12px",
+                  background: palette.surfaceBg,
+                  border: `1px dashed ${EZCOACH_VIOLET}`,
+                  borderRadius: "10px",
+                  color: palette.textPrimary,
+                  fontSize: "var(--text-sm)",
+                  fontFamily: "var(--font-family)",
+                  lineHeight: 1.5,
+                  cursor: "pointer",
+                }}
+              >
+                <Copy size={13} style={{ color: EZCOACH_VIOLET, flexShrink: 0, marginTop: "3px" }} />
+                <span><em>"{msg.hint}"</em></span>
+              </button>
+            )}
+
+            {/* Quick replies — only on the latest coach message */}
+            {msg.quickReplies && msg === lastMessage && !isTyping && (
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
+                {msg.quickReplies.map((qr) => (
+                  <button key={qr} type="button" onClick={() => send(qr)} style={chipStyle}>
+                    {qr}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Terminal actions */}
+            {msg.actions && msg === lastMessage && !isTyping && (
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
+                {msg.actions.map((a) => (
+                  <button
+                    key={a.kind}
+                    type="button"
+                    onClick={() => handleAction(a.kind)}
+                    style={
+                      a.kind === "create"
+                        ? {
+                            ...chipStyle,
+                            border: "none",
+                            background: EZCOACH_GRADIENT,
+                            color: "#ffffff",
+                            fontWeight: 600,
+                          }
+                        : chipStyle
+                    }
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {isTyping && (
+          <div style={{ ...bubbleBase, background: palette.hoverBg, color: palette.textTertiary, display: "flex", gap: "4px", alignItems: "center" }}>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: palette.textTertiary,
+                  animation: `ezcoachBlink 1.2s ${i * 0.2}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {/* ── Message input — sticky bottom, mirrors the manual footer ── */}
+      <div
+        style={{
+          position: "sticky",
+          bottom: -20,
+          background: palette.surfacePrimary,
+          borderTop: `1px solid ${palette.borderLight}`,
+          padding: "12px 0",
+          marginTop: "16px",
+          display: "flex",
+          alignItems: "flex-end",
+          gap: "8px",
+          zIndex: 5,
+        }}
+      >
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          placeholder="Describe your reservation…"
+          rows={2}
+          aria-label="Message EZCoach"
+          style={{
+            flex: 1,
+            padding: "10px 12px",
+            background: palette.surfaceBg,
+            border: `1px solid ${palette.borderMedium}`,
+            borderRadius: "8px",
+            color: palette.textPrimary,
+            fontSize: "var(--text-sm)",
+            fontFamily: "var(--font-family)",
+            resize: "none",
+            outline: "none",
+            lineHeight: 1.4,
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => send()}
+          disabled={!input.trim() || isTyping}
+          aria-label="Send message"
+          style={{
+            width: "38px",
+            height: "38px",
+            border: "none",
+            borderRadius: "8px",
+            background: input.trim() && !isTyping ? EZCOACH_GRADIENT : palette.hoverBg,
+            color: input.trim() && !isTyping ? "#ffffff" : palette.textTertiary,
+            cursor: input.trim() && !isTyping ? "pointer" : "default",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Send size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AddReservationPanelContent() {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
   const { closePanel, setHeaderExtras } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Details");
+  const sc = semanticColors(palette, isDark);
+
+  // EZCoach — conversational alternative to the manual form. While active,
+  // the panel body swaps to a guided chat that writes into the same form
+  // state, so "Switch back to manual" shows everything captured so far.
+  const [aiMode, setAiMode] = useState(false);
 
   // Initial / "pristine" values — used to detect unsaved changes when the
   // user clicks Cancel. Anything that diverges from these is treated as a
@@ -4944,6 +5478,8 @@ function AddReservationPanelContent() {
   const initInstructors: string[] = [];
   const initReservationType = "";
   const initTitle = "";
+  const initClassSize = "";
+  const initNotes = "";
   const initStartDate = "";
   const initEndDate = "";
   const initStartTime = "";
@@ -4971,6 +5507,8 @@ function AddReservationPanelContent() {
   const [useDefaultBuffer, setUseDefaultBuffer] = useState(initUseDefaultBuffer);
   const [preBuffer, setPreBuffer] = useState(initPreBuffer);
   const [postBuffer, setPostBuffer] = useState(initPostBuffer);
+  const [classSize, setClassSize] = useState(initClassSize);
+  const [notes, setNotes] = useState(initNotes);
   // Additional options (editable on new reservation) — accordion closed by default
   const [onlineDescription, setOnlineDescription] = useState(initOnlineDescription);
   const [allowSelfBooking, setAllowSelfBooking] = useState(initAllowSelfBooking);
@@ -5001,7 +5539,9 @@ function AddReservationPanelContent() {
     onlineDescription !== initOnlineDescription ||
     allowSelfBooking !== initAllowSelfBooking ||
     allowFreeBookings !== initAllowFreeBookings ||
-    showOnEZLeagues !== initShowOnEZLeagues;
+    showOnEZLeagues !== initShowOnEZLeagues ||
+    classSize !== initClassSize ||
+    notes !== initNotes;
 
   const handleCancelClick = () => {
     if (hasChanges) {
@@ -5018,18 +5558,47 @@ function AddReservationPanelContent() {
 
   const sections = ["Details", "Registration", "Registered Clients", "Linked", "History"];
 
-  // Register section switcher into the SidePanel header.
+  // Register header extras: the section switcher in manual mode, or the
+  // "Switch back to manual" escape hatch (upper right) while EZCoach is
+  // active. `marginLeft: auto` pushes the link to the right edge of the
+  // header's title group, next to the close button.
   useEffect(() => {
-    setHeaderExtras(
-      <SectionHeaderDropdown
-        sections={sections}
-        activeSection={activeSection}
-        onSelectSection={setActiveSection}
-      />
-    );
+    if (aiMode) {
+      setHeaderExtras(
+        <button
+          type="button"
+          onClick={() => setAiMode(false)}
+          style={{
+            marginLeft: "auto",
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: palette.primary,
+            fontSize: "var(--text-sm)",
+            fontFamily: "var(--font-family)",
+            fontWeight: 600,
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          Switch back to manual
+        </button>
+      );
+    } else {
+      setHeaderExtras(
+        <SectionHeaderDropdown
+          sections={sections}
+          activeSection={activeSection}
+          onSelectSection={setActiveSection}
+        />
+      );
+    }
     return () => setHeaderExtras(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, setHeaderExtras]);
+  }, [activeSection, aiMode, palette, setHeaderExtras]);
 
   const labelStyle: CSSProperties = {
     color: palette.textPrimary,
@@ -5136,6 +5705,34 @@ function AddReservationPanelContent() {
     cursor: "not-allowed",
   };
 
+  // ── EZCoach mode — swap the whole panel body for the guided chat. The
+  // chat writes into this component's form state via the handlers below,
+  // so "Switch back to manual" reveals a pre-filled form.
+  if (aiMode) {
+    return (
+      <EZCoachChat
+        palette={palette}
+        isDark={isDark}
+        onApplyRequest={(r) => {
+          setScheduleType(r.scheduleType);
+          setSelectedVenues([r.venue]);
+          if (r.instructor) setSelectedInstructors([r.instructor]);
+          setReservationType(r.reservationType);
+          setStartDate(r.dateISO);
+          setEndDate(r.dateISO);
+          setStartTime(r.startHM);
+          setEndTime(r.endHM);
+        }}
+        onApplyTitle={setTitle}
+        onApplyRecurring={(yes) => setRecurring(yes ? "yes" : "no")}
+        onApplyClassSize={(size) => setClassSize(size ?? "")}
+        onApplyBuffers={setUseDefaultBuffer}
+        onSwitchToManual={() => setAiMode(false)}
+        onCreate={closePanel}
+      />
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       {showCancelConfirm && (
@@ -5147,19 +5744,54 @@ function AddReservationPanelContent() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Section switching now lives in the panel header dropdown. */}
 
-      {/* Schedule type */}
-      <div>
-        <div style={labelBoldStyle}>Schedule type*</div>
-        <div style={{ display: "flex", gap: "16px", alignItems: "center", marginTop: "4px" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-            <input type="radio" name="scheduleType" checked={scheduleType === "session"} onChange={() => setScheduleType("session")} style={{ accentColor: palette.primary }} />
-            Session
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-            <input type="radio" name="scheduleType" checked={scheduleType === "rental"} onChange={() => setScheduleType("rental")} style={{ accentColor: palette.primary }} />
-            Rental
-          </label>
+      {/* Schedule type — with the EZCoach entry point on the far right.
+          The gradient (violet→brand teal) + sparkles signal "AI assistant"
+          while staying anchored to the product palette. */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+        <div>
+          <div style={labelBoldStyle}>Schedule type*</div>
+          <div style={{ display: "flex", gap: "16px", alignItems: "center", marginTop: "4px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+              <input type="radio" name="scheduleType" checked={scheduleType === "session"} onChange={() => setScheduleType("session")} style={{ accentColor: palette.primary }} />
+              Session
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+              <input type="radio" name="scheduleType" checked={scheduleType === "rental"} onChange={() => setScheduleType("rental")} style={{ accentColor: palette.primary }} />
+              Rental
+            </label>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setAiMode(true)}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "8px 14px",
+            border: "none",
+            borderRadius: "999px",
+            background: EZCOACH_GRADIENT,
+            color: "#ffffff",
+            fontSize: "var(--text-sm)",
+            fontWeight: 600,
+            fontFamily: "var(--font-family)",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            boxShadow: isDark ? "0 2px 10px rgba(139,92,246,0.45)" : "0 2px 8px rgba(139,92,246,0.35)",
+            transition: "filter 0.15s ease, box-shadow 0.15s ease",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.08)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.filter = "none";
+          }}
+        >
+          <Sparkles size={14} />
+          Try it with EZCoach
+        </button>
       </div>
 
       {/* Separator + Resources */}
@@ -5255,7 +5887,7 @@ function AddReservationPanelContent() {
       {/* Class size */}
       <div>
         <div style={labelStyle}>Class size</div>
-        <input type="text" placeholder="e.g. 1, 10, 30, etc." style={inputStyle} />
+        <input type="text" placeholder="e.g. 1, 10, 30, etc." value={classSize} onChange={(e) => setClassSize(e.target.value)} style={inputStyle} />
       </div>
 
       {/* Start date / End date */}
@@ -5270,11 +5902,11 @@ function AddReservationPanelContent() {
         </div>
       </div>
 
-      {/* Start time / End time */}
+      {/* Start time / End time — themed TimeField per STYLE_GUIDE ("Time fields") */}
       <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
         <div style={{ flex: 1 }}>
           <div style={labelBoldStyle}>Start time*</div>
-          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={inputStyle} disabled={allDay} />
+          <TimeField value={startTime} onChange={setStartTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="Start time" />
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
           <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} />
@@ -5282,7 +5914,7 @@ function AddReservationPanelContent() {
         </label>
         <div style={{ flex: 1 }}>
           <div style={labelBoldStyle}>End time*</div>
-          <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={inputStyle} disabled={allDay} />
+          <TimeField value={endTime} onChange={setEndTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="End time" />
         </div>
       </div>
 
@@ -5312,7 +5944,7 @@ function AddReservationPanelContent() {
       {/* Notes */}
       <div>
         <div style={labelStyle}>Notes</div>
-        <input type="text" placeholder="Enter notes" style={inputStyle} />
+        <input type="text" placeholder="Enter notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={inputStyle} />
       </div>
 
       {/* Additional options — bordered accordion container, closed by default.
@@ -5744,12 +6376,13 @@ function UpcomingTodayPanel({
           {/* ── Resources tab ───────────────────────────────────────── */}
           {sidebarTab === "Resources" && (
             <div style={{ paddingBottom: "12px" }}>
-              {/* Instructors group */}
+              {/* Instructors group — carries the single "Clear" link for
+                  both resource axes (see note above Venues group below). */}
               <div style={groupLabelStyle}>
                 <span>Instructors</span>
-                {filterInstructors.length > 0 && (
+                {(filterInstructors.length > 0 || filterVenues.length > 0) && (
                   <button
-                    onClick={() => setFilterInstructors([])}
+                    onClick={() => { setFilterInstructors([]); setFilterVenues([]); }}
                     style={{ background: "none", border: "none", fontSize: "11px", fontWeight: 600, color: sc.brand, cursor: "pointer", padding: 0, fontFamily: "var(--font-family)" }}
                   >
                     Clear
@@ -5781,17 +6414,13 @@ function UpcomingTodayPanel({
               {/* Divider */}
               <div style={{ height: "1px", background: sc.border, margin: "8px 16px" }} />
 
-              {/* Venues group */}
+              {/* Venues group — no separate Clear link here. Resource
+                  filters (instructors + venues) are treated as one filter
+                  group with a single "or" query behind it, so there's one
+                  Clear affordance for the pair, not one per axis; it lives
+                  on the Instructors header above. */}
               <div style={groupLabelStyle}>
                 <span>Venues</span>
-                {filterVenues.length > 0 && (
-                  <button
-                    onClick={() => setFilterVenues([])}
-                    style={{ background: "none", border: "none", fontSize: "11px", fontWeight: 600, color: sc.brand, cursor: "pointer", padding: 0, fontFamily: "var(--font-family)" }}
-                  >
-                    Clear
-                  </button>
-                )}
               </div>
               {VENUE_OPTIONS.map((name) => {
                 const isChecked = filterVenues.includes(name);
@@ -6616,6 +7245,15 @@ interface ResourcesViewProps {
   hoveredEventId: string | null;
   currentMonth: number;
   currentYear: number;
+  /** Resource filters from the sidebar's Resources tab. Empty array = no
+   *  filter = show every row on that axis. When either list is non-empty,
+   *  the corresponding section (Instructors / Venues) only renders rows
+   *  for the checked resources — the rest are hidden entirely rather than
+   *  just showing up empty, so filtering by a resource actually narrows
+   *  the grid instead of leaving unrelated rows sitting there with
+   *  nothing in them. */
+  filterInstructors: string[];
+  filterVenues: string[];
 }
 
 function ResourcesView({
@@ -6630,6 +7268,8 @@ function ResourcesView({
   hoveredEventId,
   currentMonth,
   currentYear,
+  filterInstructors,
+  filterVenues,
 }: ResourcesViewProps) {
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const clampedDay = Math.min(Math.max(day, 1), daysInMonth);
@@ -6964,6 +7604,18 @@ function ResourcesView({
       />
     ));
 
+  // Row lists for each section, narrowed by the sidebar's resource
+  // filters. Empty filter list = show every resource on that axis; a
+  // non-empty list hides every row not explicitly checked so filtering by
+  // a resource actually removes the other rows instead of just leaving
+  // them empty.
+  const visibleInstructors = filterInstructors.length > 0
+    ? INSTRUCTOR_OPTIONS.filter((name) => filterInstructors.includes(name))
+    : INSTRUCTOR_OPTIONS;
+  const visibleVenues = filterVenues.length > 0
+    ? VENUE_OPTIONS.filter((name) => filterVenues.includes(name))
+    : VENUE_OPTIONS;
+
   // Alternating row backgrounds
   const rowBg   = (i: number) => i % 2 === 1
     ? (isDark ? "rgba(255,255,255,0.018)" : "rgba(0,0,0,0.016)")
@@ -7093,7 +7745,7 @@ function ResourcesView({
 
           {/* Instructor rows — height grows to fit whichever hour that
               instructor has the most stacked back-to-back sessions in. */}
-          {INSTRUCTOR_OPTIONS.map((name, i) => {
+          {visibleInstructors.map((name, i) => {
             const { laned, laneCount } = assignLanes(events.filter((e) => e.instructor === name));
             const rowHeight = computeRowHeight(laneCount);
             const chipHeight = laneCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
@@ -7165,7 +7817,7 @@ function ResourcesView({
           </div>
 
           {/* Venue rows — same stacking/growth behavior as instructor rows. */}
-          {VENUE_OPTIONS.map((name, i) => {
+          {visibleVenues.map((name, i) => {
             const { laned, laneCount } = assignLanes(events.filter((e) => e.venue === name));
             const rowHeight = computeRowHeight(laneCount);
             const chipHeight = laneCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
@@ -7540,6 +8192,10 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
 
         const clients = hasCapacity ? getEventClients(event) : [];
         const statusCounts = hasCapacity ? getClientStatusCounts(event) : null;
+        // Overdue-balance count — reuses the same red accent as the
+        // ReservationDetailsPanel's "Overdue" filter pill and per-client
+        // balance badge so the signal reads consistently across the app.
+        const owedCount = hasCapacity ? getOwedCount(event) : 0;
         const previewNames = clients.slice(0, DAILY_NAME_PREVIEW_COUNT).map((c) => c.name);
         const remainingCount = clients.length - previewNames.length;
 
@@ -7664,6 +8320,21 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
                         </span>
                       );
                     })}
+                    {owedCount > 0 && (
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 7px",
+                          borderRadius: "10px",
+                          background: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.14)",
+                          color: isDark ? "#e05a5a" : "#a31030",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {owedCount} Overdue
+                      </span>
+                    )}
                   </div>
                 )}
 
@@ -8167,8 +8838,16 @@ export function SchedulePage() {
           if (startMins !== null && m < startMins) return false;
           if (endMins !== null && m > endMins) return false;
         }
-        if (filterVenues.length > 0 && !filterVenues.includes(e.venue)) return false;
-        if (filterInstructors.length > 0 && !filterInstructors.includes(e.instructor)) return false;
+        // Resource filters (venue + instructor) are OR'd together, not
+        // AND'd — picking a specific instructor and a specific venue
+        // should surface sessions matching either one, since the two
+        // don't necessarily ever share a session. Only when a resource
+        // axis has no selections is it left out of the check entirely.
+        if (filterVenues.length > 0 || filterInstructors.length > 0) {
+          const matchesVenue = filterVenues.length > 0 && filterVenues.includes(e.venue);
+          const matchesInstructor = filterInstructors.length > 0 && filterInstructors.includes(e.instructor);
+          if (!matchesVenue && !matchesInstructor) return false;
+        }
         if (filterTypes.length > 0 && !filterTypes.includes(e.type)) return false;
         if (filterPaymentStatus === "Owed" && getOwedCount(e) === 0) return false;
         // "Paid" = all registered clients are paid up. Empty events
@@ -9139,6 +9818,8 @@ export function SchedulePage() {
             hoveredEventId={hoveredEvent?.event.id ?? null}
             currentMonth={currentMonth}
             currentYear={currentYear}
+            filterInstructors={filterInstructors}
+            filterVenues={filterVenues}
           />
         ) : desktopView === "Weekly" ? (
           <WeeklyView
