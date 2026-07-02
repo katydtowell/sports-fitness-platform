@@ -41,6 +41,7 @@ import { useTheme, type ThemePalette, EZ_GREEN, EZ_GREEN_ON_COLOR, EZ_RED, EZ_RE
 import { useSidePanel } from "../layout/SidePanelContext";
 import { useIsMobile } from "../ui/use-mobile";
 import { CancelConfirmModal } from "../client-profile/CancelConfirmModal";
+import { TimeField } from "../ui/TimeField";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -76,6 +77,13 @@ interface CalendarEvent {
   /** Post-buffer time in minutes — when > 0, the badge renders a diagonal-stripe
    *  indicator at its trailing edge. */
   postBuffer?: number;
+  /** Session length in minutes. Defaults to 60 (see `makeEvent`) — most
+   *  demo sessions fill a full hour, but a resource can also be booked for
+   *  several shorter back-to-back sessions (e.g. four 15-minute sessions)
+   *  as long as they don't overlap. Used to compute each session's actual
+   *  end time and to detect/prevent double-booking a single instructor or
+   *  venue for overlapping time ranges. */
+  duration?: number;
 }
 
 interface DayEvents {
@@ -201,8 +209,9 @@ function generateMockEvents(): DayEvents {
     fullWidth = false,
     waitlistEnabled = false,
     preBuffer = 0,
-    postBuffer = 0
-  ): CalendarEvent => ({ id, title, time, type, instructor, venue, booked, capacity, fullWidth, waitlistEnabled, preBuffer, postBuffer });
+    postBuffer = 0,
+    duration = 60
+  ): CalendarEvent => ({ id, title, time, type, instructor, venue, booked, capacity, fullWidth, waitlistEnabled, preBuffer, postBuffer, duration });
 
   // Week 1: days 1-7
   // Day 1 — mix of all states + buffer variants (pre-only, post-only, both, none)
@@ -437,12 +446,19 @@ function generateMockEvents(): DayEvents {
   ];
 
   // ── Post-process: distribute instructors and venues across realistic
-  // pools per reservation type. The original makeEvent calls used
-  // "Alan Alda" / "Studio B" as lazy defaults (and many were never
-  // overridden), which made the by-resource sort look like one giant
-  // Alan Alda / Studio B group. We override those values here based on
-  // a deterministic hash of the event id so the demo schedule has
-  // realistic variety while staying stable across renders.
+  // pools per reservation type, fill in capacity/booked, and — this part
+  // is load-bearing, not cosmetic — make sure no single instructor or
+  // venue ever ends up double-booked for overlapping time ranges. A
+  // resource CAN run back-to-back sessions, even several short ones
+  // stacked inside one hour, it just can never have two sessions whose
+  // times actually overlap (that's not something that happens in real
+  // scheduling). The original makeEvent calls used "Alan Alda" / "Studio B"
+  // as lazy defaults (and many were never overridden), which made the
+  // by-resource sort look like one giant Alan Alda / Studio B group; we
+  // override those values here based on a deterministic hash of the event
+  // id so the demo schedule has realistic variety while staying stable
+  // across renders — now filtered through a conflict check before anything
+  // is finalized.
   const INSTRUCTORS_FOR: Partial<Record<ReservationType, string[]>> = {
     yoga:       ["Alan Alda", "Derek Thompson", "Olivia Nguyen"],
     meditation: ["Sara Chen", "James Kim"],
@@ -455,6 +471,12 @@ function generateMockEvents(): DayEvents {
     pilates:    ["Studio A", "Multipurpose Room"],
     hiit:       ["Gym Floor", "Multipurpose Room", "Court 1", "Court 2"],
   };
+  // Fallback pools — every named instructor/venue above, deduped — used
+  // when a type's own pool is entirely busy for a given time span so
+  // assignment still has somewhere left to go instead of double-booking.
+  const ALL_INSTRUCTORS = Array.from(new Set(Object.values(INSTRUCTORS_FOR).flatMap((arr) => arr ?? [])));
+  const ALL_VENUES = Array.from(new Set(Object.values(VENUES_FOR).flatMap((arr) => arr ?? [])));
+
   const hashId = (id: string): number => {
     let h = 0;
     for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
@@ -476,11 +498,14 @@ function generateMockEvents(): DayEvents {
     0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0,
   ];
   // Per-day, per-type instructor/venue distribution. Within each
-  // day+type bucket we pick one of three modes deterministically:
-  //   0 = "all same"   → every session of that type on that day shares
-  //                      one instructor (or venue). Demonstrates the
-  //                      multi-sessions-per-resource case clearly when
-  //                      sorting by resource.
+  // day+type bucket we pick one of three *preferred* modes deterministically:
+  //   0 = "all same"   → every session of that type on that day prefers
+  //                      one instructor (or venue), demonstrating the
+  //                      multi-sessions-per-resource case when sorting by
+  //                      resource — but only for sessions whose times
+  //                      don't actually overlap (see assignResource below;
+  //                      a preference is never allowed to cause a
+  //                      double-booking).
   //   1 = "paired"     → consecutive pairs share, so a 3-session bucket
   //                      becomes [A, A, B] etc.
   //   2 = "distributed"→ round-robin across the pool — different
@@ -494,8 +519,67 @@ function generateMockEvents(): DayEvents {
     if (mode === 1) return (base + Math.floor(i / 2)) % poolSize; // paired
     return (base + i) % poolSize;                                 // distributed
   };
+
+  // A session's real occupied span in minutes-since-midnight, including
+  // its pre/post buffer (the resource is genuinely unavailable during
+  // buffer/cleanup time too). Returns null when the time can't be parsed
+  // (closed/all-day markers), so those never register as a conflict.
+  const getOccupiedSpan = (ev: CalendarEvent): [number, number] | null => {
+    const start = parseEventTimeToMinutes(ev.time);
+    if (start === -1) return null;
+    const pre = ev.preBuffer ?? 0;
+    const post = ev.postBuffer ?? 0;
+    const duration = ev.duration ?? 60;
+    return [start - pre, start + duration + post];
+  };
+  const spansOverlap = (a: [number, number], b: [number, number]): boolean =>
+    a[0] < b[1] && b[0] < a[1];
+
+  // Picks a resource for `span` out of `pool` (falling back to
+  // `fallbackPool` if every option in `pool` is already busy for that
+  // span), preferring `preferredIdx` first so the day/type "mode" above
+  // still shapes the common case — it only actually moves on to another
+  // candidate when the preferred one would double-book. Records the
+  // reservation in `busyMap` before returning so later calls for the same
+  // day see it. This is the actual fix for the reported overlap bug: no
+  // matter which "mode" or hash preference picked an instructor/venue,
+  // this is the only thing that ever finalizes the assignment.
+  const assignResource = (
+    pool: string[],
+    fallbackPool: string[],
+    preferredIdx: number,
+    span: [number, number] | null,
+    busyMap: Map<string, [number, number][]>
+  ): string => {
+    const candidates = pool.length > 0 ? pool : fallbackPool;
+    const order: string[] = [];
+    for (let k = 0; k < candidates.length; k++) order.push(candidates[(preferredIdx + k) % candidates.length]);
+    for (const name of fallbackPool) if (!order.includes(name)) order.push(name);
+
+    for (const name of order) {
+      const busy = busyMap.get(name) ?? [];
+      if (!span || !busy.some((b) => spansOverlap(span, b))) {
+        if (span) busyMap.set(name, [...busy, span]);
+        return name;
+      }
+    }
+    // Every candidate conflicts — shouldn't happen given pool sizes vs.
+    // daily session counts, but fall back to the preferred pick rather
+    // than leaving the event unassigned.
+    const fallbackName = candidates[preferredIdx % candidates.length];
+    busyMap.set(fallbackName, [...(busyMap.get(fallbackName) ?? []), ...(span ? [span] : [])]);
+    return fallbackName;
+  };
+
   for (const dayKey of Object.keys(events)) {
-    const dayEvents = events[Number(dayKey)];
+    const day = Number(dayKey);
+    const dayEvents = events[day];
+
+    // Tracks each instructor's/venue's already-reserved spans for *this
+    // day* so nothing assigned below — including the stacked-hour demo
+    // further down — can double-book one.
+    const instructorBusy: Map<string, [number, number][]> = new Map();
+    const venueBusy: Map<string, [number, number][]> = new Map();
 
     // Bucket non-closed/non-league events by type so we can pick a
     // cluster mode per (day, type).
@@ -514,8 +598,8 @@ function generateMockEvents(): DayEvents {
     }
 
     for (const [type, evs] of byType.entries()) {
-      const insts = INSTRUCTORS_FOR[type];
-      const vens = VENUES_FOR[type];
+      const insts = INSTRUCTORS_FOR[type] ?? ALL_INSTRUCTORS;
+      const vens = VENUES_FOR[type] ?? ALL_VENUES;
       const dayTypeHash = hashId(`${dayKey}-${type}`);
       // Independent modes for instructor and venue so they don't lock
       // together (e.g. avoid "all-same instructor always lines up with
@@ -526,12 +610,11 @@ function generateMockEvents(): DayEvents {
       const venueBase = hashId(`${dayKey}-${type}-vbase`);
 
       evs.forEach((ev, i) => {
-        if (insts && insts.length > 0) {
-          ev.instructor = insts[pickIdx(instMode, instBase, i, insts.length)];
-        }
-        if (vens && vens.length > 0) {
-          ev.venue = vens[pickIdx(venueMode, venueBase, i, vens.length)];
-        }
+        const span = getOccupiedSpan(ev);
+        const instPreferred = pickIdx(instMode, instBase, i, insts.length);
+        const venuePreferred = pickIdx(venueMode, venueBase, i, vens.length);
+        ev.instructor = assignResource(insts, ALL_INSTRUCTORS, instPreferred, span, instructorBusy);
+        ev.venue = assignResource(vens, ALL_VENUES, venuePreferred, span, venueBusy);
 
         // Fill in capacity / booked when they weren't set explicitly
         // (sentinel = -1). Hash the id with separate salts so capacity
@@ -543,6 +626,83 @@ function generateMockEvents(): DayEvents {
           const pct = BOOKING_LEVELS[hashId(ev.id + "b") % BOOKING_LEVELS.length];
           ev.booked = Math.min(ev.capacity, Math.round(ev.capacity * pct));
         }
+      });
+    }
+
+    // ── Guaranteed "stacked hour" demo — every calendar view shares this
+    // same `events` object (Monthly, Weekly, Daily, and Resources all read
+    // from it via `filteredEvents`), so seeding it here — rather than
+    // special-casing any one view — keeps every view in sync on the same
+    // data. Days 1, 8, 15, 22, and 29 are spaced exactly 7 apart, so ANY
+    // possible Monday→Sunday week the Weekly view can show necessarily
+    // contains exactly one of them, which guarantees every week (and every
+    // month) has one hour that's genuinely packed — several instructors
+    // each running their own back-to-back short sessions that add up to
+    // (at most) an hour, none of them overlapping. This is what the
+    // Resources view's "stack sessions per resource, no overlap" behavior
+    // looks like with real, conflict-free data — it replaces an earlier
+    // version of this demo that put several "simultaneous" 60-minute
+    // sessions on the same instructor/venue, which was exactly the
+    // double-booking bug that got reported.
+    if ([1, 8, 15, 22, 29].includes(day)) {
+      // Each "track" is one instructor+venue pair running consecutive,
+      // non-overlapping sessions whose durations add up to one hour.
+      const tracks: Array<{ type: ReservationType; sessions: Array<[string, number, string]> }> = [
+        // 4 × 15-minute back-to-back sessions
+        { type: "hiit", sessions: [
+          ["11:00am", 15, "HIIT Blast"],
+          ["11:15am", 15, "HIIT Blast"],
+          ["11:30am", 15, "HIIT Blast"],
+          ["11:45am", 15, "HIIT Blast"],
+        ] },
+        // 2 × 30-minute back-to-back sessions
+        { type: "pilates", sessions: [
+          ["11:00am", 30, "Express Pilates"],
+          ["11:30am", 30, "Express Pilates"],
+        ] },
+        // A 20-minute session followed by a 40-minute one — unequal
+        // lengths on purpose, still adds up to exactly one hour.
+        { type: "meditation", sessions: [
+          ["11:00am", 20, "Quick Reset"],
+          ["11:20am", 40, "Deep Meditation"],
+        ] },
+        // 3 × 20-minute back-to-back sessions
+        { type: "yoga", sessions: [
+          ["11:00am", 20, "Micro Flow"],
+          ["11:20am", 20, "Micro Flow"],
+          ["11:40am", 20, "Micro Flow"],
+        ] },
+      ];
+
+      tracks.forEach((track, trackIdx) => {
+        const insts = INSTRUCTORS_FOR[track.type] ?? ALL_INSTRUCTORS;
+        const vens = VENUES_FOR[track.type] ?? ALL_VENUES;
+        // "All same" preference with a hash-derived starting index, so
+        // which specific instructor/venue gets the busy hour varies by
+        // day rather than always being the pool's first entry.
+        const instPreferred = hashId(`${dayKey}-stack-${trackIdx}-i`) % insts.length;
+        const venuePreferred = hashId(`${dayKey}-stack-${trackIdx}-v`) % vens.length;
+        // Reserve against the track's FULL span (first session's start to
+        // last session's end) in one shot, so the picked instructor/venue
+        // is confirmed free for the whole run before any of its sessions
+        // are created — that's what actually produces "one resource,
+        // several stacked short sessions" instead of splitting the track
+        // across different resources mid-way through.
+        const firstStart = parseEventTimeToMinutes(track.sessions[0][0]);
+        const [lastTime, lastDuration] = track.sessions[track.sessions.length - 1];
+        const trackSpan: [number, number] = [firstStart, parseEventTimeToMinutes(lastTime) + lastDuration];
+        const instructor = assignResource(insts, ALL_INSTRUCTORS, instPreferred, trackSpan, instructorBusy);
+        const venue = assignResource(vens, ALL_VENUES, venuePreferred, trackSpan, venueBusy);
+
+        track.sessions.forEach(([time, duration, title], i) => {
+          const capacity = CAPACITY_FOR[track.type] ?? 24;
+          const id = `${day}stack${trackIdx}-${i}`;
+          const pct = BOOKING_LEVELS[hashId(id + "b") % BOOKING_LEVELS.length];
+          const booked = Math.min(capacity, Math.round(capacity * pct));
+          dayEvents.push(
+            makeEvent(id, title, time, track.type, instructor, venue, booked, capacity, false, false, 0, 0, duration)
+          );
+        });
       });
     }
   }
@@ -597,6 +757,31 @@ function parseEventTimeToMinutes(time: string): number {
   return hour * 60 + minute;
 }
 
+/** Inverse of parseEventTimeToMinutes: formats minutes-since-midnight back
+ *  into a short time string like "11am" or "11:15am" (minutes are omitted
+ *  when a time falls exactly on the hour, matching the mock data's own
+ *  style). */
+function formatMinutesToTime(mins: number): string {
+  const wrapped = ((mins % 1440) + 1440) % 1440;
+  let hour = Math.floor(wrapped / 60);
+  const minute = wrapped % 60;
+  const meridiem = hour >= 12 ? "pm" : "am";
+  hour = hour % 12;
+  if (hour === 0) hour = 12;
+  return minute === 0 ? `${hour}${meridiem}` : `${hour}:${String(minute).padStart(2, "0")}${meridiem}`;
+}
+
+/** "11am–11:15am" style start–end label for a session — used by the
+ *  Resources view so a glance shows exactly when a session starts and
+ *  ends (important once a resource can run several short back-to-back
+ *  sessions inside one hour) rather than just its start time. */
+function getSessionTimeRangeLabel(event: CalendarEvent): string {
+  const start = parseEventTimeToMinutes(event.time);
+  if (start === -1) return event.time;
+  const duration = event.duration ?? 60;
+  return `${formatMinutesToTime(start)}–${formatMinutesToTime(start + duration)}`;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════════════ */
@@ -622,6 +807,39 @@ function formatEventDate(day: number, month: number, year: number): string {
   const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${dayNames[date.getDay()]}, ${monthNames[month]} ${day}, ${year}`;
+}
+
+/** Converts a JS `Date.getDay()` value (0=Sun..6=Sat) to a Monday-first
+ *  index (0=Mon..6=Sun). Used by the Weekly view, whose weeks run
+ *  Monday → Sunday rather than the Sunday-first weeks used elsewhere. */
+function mondayIndex(jsDay: number): number {
+  return (jsDay + 6) % 7;
+}
+
+/** Returns a new Date (time-of-day zeroed) set to the Monday of the week
+ *  containing `date`. */
+function getWeekStart(date: Date): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - mondayIndex(d.getDay()));
+  return d;
+}
+
+/** Formats a Monday-start week as a compact range for the Weekly view's
+ *  date heading, e.g. "June 1 - 7, 2026" when the week sits inside one
+ *  month, "June 29 - July 5, 2026" when it crosses a month boundary, and
+ *  "Dec 29, 2025 - Jan 4, 2026" (full form) on the rare year crossing. */
+function formatWeekRange(weekStart: Date): string {
+  const end = new Date(weekStart);
+  end.setDate(end.getDate() + 6);
+  const sameMonth = weekStart.getMonth() === end.getMonth() && weekStart.getFullYear() === end.getFullYear();
+  const sameYear = weekStart.getFullYear() === end.getFullYear();
+  if (sameMonth) {
+    return `${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getDate()} - ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  if (sameYear) {
+    return `${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getDate()} - ${MONTH_NAMES[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  return `${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getDate()}, ${weekStart.getFullYear()} - ${MONTH_NAMES[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
 }
 
 const MAX_VISIBLE_EVENTS = 4;
@@ -1214,13 +1432,7 @@ function ReservationDetailsPopover({
           <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0" }}>
             <Clock size={24} style={iconStyle} />
             <span style={detailText}>
-              {event.time
-                ? `${event.time.replace("am", ":00am").replace("pm", ":00pm")} - ${
-                    parseInt(event.time) + 1 > 12
-                      ? `${parseInt(event.time) + 1 - 12}:00pm`
-                      : `${parseInt(event.time) + 1}:00${event.time.includes("pm") ? "pm" : "am"}`
-                  }`
-                : "—"}
+              {event.time ? getSessionTimeRangeLabel(event) : "—"}
             </span>
           </div>
           {/* Buffer — transition time before/after the session. Shown only
@@ -1519,13 +1731,7 @@ function MobileReservationDetail({
           <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 0" }}>
             <Clock size={24} style={iconStyle} />
             <span style={detailText}>
-              {event.time
-                ? `${event.time.replace("am", ":00am").replace("pm", ":00pm")} - ${
-                    parseInt(event.time) + 1 > 12
-                      ? `${parseInt(event.time) + 1 - 12}:00pm`
-                      : `${parseInt(event.time) + 1}:00${event.time.includes("pm") ? "pm" : "am"}`
-                  }`
-                : "—"}
+              {event.time ? getSessionTimeRangeLabel(event) : "—"}
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 0" }}>
@@ -3927,6 +4133,30 @@ function getOwedCount(event: CalendarEvent): number {
   return getEventClients(event).filter((c) => c.paymentStatus === "Owed").length;
 }
 
+// Helper: how many of an event's registered clients fall into each
+// booking status. Used by the Daily view's per-session breakdown so a
+// glance tells you not just "8 registered" but "6 booked, 2 waitlisted".
+function getClientStatusCounts(event: CalendarEvent): Record<BookedClient["status"], number> {
+  const clients = getEventClients(event);
+  return {
+    Booked: clients.filter((c) => c.status === "Booked").length,
+    Waitlisted: clients.filter((c) => c.status === "Waitlisted").length,
+    Reserved: clients.filter((c) => c.status === "Reserved").length,
+  };
+}
+
+// Shared status-pill colors (Booked/Waitlisted/Reserved) — mirrors the
+// palette used by ReservationDetailsPanelContent's registered-clients
+// filter pills so the Daily view's breakdown reads as the same visual
+// language rather than a one-off color set.
+function getStatusPillColors(isDark: boolean): Record<BookedClient["status"], { bg: string; text: string }> {
+  return {
+    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.18)", text: isDark ? "#00c4a0" : "#00876c" },
+    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.22)", text: isDark ? "#ffb432" : "#b07800" },
+    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.18)", text: isDark ? "#78a0c8" : "#2d6cab" },
+  };
+}
+
 /**
  * Self-contained dropdown rendered into the SidePanel header (next to the
  * panel title) via `setHeaderExtras`. Owns its own open/close state and
@@ -5309,38 +5539,39 @@ function UpcomingTodayPanel({
     transition: "background 0.1s ease",
   };
 
-  return (
-    <aside
-      style={{
-        flex: "1 1 0",
-        minWidth: 0,
-        minHeight: 0,
-        borderRadius: "12px",
-        border: `1px solid ${sc.border}`,
-        background: sc.cellBg,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* ── Header ─────────────────────────────────────────────────── */}
-      <div
-        style={{
-          padding: "16px 20px",
-          background: sc.headerBg,
-          borderBottom: `1px solid ${sc.border}`,
-          flexShrink: 0,
-        }}
-      >
-        <span style={{ fontSize: "15px", fontWeight: 600, color: sc.heading, lineHeight: "20px" }}>
-          Upcoming Today
-        </span>
-        <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", marginTop: "2px" }}>
-          {dateLabel} · {events.length} reservation{events.length === 1 ? "" : "s"}
-        </div>
-      </div>
+  const panelStyle: CSSProperties = {
+    minWidth: 0,
+    minHeight: 0,
+    borderRadius: "12px",
+    border: `1px solid ${sc.border}`,
+    background: sc.cellBg,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+  };
 
-      {/* ── Top section: event list ─────────────────────────────────── */}
+  return (
+    <>
+      {/* ── Panel 1: Upcoming Today event list ─────────────────────── */}
+      <aside style={{ ...panelStyle, flex: "3 1 0" }}>
+        {/* Header */}
+        <div
+          style={{
+            padding: "16px 20px",
+            background: sc.headerBg,
+            borderBottom: `1px solid ${sc.border}`,
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: "15px", fontWeight: 600, color: sc.heading, lineHeight: "20px" }}>
+            Upcoming Today
+          </span>
+          <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", marginTop: "2px" }}>
+            {dateLabel} · {events.length} reservation{events.length === 1 ? "" : "s"}
+          </div>
+        </div>
+
+      {/* Event list */}
       <div
         className="always-show-scrollbar"
         style={{
@@ -5441,19 +5672,10 @@ function UpcomingTodayPanel({
         )}
       </div>
 
-      {/* ── Divider ─────────────────────────────────────────────────── */}
-      <div style={{ height: "1px", background: sc.border, flexShrink: 0 }} />
+      </aside>
 
-      {/* ── Bottom section: tabs + content ─────────────────────────── */}
-      <div
-        style={{
-          flex: "1 1 0",
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
+      {/* ── Panel 2: Resources & Filters tabs ──────────────────────── */}
+      <aside style={{ ...panelStyle, flex: "2 1 0" }}>
         {/* Tab row */}
         <div
           style={{
@@ -5630,8 +5852,8 @@ function UpcomingTodayPanel({
             </div>
           )}
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
@@ -5910,17 +6132,19 @@ function CalendarFiltersContent({
           )}
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
-          <input
-            type="time"
+          <TimeField
             value={filterStartTime}
-            onChange={(e) => setFilterStartTime(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+            onChange={setFilterStartTime}
+            sc={sc}
+            isDark={isDark}
+            ariaLabel="Start time"
           />
-          <input
-            type="time"
+          <TimeField
             value={filterEndTime}
-            onChange={(e) => setFilterEndTime(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
+            onChange={setFilterEndTime}
+            sc={sc}
+            isDark={isDark}
+            ariaLabel="End time"
           />
         </div>
       </div>
@@ -6177,6 +6401,174 @@ function ResourcesDayPicker({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — WeekPicker
+   Mini calendar popover for picking a week in the Weekly view. Unlike
+   ResourcesDayPicker (which selects a single day), every row here IS a
+   selectable week — hovering highlights the full Monday→Sunday row and
+   clicking anywhere in that row selects it, so a click "wherever" always
+   resolves to the whole week it landed in.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function WeekPicker({
+  weekStart,
+  onPick,
+  sc,
+  isDark,
+}: {
+  /** Monday of the currently-selected week (drives the highlighted row). */
+  weekStart: Date;
+  onPick: (weekStart: Date) => void;
+  sc: SemanticColors;
+  isDark: boolean;
+}) {
+  const [pickerMonth, setPickerMonth] = useState(weekStart.getMonth());
+  const [pickerYear, setPickerYear] = useState(weekStart.getFullYear());
+  const [hoverRow, setHoverRow] = useState<number | null>(null);
+
+  const today = new Date();
+  const weekStartTime = weekStart.getTime();
+
+  const daysInPickerMonth = getDaysInMonth(pickerYear, pickerMonth);
+  // This grid is Monday-first (unlike the Sunday-first grids used
+  // elsewhere in Schedule) so each row lines up exactly with one
+  // selectable Weekly-view week.
+  const leadingBlanks = mondayIndex(getFirstDayOfMonth(pickerYear, pickerMonth));
+
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+  for (let d = 1; d <= daysInPickerMonth; d++) cells.push(new Date(pickerYear, pickerMonth, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const prevPickerMonth = () => {
+    if (pickerMonth === 0) { setPickerMonth(11); setPickerYear((y) => y - 1); }
+    else setPickerMonth((m) => m - 1);
+  };
+  const nextPickerMonth = () => {
+    if (pickerMonth === 11) { setPickerMonth(0); setPickerYear((y) => y + 1); }
+    else setPickerMonth((m) => m + 1);
+  };
+
+  const navBtnStyle: CSSProperties = {
+    width: "28px",
+    height: "28px",
+    borderRadius: "6px",
+    border: `1px solid ${sc.border}`,
+    background: sc.controlBg,
+    color: sc.body,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+
+  const rowCount = cells.length / 7;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "calc(100% + 6px)",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "264px",
+        background: sc.cellBg,
+        border: `1px solid ${sc.border}`,
+        borderRadius: "10px",
+        boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+        padding: "12px",
+        zIndex: 200,
+        fontFamily: "var(--font-family)",
+      }}
+    >
+      {/* Month / year header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+        <button onClick={prevPickerMonth} aria-label="Previous month" style={navBtnStyle}>
+          <ChevronLeft size={14} />
+        </button>
+        <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
+          {MONTH_NAMES[pickerMonth]} {pickerYear}
+        </span>
+        <button onClick={nextPickerMonth} aria-label="Next month" style={navBtnStyle}>
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      {/* Day-of-week headers — Monday-first, matching the Weekly view */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "4px" }}>
+        {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+          <div key={i} style={{ textAlign: "center", fontSize: "10px", fontWeight: 700, color: sc.muted, padding: "2px 0" }}>
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Week rows — each entire row is one click target */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+        {Array.from({ length: rowCount }).map((_, rowIdx) => {
+          const rowCells = cells.slice(rowIdx * 7, rowIdx * 7 + 7);
+          const rowDates = rowCells.filter((c): c is Date => c !== null);
+          if (rowDates.length === 0) return null;
+          const rowWeekStart = getWeekStart(rowDates[0]);
+          const isSelectedRow = rowWeekStart.getTime() === weekStartTime;
+          const isHoverRow = hoverRow === rowIdx;
+
+          return (
+            <div
+              key={rowIdx}
+              onMouseEnter={() => setHoverRow(rowIdx)}
+              onMouseLeave={() => setHoverRow(null)}
+              onClick={() => onPick(rowWeekStart)}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: "2px",
+                borderRadius: "8px",
+                cursor: "pointer",
+                background: isSelectedRow
+                  ? sc.brand
+                  : isHoverRow
+                  ? (isDark ? "rgba(0,196,160,0.16)" : "rgba(0,196,160,0.12)")
+                  : "transparent",
+                transition: "background 0.1s",
+              }}
+            >
+              {rowCells.map((cellDate, ci) => {
+                if (!cellDate) return <div key={ci} />;
+                const isToday =
+                  cellDate.getFullYear() === today.getFullYear() &&
+                  cellDate.getMonth() === today.getMonth() &&
+                  cellDate.getDate() === today.getDate();
+                return (
+                  <div
+                    key={ci}
+                    style={{
+                      width: "100%",
+                      aspectRatio: "1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "12px",
+                      fontWeight: isSelectedRow || isToday ? 700 : 400,
+                      color: isSelectedRow
+                        ? (isDark ? "#0a0e0f" : "#101828")
+                        : isToday ? sc.brand : sc.body,
+                      border: isToday && !isSelectedRow ? `1px solid ${sc.brand}` : "1px solid transparent",
+                      borderRadius: "50%",
+                    }}
+                  >
+                    {cellDate.getDate()}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — ResourcesView (day × resource grid)
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -6184,10 +6576,25 @@ function ResourcesDayPicker({
 const RES_START_HOUR = 7;
 /** Last visible hour (10 pm) */
 const RES_END_HOUR   = 22;
-/** Width in px of each 1-hour column */
-const RES_COL_W      = 90;
-/** Height in px of each resource (instructor / venue) row */
+/** Width in px of each 1-hour column. Wide enough that a chip's full
+ *  start–end time range ("10:15am–11:00am") plus its attendance status
+ *  ("Full"/"Waitlist"/booked-of-capacity) can render without truncating,
+ *  even inside the buffer-stripe padding a pre/post-buffered session adds,
+ *  and even in a stacked (same-hour) lane that's otherwise compact. */
+const RES_COL_W      = 176;
+/** Height in px of a resource row when it needs only one vertical "lane"
+ *  (the common case: no two of that resource's sessions overlap in the
+ *  same hour, which is now guaranteed by the data — see generateMockEvents). */
 const RES_ROW_H      = 64;
+/** Height in px of a single stacked lane, used once a row needs 2+ lanes
+ *  (i.e. that resource has multiple sessions inside the same hour). */
+const RES_LANE_H     = 30;
+/** Gap in px between stacked lanes within a row. */
+const RES_LANE_GAP   = 3;
+/** Combined top+bottom inset applied to a row's content regardless of
+ *  how many lanes it has, so the first/last chip never touches the
+ *  row's borders. */
+const RES_ROW_PAD    = 12;
 /** Width in px of the sticky resource-name column */
 const RES_LABEL_W    = 164;
 /** Height in px of the sticky hour header row */
@@ -6243,29 +6650,38 @@ function ResourcesView({
     return h < 12 ? `${h}am` : `${h - 12}pm`;
   };
 
-  /** Convert a time string (e.g. "11am") to an X pixel offset in the grid. */
-  const timeToLeft = (time: string): number => {
-    const mins = parseEventTimeToMinutes(time);
-    if (mins < 0) return -9999; // out of range sentinel
-    return ((mins - RES_START_HOUR * 60) / 60) * RES_COL_W;
-  };
-
   /** Render a positioned event chip inside a resource row.
    *  Structure: outer absolutely-positioned placement shell → inner
    *  position:relative chip (the containing block for stripe overlays).
-   *  This guarantees the stripe's top/bottom:0 resolve correctly on
-   *  first paint, since the chip's height comes from its own flex sizing
-   *  rather than from a parent-relative top+bottom calculation. */
-  const renderEventBlock = (event: CalendarEvent) => {
-    const left = timeToLeft(event.time);
-    if (left < 0 || left >= totalW) return null;
+   *  `top`/`height` come from the caller's lane assignment (see
+   *  assignLanes below) rather than being fixed — a resource row can
+   *  hold several stacked lanes when it has multiple sessions inside the
+   *  same hour, and each lane gets its own chip height. A chip always
+   *  fills its full hour column (position/width are snapped to the hour
+   *  the session starts in) rather than being sized/positioned by the
+   *  session's real sub-hour start time or duration — several short
+   *  sessions in the same resource's same hour stack vertically at this
+   *  same horizontal spot instead of spreading out side by side, and the
+   *  exact start–end time is communicated via the visible time-range
+   *  label instead of chip geometry. */
+  const renderEventBlock = (event: CalendarEvent, top: number, height: number) => {
+    const startMins = parseEventTimeToMinutes(event.time);
+    if (startMins < 0) return null;
+    const hourIdx = Math.floor(startMins / 60) - RES_START_HOUR;
+    if (hourIdx < 0 || hourIdx >= hours.length) return null;
+    const left = hourIdx * RES_COL_W;
     const style     = colors[event.type] || colors.yoga;
     const isHovered = event.id === hoveredEventId;
+    const width = RES_COL_W - 4;
 
-    const width = Math.min(RES_COL_W - 4, totalW - left - 2);
-    if (width <= 0) return null;
-
-    const showSecondLine = width > 60;
+    const timeRangeLabel = getSessionTimeRangeLabel(event);
+    // A full-height (single-lane) chip has room for a title line plus a
+    // second line (time range ± a capacity pill); a stacked lane is too
+    // short for two lines, so it collapses to a single line that always
+    // includes the time range — the whole point of showing a resource's
+    // stacked sessions is to see exactly when each one starts and ends.
+    const isCompact = height < 44;
+    const showSecondLine = !isCompact && width >= 36;
 
     // ── Buffer stripes — fixed 12px, inside the chip (mirrors EventBadge) ──
     const STRIPE_W  = 12;
@@ -6287,7 +6703,7 @@ function ResourcesView({
       ? (isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)")
       : isNearlyFull ? "#FFE109" : EZ_GREEN;
     const statusColor    = isFull ? style.text : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-    const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : event.time;
+    const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
 
     return (
       // Outer shell: handles absolute placement within the row
@@ -6295,8 +6711,8 @@ function ResourcesView({
         key={event.id}
         style={{
           position: "absolute",
-          top: "6px",
-          bottom: "6px",
+          top: `${top}px`,
+          height: `${height}px`,
           left: `${left + 2}px`,
           width: `${width}px`,
           zIndex: isHovered ? 3 : 1,
@@ -6314,7 +6730,7 @@ function ResourcesView({
             event.title,
             event.instructor && event.instructor !== "—" ? event.instructor : null,
             event.venue || null,
-            event.time,
+            timeRangeLabel,
             hasCapacityData ? `${event.booked}/${event.capacity}` : null,
           ].filter(Boolean).join(" · ")}
           style={{
@@ -6326,7 +6742,7 @@ function ResourcesView({
             color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
             fontSize: "11px",
             fontWeight: 600,
-            padding: `4px ${padR}px 4px ${padL}px`,
+            padding: isCompact ? `2px ${padR}px 2px ${padL}px` : `4px ${padR}px 4px ${padL}px`,
             overflow: "hidden",
             cursor: "pointer",
             display: "flex",
@@ -6372,69 +6788,163 @@ function ResourcesView({
             />
           )}
 
-          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "14px" }}>
-            {event.title}
-          </span>
-          {showSecondLine && (
-            showStatusPill && isFull ? (
-              // Full / waitlisted: show time alongside the status pill
-              <div style={{ display: "flex", alignItems: "center", gap: "4px", overflow: "hidden" }}>
-                <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap", flexShrink: 0 }}>
-                  {event.time}
-                </span>
-                <span
-                  style={{
-                    display: "inline-block",
-                    flexShrink: 0,
-                    background: isHovered
-                      ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
-                      : statusBg,
-                    color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    lineHeight: "13px",
-                    padding: "0px 4px",
-                    borderRadius: "3px",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {event.waitlistEnabled ? "Waitlist" : "Full"}
-                </span>
-              </div>
-            ) : showStatusPill ? (
-              // Available / nearly full: time shown inside the colored pill (existing behavior)
+          {isCompact ? (
+            // Stacked lane — one line only, but still needs its attendance
+            // status: with several sessions from the same resource packed
+            // into one hour, "which of these is full/nearly full/waitlisted"
+            // is exactly the thing a glance at this row needs to answer, so
+            // it can't be dropped just because the lane is short. Text gets
+            // first claim on the line (title · start–end, or start–end
+            // alone when narrow); the status pill is fixed-width and never
+            // truncates, shrinking to a plain dot only once there's no room
+            // left for its label.
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                overflow: "hidden",
+                width: "100%",
+                lineHeight: `${Math.max(10, height - 4)}px`,
+              }}
+            >
               <span
                 style={{
-                  display: "inline-block",
-                  alignSelf: "flex-start",
-                  background: isHovered
-                    ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
-                    : statusBg,
-                  color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  lineHeight: "13px",
-                  padding: "0px 4px",
-                  borderRadius: "3px",
+                  flex: "1 1 auto",
+                  minWidth: 0,
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  maxWidth: "100%",
+                  fontSize: "10px",
                 }}
               >
-                {statusLabel}
+                {width >= 70 ? `${event.title} · ${timeRangeLabel}` : timeRangeLabel}
               </span>
-            ) : (
-              // No capacity data: plain time
-              <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap" }}>
-                {event.time}
+              {hasCapacityData && (
+                width >= 100 ? (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      flexShrink: 0,
+                      background: isHovered
+                        ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
+                        : statusBg,
+                      color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      lineHeight: "12px",
+                      padding: "0px 4px",
+                      borderRadius: "3px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {statusLabel}
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden
+                    style={{
+                      display: "inline-block",
+                      flexShrink: 0,
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      background: isHovered
+                        ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
+                        : statusBg,
+                    }}
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <>
+              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "14px" }}>
+                {event.title}
               </span>
-            )
+              {showSecondLine && (
+                showStatusPill ? (
+                  // Time range always shown as plain text, with the status
+                  // pill (Available / Nearly full / Full / Waitlist) next to
+                  // it — same "text + separate pill" layout a stacked/compact
+                  // lane uses, so a resource's single-lane and stacked hours
+                  // read the same way.
+                  <div style={{ display: "flex", alignItems: "center", gap: "4px", overflow: "hidden" }}>
+                    <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {timeRangeLabel}
+                    </span>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        flexShrink: 0,
+                        background: isHovered
+                          ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
+                          : statusBg,
+                        color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        lineHeight: "13px",
+                        padding: "0px 4px",
+                        borderRadius: "3px",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        maxWidth: "100%",
+                      }}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+                ) : (
+                  // No capacity data: plain time range
+                  <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {timeRangeLabel}
+                  </span>
+                )
+              )}
+            </>
           )}
         </div>
       </div>
     );
   };
+
+  /** Groups a single resource's events by the HOUR they start in (the same
+   *  fixed-width columns used for the header and grid lines), then stacks
+   *  every session within one hour bucket into its own sequential vertical
+   *  "lane" (sorted by start time). A resource can never truly be double-
+   *  booked (see generateMockEvents' conflict-aware assignment), so within
+   *  one hour bucket the sessions are already guaranteed non-overlapping —
+   *  no interval-overlap math is needed, just a simple stack order. This
+   *  also means a resource's sessions in two different hours each render
+   *  as a single, un-stacked chip in their own hour column rather than
+   *  competing for the same lane. */
+  const assignLanes = (resourceEvents: CalendarEvent[]) => {
+    const withHour = resourceEvents
+      .map((event) => {
+        const start = parseEventTimeToMinutes(event.time);
+        if (start < 0) return null;
+        return { event, start, hour: Math.floor(start / 60) };
+      })
+      .filter((e): e is { event: CalendarEvent; start: number; hour: number } => e !== null)
+      .sort((a, b) => a.start - b.start);
+
+    const hourCounts = new Map<number, number>();
+    const laned: Array<{ event: CalendarEvent; lane: number }> = [];
+    for (const { event, hour } of withHour) {
+      const lane = hourCounts.get(hour) ?? 0;
+      hourCounts.set(hour, lane + 1);
+      laned.push({ event, lane });
+    }
+    const laneCount = hourCounts.size > 0 ? Math.max(...Array.from(hourCounts.values())) : 1;
+    return { laned, laneCount: Math.max(1, laneCount) };
+  };
+
+  /** A row's height matches its single-lane default until it actually
+   *  needs to stack — then it grows to fit every lane, per the "resource's
+   *  row can grow to fit that hour slot" requirement. */
+  const computeRowHeight = (laneCount: number) =>
+    laneCount <= 1 ? RES_ROW_H : laneCount * RES_LANE_H + (laneCount - 1) * RES_LANE_GAP + RES_ROW_PAD;
 
   /** Vertical 1px lines at each hour boundary within a content row. */
   const renderGridLines = () =>
@@ -6581,30 +7091,38 @@ function ResourcesView({
             <div style={{ flex: 1, background: sectionHdrBg }} />
           </div>
 
-          {/* Instructor rows */}
-          {INSTRUCTOR_OPTIONS.map((name, i) => (
-            <div
-              key={name}
-              style={{
-                display: "flex",
-                height: `${RES_ROW_H}px`,
-                flexShrink: 0,
-                borderBottom: `1px solid ${sc.border}`,
-                background: rowBg(i),
-              }}
-            >
-              <div style={labelCellStyle(i)}>
-                <User size={13} style={{ color: sc.muted, flexShrink: 0 }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {name}
-                </span>
+          {/* Instructor rows — height grows to fit whichever hour that
+              instructor has the most stacked back-to-back sessions in. */}
+          {INSTRUCTOR_OPTIONS.map((name, i) => {
+            const { laned, laneCount } = assignLanes(events.filter((e) => e.instructor === name));
+            const rowHeight = computeRowHeight(laneCount);
+            const chipHeight = laneCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
+            return (
+              <div
+                key={name}
+                style={{
+                  display: "flex",
+                  height: `${rowHeight}px`,
+                  flexShrink: 0,
+                  borderBottom: `1px solid ${sc.border}`,
+                  background: rowBg(i),
+                }}
+              >
+                <div style={labelCellStyle(i)}>
+                  <User size={13} style={{ color: sc.muted, flexShrink: 0 }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {name}
+                  </span>
+                </div>
+                <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
+                  {renderGridLines()}
+                  {laned.map(({ event, lane }) =>
+                    renderEventBlock(event, RES_ROW_PAD / 2 + lane * (chipHeight + RES_LANE_GAP), chipHeight)
+                  )}
+                </div>
               </div>
-              <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
-                {renderGridLines()}
-                {events.filter((e) => e.instructor === name).map(renderEventBlock)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* ── VENUES section ─────────────────────────────────────── */}
           {/* Section header */}
@@ -6646,33 +7164,530 @@ function ResourcesView({
             <div style={{ flex: 1, background: sectionHdrBg }} />
           </div>
 
-          {/* Venue rows */}
-          {VENUE_OPTIONS.map((name, i) => (
-            <div
-              key={name}
-              style={{
-                display: "flex",
-                height: `${RES_ROW_H}px`,
-                flexShrink: 0,
-                borderBottom: `1px solid ${sc.border}`,
-                background: rowBg(i),
-              }}
-            >
-              <div style={labelCellStyle(i)}>
-                <MapPin size={13} style={{ color: sc.muted, flexShrink: 0 }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {name}
-                </span>
+          {/* Venue rows — same stacking/growth behavior as instructor rows. */}
+          {VENUE_OPTIONS.map((name, i) => {
+            const { laned, laneCount } = assignLanes(events.filter((e) => e.venue === name));
+            const rowHeight = computeRowHeight(laneCount);
+            const chipHeight = laneCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
+            return (
+              <div
+                key={name}
+                style={{
+                  display: "flex",
+                  height: `${rowHeight}px`,
+                  flexShrink: 0,
+                  borderBottom: `1px solid ${sc.border}`,
+                  background: rowBg(i),
+                }}
+              >
+                <div style={labelCellStyle(i)}>
+                  <MapPin size={13} style={{ color: sc.muted, flexShrink: 0 }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {name}
+                  </span>
+                </div>
+                <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
+                  {renderGridLines()}
+                  {laned.map(({ event, lane }) =>
+                    renderEventBlock(event, RES_ROW_PAD / 2 + lane * (chipHeight + RES_LANE_GAP), chipHeight)
+                  )}
+                </div>
               </div>
-              <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
-                {renderGridLines()}
-                {events.filter((e) => e.venue === name).map(renderEventBlock)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — WeeklyView (hour × day-of-week grid)
+   Mirrors ResourcesView's grid, rotated: hours run down the sticky left
+   column and each of the 7 columns is a day of the selected week (Monday →
+   Sunday) instead of a resource. Two deliberate differences from
+   ResourcesView:
+     • Day columns stretch to fill the available width (flex:1) rather than
+       using fixed 90px-per-hour columns, since 7 columns fit comfortably
+       without horizontal scrolling.
+     • Hour rows are NOT a fixed height. Each row is a flex container and
+       every day cell inside it stacks its events in normal block flow
+       (no absolute positioning needed, since a cell only ever needs to
+       hold "the events at this hour" rather than being time-precise).
+       Flexbox's default stretch behavior then grows the row to match its
+       busiest day automatically — so a packed Monday-9am cell is never
+       truncated, and quieter days in that same row just show extra empty
+       space underneath their events, exactly as intended.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** Width in px of the sticky hour-label column. */
+const WK_HOUR_LABEL_W = 72;
+/** Minimum height in px of an hour row, used even when every cell in it is empty. */
+const WK_MIN_ROW_H = 56;
+
+interface WeeklyViewProps {
+  eventsByDay: DayEvents;
+  /** Monday of the currently displayed week. */
+  weekStart: Date;
+  sc: SemanticColors;
+  colors: Record<ReservationType, BadgeColors>;
+  isDark: boolean;
+  onClickEvent: (event: CalendarEvent, day: number, e: React.MouseEvent) => void;
+  /** `dateOverride` carries the hovered cell's actual month/year — a week
+   *  can straddle two months, so the day number alone isn't enough to
+   *  label the hover popover correctly. */
+  onHoverEvent: (
+    event: CalendarEvent,
+    day: number,
+    e: React.MouseEvent,
+    dateOverride?: { month: number; year: number }
+  ) => void;
+  onHoverLeave: () => void;
+  hoveredEventId: string | null;
+  deleteMode?: boolean;
+}
+
+function WeeklyView({
+  eventsByDay,
+  weekStart,
+  sc,
+  colors,
+  isDark,
+  onClickEvent,
+  onHoverEvent,
+  onHoverLeave,
+  hoveredEventId,
+  deleteMode = false,
+}: WeeklyViewProps) {
+  const today = new Date();
+  const isSameDate = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  // The 7 dates spanned by the week (Mon → Sun). Mock events are keyed only
+  // by day-of-month (see `DayEvents`), so a week that crosses a month
+  // boundary simply looks each date up by its own day-of-month number —
+  // the same convention ResourcesView and the Monthly grid already rely on.
+  const weekDates: Date[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const hours: number[] = [];
+  for (let h = RES_START_HOUR; h <= RES_END_HOUR; h++) hours.push(h);
+
+  const formatHour = (h: number) => {
+    if (h === 0) return "12am";
+    if (h === 12) return "12pm";
+    return h < 12 ? `${h}am` : `${h - 12}pm`;
+  };
+
+  // Non-closed events for a given date, bucketed by hour. Closed / all-day
+  // markers have no parseable time and are excluded — the same rule
+  // ResourcesView applies, since there's no single hour cell to place them in.
+  const eventsForDateAtHour = (date: Date, hour: number): CalendarEvent[] => {
+    const dayEvents = eventsByDay[date.getDate()] ?? [];
+    return dayEvents.filter((e) => {
+      if (e.type === "closed") return false;
+      const mins = parseEventTimeToMinutes(e.time);
+      return mins !== -1 && Math.floor(mins / 60) === hour;
+    });
+  };
+
+  // Alternating hour-row background for scan-ability across a tall grid.
+  const rowBg = (i: number) =>
+    i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.018)" : "rgba(0,0,0,0.016)") : "transparent";
+
+  return (
+    <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", minWidth: "100%" }}>
+
+          {/* Sticky day-header row */}
+          <div
+            style={{
+              display: "flex",
+              position: "sticky",
+              top: 0,
+              zIndex: 5,
+              borderBottom: `1px solid ${sc.border}`,
+              background: sc.headerBg,
+            }}
+          >
+            {/* Top-left corner cell — sticky in both axes */}
+            <div
+              style={{
+                width: `${WK_HOUR_LABEL_W}px`,
+                flexShrink: 0,
+                position: "sticky",
+                left: 0,
+                background: sc.headerBg,
+                borderRight: `1px solid ${sc.border}`,
+                zIndex: 6,
+              }}
+            />
+            {weekDates.map((date, i) => {
+              const isToday = isSameDate(date, today);
+              return (
+                <div
+                  key={i}
+                  style={{
+                    flex: "1 1 0",
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "4px",
+                    padding: "10px 4px",
+                    borderRight: `1px solid ${sc.border}`,
+                    background: sc.headerBg,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: isToday ? sc.brand : sc.muted,
+                    }}
+                  >
+                    {DAYS_OF_WEEK_FULL[date.getDay()]}
+                  </span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "26px",
+                      height: "26px",
+                      borderRadius: "50%",
+                      fontSize: "15px",
+                      fontWeight: 700,
+                      color: isToday ? (isDark ? "#0a0e0f" : "#ffffff") : sc.heading,
+                      background: isToday ? sc.brand : "transparent",
+                    }}
+                  >
+                    {date.getDate()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Hour rows — height is intentionally NOT fixed; flexbox stretch
+              (the row's default cross-axis behavior) grows every cell in a
+              row to match whichever day needs the most space. */}
+          {hours.map((h, hi) => (
+            <div
+              key={h}
+              style={{
+                display: "flex",
+                alignItems: "stretch",
+                minHeight: `${WK_MIN_ROW_H}px`,
+                borderBottom: `1px solid ${sc.border}`,
+                background: rowBg(hi),
+              }}
+            >
+              {/* Sticky hour label */}
+              <div
+                style={{
+                  width: `${WK_HOUR_LABEL_W}px`,
+                  flexShrink: 0,
+                  position: "sticky",
+                  left: 0,
+                  background: isDark ? sc.cellBg : "#ffffff",
+                  borderRight: `1px solid ${sc.border}`,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "flex-end",
+                  padding: "6px 8px 0 0",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: sc.muted,
+                  boxSizing: "border-box",
+                  zIndex: 2,
+                }}
+              >
+                {formatHour(h)}
+              </div>
+
+              {weekDates.map((date, di) => {
+                const cellEvents = eventsForDateAtHour(date, h);
+                return (
+                  <div
+                    key={di}
+                    style={{
+                      flex: "1 1 0",
+                      minWidth: 0,
+                      padding: "3px",
+                      borderRight: `1px solid ${sc.border}`,
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {cellEvents.map((event) => (
+                      <div key={event.id} style={{ marginBottom: "3px" }}>
+                        <EventBadge
+                          event={event}
+                          isSelected={event.id === hoveredEventId}
+                          onClick={(e) => onClickEvent(event, date.getDate(), e)}
+                          onHoverEnter={(e) =>
+                            onHoverEvent(event, date.getDate(), e, {
+                              month: date.getMonth(),
+                              year: date.getFullYear(),
+                            })
+                          }
+                          onHoverLeave={onHoverLeave}
+                          colors={colors}
+                          isDark={isDark}
+                          deleteMode={deleteMode}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — DailyView (single-day session list, desktop-sized)
+   Mirrors the mobile day list's core idea — one row per session, sorted
+   chronologically — but sized and laid out for the desktop calendar zone.
+   Unlike mobile, instructor/venue sit inline on the row instead of behind
+   a tap, and — since desktop has the room — each session also surfaces a
+   registered-clients breakdown by status and a truncated name preview
+   directly, with no hover state: a click always opens the full
+   Reservation Details panel, exactly like tapping a row on mobile does.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** How many client names to preview inline before collapsing to "+N more". */
+const DAILY_NAME_PREVIEW_COUNT = 4;
+
+interface DailyViewProps {
+  /** Every event for the single displayed day (closed markers included). */
+  events: CalendarEvent[];
+  /** Day-of-month the list is showing, forwarded to onClickEvent. */
+  day: number;
+  sc: SemanticColors;
+  colors: Record<ReservationType, BadgeColors>;
+  isDark: boolean;
+  onClickEvent: (event: CalendarEvent, day: number, e: React.MouseEvent) => void;
+  deleteMode?: boolean;
+}
+
+function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode = false }: DailyViewProps) {
+  // Closed/all-day markers render as a banner up top rather than a normal
+  // session row — they have no time to sort by and no registrations.
+  const closedEvents = events.filter((e) => e.type === "closed");
+  const sessionEvents = events
+    .filter((e) => e.type !== "closed")
+    .slice()
+    .sort((a, b) => parseEventTimeToMinutes(a.time) - parseEventTimeToMinutes(b.time));
+
+  const statusPillColors = getStatusPillColors(isDark);
+  const deletableColor = isDark ? "#e05a5a" : "#d41840";
+
+  return (
+    <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
+      {closedEvents.map((event) => (
+        <div
+          key={event.id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "16px 24px",
+            borderBottom: `1px solid ${sc.border}`,
+            background: isDark ? "rgba(161,189,198,0.06)" : "rgba(0,0,0,0.02)",
+          }}
+        >
+          <div
+            style={{
+              width: "10px",
+              height: "10px",
+              borderRadius: "50%",
+              background: (colors[event.type] || colors.closed).text,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: "15px", fontWeight: 600, color: sc.heading }}>
+            {event.title || "Closed"}
+          </span>
+          <span style={{ fontSize: "13px", color: sc.muted }}>All day</span>
+        </div>
+      ))}
+
+      {sessionEvents.length === 0 && closedEvents.length === 0 && (
+        <div style={{ padding: "48px 24px", textAlign: "center", fontSize: "14px", color: sc.muted }}>
+          No sessions scheduled for this day.
+        </div>
+      )}
+
+      {sessionEvents.map((event) => {
+        const style = colors[event.type] || colors.yoga;
+        const hasCapacity = event.capacity > 0;
+        const available = Math.max(0, event.capacity - event.booked);
+        const isFull = hasCapacity && available === 0;
+        const bookedPct = hasCapacity ? Math.min(100, (event.booked / event.capacity) * 100) : 0;
+
+        const clients = hasCapacity ? getEventClients(event) : [];
+        const statusCounts = hasCapacity ? getClientStatusCounts(event) : null;
+        const previewNames = clients.slice(0, DAILY_NAME_PREVIEW_COUNT).map((c) => c.name);
+        const remainingCount = clients.length - previewNames.length;
+
+        /* Status button — mirrors MobileEventRow's Book / Waitlist / Full states. */
+        let statusLabel = "Book";
+        let statusStyle: CSSProperties = {
+          padding: "6px 12px",
+          borderRadius: "6px",
+          fontSize: "13px",
+          fontWeight: 600,
+          border: "none",
+          background: sc.brand,
+          color: isDark ? "#0a0e0f" : "#101828",
+          cursor: "pointer",
+        };
+        if (isFull && event.waitlistEnabled) {
+          statusLabel = "Waitlist";
+          statusStyle = { ...statusStyle, background: "transparent", border: `1px solid ${sc.brand}`, color: sc.brand };
+        } else if (isFull) {
+          statusLabel = "Full";
+          statusStyle = { ...statusStyle, background: sc.muted, color: sc.cellBg, cursor: "default", opacity: 0.6 };
+        }
+
+        // Delete Mode styling mirrors EventBadge's convention: dashed red
+        // for events a click will remove, dimmed for everything else.
+        const isDeletable = deleteMode && event.booked === 0 && event.type !== "league";
+        const dimNonDeletable = deleteMode && !isDeletable;
+
+        return (
+          <div
+            key={event.id}
+            onClick={(e) => onClickEvent(event, day, e)}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              padding: "16px 24px",
+              borderBottom: `1px solid ${sc.border}`,
+              borderLeft: isDeletable ? `3px dashed ${deletableColor}` : "3px solid transparent",
+              background: isDeletable ? (isDark ? "rgba(224,90,90,0.06)" : "rgba(212,24,64,0.04)") : "transparent",
+              opacity: dimNonDeletable ? 0.5 : 1,
+              cursor: "pointer",
+            }}
+          >
+            {/* Top line — dot, time, title, instructor/venue, status button */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: style.text, flexShrink: 0 }} />
+              <span style={{ fontSize: "15px", fontWeight: 700, color: sc.heading, flexShrink: 0 }}>{event.time}</span>
+              <span
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  color: sc.heading,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {event.title}
+              </span>
+              <span style={{ flex: 1, minWidth: "12px" }} />
+              <span style={{ fontSize: "13px", fontWeight: 500, color: sc.muted, flexShrink: 0, whiteSpace: "nowrap" }}>
+                {[event.instructor && event.instructor !== "—" ? event.instructor : null, event.venue || null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {hasCapacity && <button style={{ ...statusStyle, flexShrink: 0 }}>{statusLabel}</button>}
+            </div>
+
+            {/* Second line — capacity bar, registration-status breakdown,
+                and a truncated preview of who's registered. */}
+            {hasCapacity && (
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", paddingLeft: "20px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                  <div
+                    style={{
+                      width: "80px",
+                      height: "6px",
+                      borderRadius: "3px",
+                      background: sc.track,
+                      position: "relative",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        bottom: 0,
+                        width: `${bookedPct}%`,
+                        borderRadius: "3px",
+                        background: sc.success,
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: sc.muted, whiteSpace: "nowrap" }}>
+                    {event.booked}/{event.capacity} registered
+                  </span>
+                </div>
+
+                {statusCounts && (
+                  <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+                    {(["Booked", "Waitlisted", "Reserved"] as const).map((status) => {
+                      const count = statusCounts[status];
+                      if (count === 0) return null;
+                      const pc = statusPillColors[status];
+                      return (
+                        <span
+                          key={status}
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "2px 7px",
+                            borderRadius: "10px",
+                            background: pc.bg,
+                            color: pc.text,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {status} {count}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {previewNames.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: sc.muted,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
+                      flex: "1 1 120px",
+                    }}
+                  >
+                    {previewNames.join(", ")}
+                    {remainingCount > 0 ? ` +${remainingCount} more` : ""}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -6699,6 +7714,20 @@ export function SchedulePage() {
   const [resourcesDay, setResourcesDay] = useState(() => new Date().getDate());
   const [showResourcesDayPicker, setShowResourcesDayPicker] = useState(false);
   const resourcesDayPickerRef = useRef<HTMLDivElement>(null);
+
+  // Weekly view — Monday of the currently displayed week. Kept as its own
+  // Date state (rather than reusing currentMonth/currentYear) because a
+  // week can straddle two different months.
+  const [weekAnchor, setWeekAnchor] = useState<Date>(() => getWeekStart(new Date()));
+  const [showWeekPicker, setShowWeekPicker] = useState(false);
+  const weekPickerRef = useRef<HTMLDivElement>(null);
+
+  // Daily view — selected day (day-of-month within currentMonth/currentYear).
+  // Kept independent from `resourcesDay` (rather than reused) so navigating
+  // Daily and Resources don't silently jump each other to the same date.
+  const [dailyDay, setDailyDay] = useState(() => new Date().getDate());
+  const [showDailyDayPicker, setShowDailyDayPicker] = useState(false);
+  const dailyDayPickerRef = useRef<HTMLDivElement>(null);
 
   // ── Calendar Filters popover state ──
   // Mirrors the criteria available in reservation details: date range,
@@ -6818,10 +7847,40 @@ export function SchedulePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showResourcesDayPicker]);
 
+  // Close Week picker on outside click
+  useEffect(() => {
+    if (!showWeekPicker) return;
+    function handleClick(e: MouseEvent) {
+      if (weekPickerRef.current && !weekPickerRef.current.contains(e.target as Node)) {
+        setShowWeekPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showWeekPicker]);
+
+  // Close Daily day picker on outside click
+  useEffect(() => {
+    if (!showDailyDayPicker) return;
+    function handleClick(e: MouseEvent) {
+      if (dailyDayPickerRef.current && !dailyDayPickerRef.current.contains(e.target as Node)) {
+        setShowDailyDayPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showDailyDayPicker]);
+
   // Hover popover state (with 300ms delay)
   const [hoveredEvent, setHoveredEvent] = useState<{
     event: CalendarEvent;
     day: number;
+    /** Month/year the hovered cell actually belongs to. Defaults to
+     *  currentMonth/currentYear for callers that don't pass an override
+     *  (Monthly grid, Resources); the Weekly view passes its own, since a
+     *  displayed week can straddle two different months. */
+    month: number;
+    year: number;
     position: { top: number; left: number };
     badgeRect?: { top: number; bottom: number; left: number; right: number };
   } | null>(null);
@@ -6906,21 +7965,25 @@ export function SchedulePage() {
     [openPanel, currentMonth, currentYear]
   );
 
-  // Hover handlers with 300ms delay
+  // Hover handlers with 300ms delay. `dateOverride` is only passed by the
+  // Weekly view, whose displayed week can straddle two months — everyone
+  // else falls back to the shared currentMonth/currentYear.
   const handleHoverEvent = useCallback(
-    (event: CalendarEvent, day: number, e: React.MouseEvent) => {
+    (event: CalendarEvent, day: number, e: React.MouseEvent, dateOverride?: { month: number; year: number }) => {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       hoverTimerRef.current = setTimeout(() => {
         setHoveredEvent({
           event,
           day,
+          month: dateOverride?.month ?? currentMonth,
+          year: dateOverride?.year ?? currentYear,
           position: { top: rect.top, left: rect.right + 8 },
           badgeRect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
         });
       }, 300);
     },
-    []
+    [currentMonth, currentYear]
   );
 
   const handleHoverLeave = useCallback(() => {
@@ -6990,6 +8053,43 @@ export function SchedulePage() {
     setCurrentMonth(now.getMonth());
     setCurrentYear(now.getFullYear());
     setResourcesDay(now.getDate());
+    setWeekAnchor(getWeekStart(now));
+    setDailyDay(now.getDate());
+  }, []);
+
+  // Weekly view — prev/next skip a full 7 days; picking a week from the
+  // WeekPicker popover jumps straight to it. Each also syncs
+  // currentMonth/currentYear to the new week's Monday so the shared
+  // date-range filter (which compares against currentMonth/currentYear)
+  // stays aligned with whatever week is actually on screen.
+  const handlePrevWeek = useCallback(() => {
+    setHoveredEvent(null);
+    setWeekAnchor((d) => {
+      const next = new Date(d);
+      next.setDate(next.getDate() - 7);
+      setCurrentMonth(next.getMonth());
+      setCurrentYear(next.getFullYear());
+      return next;
+    });
+  }, []);
+
+  const handleNextWeek = useCallback(() => {
+    setHoveredEvent(null);
+    setWeekAnchor((d) => {
+      const next = new Date(d);
+      next.setDate(next.getDate() + 7);
+      setCurrentMonth(next.getMonth());
+      setCurrentYear(next.getFullYear());
+      return next;
+    });
+  }, []);
+
+  const handlePickWeek = useCallback((newWeekStart: Date) => {
+    setHoveredEvent(null);
+    setWeekAnchor(newWeekStart);
+    setCurrentMonth(newWeekStart.getMonth());
+    setCurrentYear(newWeekStart.getFullYear());
+    setShowWeekPicker(false);
   }, []);
 
   // Desktop month/year picker dropdown (replaces prev/next arrows)
@@ -7202,18 +8302,58 @@ export function SchedulePage() {
   const today = new Date();
   const isCurrentMonth = today.getMonth() === currentMonth && today.getFullYear() === currentYear;
   const todayDate = isCurrentMonth ? today.getDate() : -1;
+  const isCurrentWeek = getWeekStart(today).getTime() === weekAnchor.getTime();
 
-  const totalReservations = Object.values(filteredEvents).reduce(
-    (sum: number, evts: CalendarEvent[]) =>
-      sum + evts.filter((e: CalendarEvent) => e.type !== "closed").length,
-    0
-  );
+  // Monthly/Daily grid only ever renders days 1..daysInMonth — `filteredEvents`
+  // itself isn't month-clipped (mock data reuses the same day-of-month keys
+  // 1-31 every month), so a short month (e.g. 30-day April) must not count
+  // a stray day-31 entry that the grid never actually draws.
+  const totalReservations = Object.keys(filteredEvents).reduce((sum, dayStr) => {
+    const day = Number(dayStr);
+    if (day < 1 || day > daysInMonth) return sum;
+    return sum + (filteredEvents[day] ?? []).filter((e: CalendarEvent) => e.type !== "closed").length;
+  }, 0);
+
+  // The Resources and Weekly grids both only draw hours RES_START_HOUR..
+  // RES_END_HOUR — an event with an unparseable time, or one that falls
+  // outside that window (a few mock entries do), is silently skipped by
+  // those grids, so the count needs to skip it too or it'll overcount
+  // what's actually on screen.
+  const isVisibleInHourGrid = (e: CalendarEvent) => {
+    if (e.type === "closed") return false;
+    const mins = parseEventTimeToMinutes(e.time);
+    if (mins === -1) return false;
+    const hour = Math.floor(mins / 60);
+    return hour >= RES_START_HOUR && hour <= RES_END_HOUR;
+  };
 
   // For the Resources view, "Found X" reflects only the selected day.
   const clampedResourcesDay = Math.min(Math.max(resourcesDay, 1), getDaysInMonth(currentYear, currentMonth));
-  const resourcesDayCount = (filteredEvents[clampedResourcesDay] ?? [])
-    .filter((e: CalendarEvent) => e.type !== "closed").length;
-  const displayedCount = desktopView === "Resources" ? resourcesDayCount : totalReservations;
+  const resourcesDayCount = (filteredEvents[clampedResourcesDay] ?? []).filter(isVisibleInHourGrid).length;
+
+  // For the Weekly view, "Found X" reflects only the 7 days currently on
+  // screen (weekAnchor → +6 days), not the whole month's worth of events.
+  const weekReservationCount = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekAnchor);
+    d.setDate(d.getDate() + i);
+    return d;
+  }).reduce((sum, date) => {
+    const dayEvents = filteredEvents[date.getDate()] ?? [];
+    return sum + dayEvents.filter(isVisibleInHourGrid).length;
+  }, 0);
+
+  // For the Daily view, "Found X" reflects only the single selected day —
+  // every non-closed session on it. Unlike Resources/Weekly, Daily is a
+  // plain chronological list with no hour-range clipping, so it doesn't
+  // need the isVisibleInHourGrid filter those two use.
+  const clampedDailyDay = Math.min(Math.max(dailyDay, 1), getDaysInMonth(currentYear, currentMonth));
+  const dailyDayCount = (filteredEvents[clampedDailyDay] ?? []).filter((e: CalendarEvent) => e.type !== "closed").length;
+
+  const displayedCount =
+    desktopView === "Resources" ? resourcesDayCount :
+    desktopView === "Weekly" ? weekReservationCount :
+    desktopView === "Daily" ? dailyDayCount :
+    totalReservations;
 
   /* shared button style helper */
   const controlBtn: CSSProperties = {
@@ -7363,6 +8503,21 @@ export function SchedulePage() {
                   <div
                     key={view}
                     onClick={() => {
+                      // Switching into Weekly re-anchors weekAnchor to the
+                      // week containing whatever day is currently in view
+                      // (mirrors how Resources always reads currentMonth/
+                      // currentYear directly), so it never shows a stale
+                      // week left over from a previous visit.
+                      if (view === "Weekly") {
+                        const anchorDay = Math.min(resourcesDay, getDaysInMonth(currentYear, currentMonth));
+                        setWeekAnchor(getWeekStart(new Date(currentYear, currentMonth, anchorDay)));
+                      }
+                      // Same idea for Daily — re-anchor to a day that's
+                      // valid in whatever month/year is currently in view
+                      // rather than showing a stale day from last time.
+                      if (view === "Daily") {
+                        setDailyDay(Math.min(dailyDay, getDaysInMonth(currentYear, currentMonth)));
+                      }
                       setDesktopView(view);
                       setShowDesktopViewDropdown(false);
                     }}
@@ -7478,8 +8633,172 @@ export function SchedulePage() {
                 <ChevronRight size={16} />
               </button>
             </div>
+          ) : desktopView === "Weekly" ? (
+            /* ── Weekly: prev-week / clickable week-range / next-week ── */
+            <div ref={weekPickerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
+              {/* Prev week */}
+              <button
+                onClick={handlePrevWeek}
+                aria-label="Previous week"
+                style={{
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Clickable week-range label — opens the week picker popover */}
+              <button
+                onClick={() => setShowWeekPicker((v) => !v)}
+                aria-expanded={showWeekPicker}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  border: `1px solid ${showWeekPicker ? sc.brand : "transparent"}`,
+                  background: showWeekPicker
+                    ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
+                    : "transparent",
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  color: sc.heading,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-family)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {formatWeekRange(weekAnchor)}
+                <ChevronDown
+                  size={14}
+                  style={{
+                    transform: showWeekPicker ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s ease",
+                    color: sc.muted,
+                  }}
+                />
+              </button>
+
+              {showWeekPicker && (
+                <WeekPicker
+                  weekStart={weekAnchor}
+                  onPick={handlePickWeek}
+                  sc={sc}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Next week */}
+              <button
+                onClick={handleNextWeek}
+                aria-label="Next week"
+                style={{
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          ) : desktopView === "Daily" ? (
+            /* ── Daily: prev-day / clickable-date / next-day (reuses the
+               same ResourcesDayPicker popover, keyed off its own dailyDay
+               state so Daily and Resources can be on different dates). ── */
+            <div ref={dailyDayPickerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
+              {/* Prev day */}
+              <button
+                onClick={() => setDailyDay((d) => Math.max(1, d - 1))}
+                disabled={clampedDailyDay === 1}
+                aria-label="Previous day"
+                style={{
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body, cursor: clampedDailyDay === 1 ? "not-allowed" : "pointer",
+                  opacity: clampedDailyDay === 1 ? 0.4 : 1,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Clickable date label — opens day picker popover */}
+              <button
+                onClick={() => setShowDailyDayPicker((v) => !v)}
+                aria-expanded={showDailyDayPicker}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  border: `1px solid ${showDailyDayPicker ? sc.brand : "transparent"}`,
+                  background: showDailyDayPicker
+                    ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
+                    : "transparent",
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  color: sc.heading,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-family)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {(() => {
+                  const d = new Date(currentYear, currentMonth, clampedDailyDay);
+                  const DAY_NAMES_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+                  return `${DAY_NAMES_SHORT[d.getDay()]}, ${MONTH_NAMES[currentMonth].slice(0,3)} ${clampedDailyDay}, ${currentYear}`;
+                })()}
+                <ChevronDown
+                  size={14}
+                  style={{
+                    transform: showDailyDayPicker ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s ease",
+                    color: sc.muted,
+                  }}
+                />
+              </button>
+
+              {showDailyDayPicker && (
+                <ResourcesDayPicker
+                  selectedDay={clampedDailyDay}
+                  selectedMonth={currentMonth}
+                  selectedYear={currentYear}
+                  onPick={(d, m, y) => {
+                    setDailyDay(d);
+                    setCurrentMonth(m);
+                    setCurrentYear(y);
+                    setShowDailyDayPicker(false);
+                  }}
+                  sc={sc}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* Next day */}
+              <button
+                onClick={() => setDailyDay((d) => Math.min(getDaysInMonth(currentYear, currentMonth), d + 1))}
+                disabled={clampedDailyDay === getDaysInMonth(currentYear, currentMonth)}
+                aria-label="Next day"
+                style={{
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body,
+                  cursor: clampedDailyDay === getDaysInMonth(currentYear, currentMonth) ? "not-allowed" : "pointer",
+                  opacity: clampedDailyDay === getDaysInMonth(currentYear, currentMonth) ? 0.4 : 1,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
           ) : (
-            /* ── Monthly / Weekly / Daily: month/year picker ── */
+            /* ── Monthly: month/year picker ── */
             <div ref={desktopMonthPickerRef} style={{ position: "relative" }}>
               <button
                 onClick={() => setShowDesktopMonthPicker(!showDesktopMonthPicker)}
@@ -7526,9 +8845,15 @@ export function SchedulePage() {
 
           {/* Today — hidden when already on today.
               For Resources: today = current day in current month/year.
+              For Weekly: today = current Mon→Sun week.
+              For Daily: today = current day in current month/year.
               For Monthly/other: today = current month/year. */}
           {!(desktopView === "Resources"
             ? (isCurrentMonth && clampedResourcesDay === today.getDate())
+            : desktopView === "Weekly"
+            ? isCurrentWeek
+            : desktopView === "Daily"
+            ? (isCurrentMonth && clampedDailyDay === today.getDate())
             : isCurrentMonth) && (
             <button
               onClick={handleGoToToday}
@@ -7815,6 +9140,29 @@ export function SchedulePage() {
             currentMonth={currentMonth}
             currentYear={currentYear}
           />
+        ) : desktopView === "Weekly" ? (
+          <WeeklyView
+            eventsByDay={filteredEvents}
+            weekStart={weekAnchor}
+            sc={sc}
+            colors={colors}
+            isDark={isDark}
+            onClickEvent={handleClickEvent}
+            onHoverEvent={handleHoverEvent}
+            onHoverLeave={handleHoverLeave}
+            hoveredEventId={hoveredEvent?.event.id ?? null}
+            deleteMode={deleteMode}
+          />
+        ) : desktopView === "Daily" ? (
+          <DailyView
+            events={filteredEvents[clampedDailyDay] ?? []}
+            day={clampedDailyDay}
+            sc={sc}
+            colors={colors}
+            isDark={isDark}
+            onClickEvent={handleClickEvent}
+            deleteMode={deleteMode}
+          />
         ) : (
           /* Monthly grid — headers + weeks share one grid so all column
              boundaries land on the exact same x-positions. */
@@ -7913,6 +9261,7 @@ export function SchedulePage() {
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+          gap: "12px",
           // Match the toolbar's 12px top padding so the panel's top edge
           // aligns with the calendar zone (View/DatePicker/AddReservation),
           // not the very top of the main row.
@@ -7961,8 +9310,8 @@ export function SchedulePage() {
         <ReservationDetailsPopover
           event={hoveredEvent.event}
           day={hoveredEvent.day}
-          month={currentMonth}
-          year={currentYear}
+          month={hoveredEvent.month}
+          year={hoveredEvent.year}
           position={hoveredEvent.position}
           badgeRect={hoveredEvent.badgeRect}
           onClose={handleClosePopover}
