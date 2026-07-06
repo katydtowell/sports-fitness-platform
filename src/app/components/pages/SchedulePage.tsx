@@ -39,6 +39,7 @@ import {
   Sparkles,
   Send,
   Copy,
+  Settings,
 } from "lucide-react";
 import { useTheme, type ThemePalette, EZ_GREEN, EZ_GREEN_ON_COLOR, EZ_RED, EZ_RED_ON_COLOR } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
@@ -187,6 +188,210 @@ function semanticColors(palette: ThemePalette, isDark: boolean): SemanticColors 
     track:     "#e5e7eb",
     shadow:    "rgba(0,0,0,0.1)",
   };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DISPLAY PREFERENCES — registration-status visibility, per schedule view
+   AND per status category
+   ───────────────────────────────────────────────────────────────────────
+   Purely a display preference: whether a session's full/waitlisted/nearly-
+   full/available state is painted onto the calendar (colored time chip on
+   Monthly/Weekly, status pill on Resources, capacity meter on Daily).
+   Independently toggleable per view AND per status category, so e.g. a
+   user can choose to see only "Available" indicators on the Monthly view
+   while leaving every other combination on.
+   Turning any of this off never changes the Reservation Details panel —
+   that always shows full registration detail regardless of this setting.
+   Persisted to localStorage so it survives reloads, same pattern as
+   PinnedPagesContext. Defaults to "on" everywhere (today's behavior).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** The four independently-toggleable schedule views. */
+type ScheduleViewId = "Monthly" | "Weekly" | "Daily" | "Resources";
+
+const SCHEDULE_VIEW_IDS: ScheduleViewId[] = ["Monthly", "Weekly", "Daily", "Resources"];
+
+/** The four visual registration-status categories a session can fall into.
+ *  Mirrors the Filters tab's "Registrations" options (minus "Empty", which
+ *  is a filter-only concept — Empty sessions are visually just "Available"). */
+type RegistrationStatusCategory = "Available" | "NearlyFull" | "Full" | "Waitlisted";
+
+const REGISTRATION_STATUS_CATEGORIES: RegistrationStatusCategory[] = [
+  "Available",
+  "NearlyFull",
+  "Full",
+  "Waitlisted",
+];
+
+/** Display label + dot color for each category, used by the Preferences
+ *  tab's per-status checkboxes. Colors match each category's actual badge
+ *  color elsewhere on the calendar (see EventBadge/ResourcesView/DailyView)
+ *  so the checkbox list doubles as a small legend. */
+const REGISTRATION_STATUS_CATEGORY_META: Record<
+  RegistrationStatusCategory,
+  { label: string; dotLight: string; dotDark: string }
+> = {
+  Available:  { label: "Available",   dotLight: EZ_GREEN,  dotDark: EZ_GREEN },
+  NearlyFull: { label: "Nearly full", dotLight: "#FFE109",  dotDark: "#FFE109" },
+  Full:       { label: "Full",        dotLight: EZ_RED,     dotDark: EZ_RED },
+  Waitlisted: { label: "Waitlisted",  dotLight: "#d41840",  dotDark: "#e05a5a" },
+};
+
+/** Per-view visibility for each of the four status categories. */
+type ViewStatusVisibility = Record<RegistrationStatusCategory, boolean>;
+
+type RegistrationStatusPrefs = Record<ScheduleViewId, ViewStatusVisibility>;
+
+function makeDefaultViewStatusVisibility(): ViewStatusVisibility {
+  return { Available: true, NearlyFull: true, Full: true, Waitlisted: true };
+}
+
+function makeDefaultRegistrationStatusPrefs(): RegistrationStatusPrefs {
+  return {
+    Monthly: makeDefaultViewStatusVisibility(),
+    Weekly: makeDefaultViewStatusVisibility(),
+    Daily: makeDefaultViewStatusVisibility(),
+    Resources: makeDefaultViewStatusVisibility(),
+  };
+}
+
+const REGISTRATION_STATUS_PREFS_KEY = "ezf_schedule_registration_status_prefs";
+
+function loadRegistrationStatusPrefs(): RegistrationStatusPrefs {
+  const defaults = makeDefaultRegistrationStatusPrefs();
+  try {
+    const stored = localStorage.getItem(REGISTRATION_STATUS_PREFS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Partial<
+        Record<ScheduleViewId, Partial<ViewStatusVisibility>>
+      >;
+      // Merge over the defaults per-view AND per-category rather than
+      // trusting the stored shape outright, so a future new view or status
+      // category (or a stale/partial record) always ends up with a valid
+      // boolean instead of `undefined`.
+      const merged = {} as RegistrationStatusPrefs;
+      for (const view of SCHEDULE_VIEW_IDS) {
+        merged[view] = { ...defaults[view], ...(parsed?.[view] ?? {}) };
+      }
+      return merged;
+    }
+  } catch {
+    // localStorage may be unavailable, or the stored value malformed —
+    // fall through to defaults either way.
+  }
+  return defaults;
+}
+
+function persistRegistrationStatusPrefs(prefs: RegistrationStatusPrefs) {
+  try {
+    localStorage.setItem(REGISTRATION_STATUS_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // localStorage may be unavailable in some environments — the
+    // preference just won't survive a reload, which is an acceptable
+    // fallback rather than a hard error.
+  }
+}
+
+/** Given a session's derived capacity state, which status category it
+ *  visually falls into — used to look up the right boolean in a view's
+ *  ViewStatusVisibility. */
+function registrationStatusCategoryOf(
+  isFull: boolean,
+  isWaitlisted: boolean,
+  isNearlyFull: boolean
+): RegistrationStatusCategory {
+  if (isWaitlisted) return "Waitlisted";
+  if (isFull) return "Full";
+  if (isNearlyFull) return "NearlyFull";
+  return "Available";
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GENERAL SCHEDULE PREFERENCES — default view, density, filter memory,
+   and "highlight my sessions"
+   ───────────────────────────────────────────────────────────────────────
+   Small, independent preferences, each persisted under its own
+   localStorage key (same approach as the registration-status prefs
+   above). Generic string/bool helpers below avoid writing a bespoke
+   load/persist pair for each one.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** There's no real authentication in this demo, so "my sessions" is
+ *  hard-coded to one of the mock instructors (see INSTRUCTOR_OPTIONS)
+ *  rather than coming from a logged-in user. Swap this for the real
+ *  signed-in instructor's name once auth exists. */
+const CURRENT_USER_INSTRUCTOR = "Sara Chen";
+
+type ScheduleDensity = "comfortable" | "compact";
+const SCHEDULE_DENSITIES: ScheduleDensity[] = ["comfortable", "compact"];
+
+const DEFAULT_VIEW_PREF_KEY = "ezf_schedule_default_view";
+const DENSITY_PREF_KEY = "ezf_schedule_density";
+const KEEP_FILTERS_PREF_KEY = "ezf_schedule_keep_filters";
+const HIGHLIGHT_MINE_PREF_KEY = "ezf_schedule_highlight_my_sessions";
+
+function loadStringPref<T extends string>(key: string, fallback: T, validValues: readonly T[]): T {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored && (validValues as readonly string[]).includes(stored)) return stored as T;
+  } catch {
+    // localStorage unavailable — fall through to the default.
+  }
+  return fallback;
+}
+
+function loadBoolPref(key: string, fallback: boolean): boolean {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
+  } catch {
+    // localStorage unavailable — fall through to the default.
+  }
+  return fallback;
+}
+
+function persistPref(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // localStorage unavailable in some environments — the preference
+    // just won't survive a reload.
+  }
+}
+
+/** The 9 filter dimensions from the Filters tab, persisted together as one
+ *  record when "Keep my filters" is on. */
+interface PersistedScheduleFilters {
+  filterStartDate: string;
+  filterEndDate: string;
+  filterStartTime: string;
+  filterEndTime: string;
+  filterVenues: string[];
+  filterInstructors: string[];
+  filterTypes: ReservationType[];
+  filterPaymentStatus: "" | "Owed" | "Paid";
+  filterRegistrations: string[];
+}
+
+const PERSISTED_FILTERS_KEY = "ezf_schedule_persisted_filters";
+
+function loadPersistedFilters(): PersistedScheduleFilters | null {
+  try {
+    const stored = localStorage.getItem(PERSISTED_FILTERS_KEY);
+    if (stored) return JSON.parse(stored) as PersistedScheduleFilters;
+  } catch {
+    // localStorage unavailable, or the stored value malformed.
+  }
+  return null;
+}
+
+function persistFilters(filters: PersistedScheduleFilters) {
+  try {
+    localStorage.setItem(PERSISTED_FILTERS_KEY, JSON.stringify(filters));
+  } catch {
+    // localStorage unavailable in some environments.
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -847,6 +1052,8 @@ function formatWeekRange(weekStart: Date): string {
 }
 
 const MAX_VISIBLE_EVENTS = 4;
+// Compact density shrinks each row's height enough to fit one additional
+// row of sessions in the same cell before falling back to "+N more".
 
 /* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — EventBadge (Desktop)
@@ -861,6 +1068,9 @@ function EventBadge({
   colors,
   isDark,
   deleteMode = false,
+  statusVisibility,
+  density = "comfortable",
+  highlightMySessions = false,
 }: {
   event: CalendarEvent;
   isSelected: boolean;
@@ -874,6 +1084,19 @@ function EventBadge({
    *  remove in Delete Mode. Events with bookings or closures are
    *  unaffected. */
   deleteMode?: boolean;
+  /** Display preference (Preferences tab) — per-category visibility for
+   *  this view. When a category is false, a session in that category
+   *  renders its time label as plain text with no colored pill. Defaults
+   *  to "show everything" when omitted. Purely cosmetic; never affects
+   *  Reservation Details. */
+  statusVisibility?: ViewStatusVisibility;
+  /** Display preference — "compact" shrinks the badge's height/padding/
+   *  font so more rows fit on screen. */
+  density?: ScheduleDensity;
+  /** Display preference — when true, sessions taught by
+   *  CURRENT_USER_INSTRUCTOR get a brand-colored ring and everything else
+   *  dims slightly. */
+  highlightMySessions?: boolean;
 }) {
   const style = colors[event.type] || colors.yoga;
 
@@ -890,18 +1113,43 @@ function EventBadge({
   // preserve calendar context but recede from the action.
   const dimNonDeletable = deleteMode && !isDeletable;
 
+  // "Highlight my sessions" — CURRENT_USER_INSTRUCTOR stands in for a real
+  // logged-in instructor (see its definition for the caveat). Closed-day
+  // markers have no owner, so they're excluded from the dimming (there's
+  // nothing to compare them against).
+  const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
+  const dimNotMine = highlightMySessions && !isMine && event.type !== "closed";
+  const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
+
   // Attendance status pill on the time label.
   // Closed / league events are excluded — no per-session capacity.
   //   available   (<80% booked, including 0) → green pill, dark text
   //   nearly full (≥80%, <100%)              → yellow pill, dark text
-  //   full        (≥100%)                    → no pill (plain time text)
+  //   full, no waitlist (≥100%)              → solid red pill, dark text
+  //   full, waitlist open (≥100%)            → translucent red pill, red text
+  //     (same red hue/opacity pairing as the Delete-Mode "deletable" tint
+  //     below, so "red = full/blocked" reads consistently across the badge)
   const hasCapacityData = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
   const attendancePct   = hasCapacityData ? event.booked / event.capacity : 0;
   const isFull          = hasCapacityData && event.booked >= event.capacity;
+  const isWaitlisted    = isFull && !!event.waitlistEnabled;
   const isNearlyFull    = !isFull && hasCapacityData && attendancePct >= 0.8;
-  const showStatusDot   = hasCapacityData && !isFull;
-  const statusDotColor  = isNearlyFull ? "#FFE109" : EZ_GREEN;
-  const statusTextColor = isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+  const categoryVisible = hasCapacityData
+    ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
+        registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+      ]
+    : false;
+  const showStatusDot   = hasCapacityData && categoryVisible;
+  const statusDotColor  = isWaitlisted
+    ? (isDark ? "rgba(224,90,90,0.18)" : "rgba(212,24,64,0.12)")
+    : isFull
+    ? EZ_RED
+    : isNearlyFull ? "#FFE109" : EZ_GREEN;
+  const statusTextColor = isWaitlisted
+    ? (isDark ? "#e05a5a" : "#d41840")
+    : isFull
+    ? EZ_RED_ON_COLOR
+    : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
 
   // Stripe area is 12px wide; bump padding to 14px on the affected side so
   // text starts just past the stripes (mirrors the "diagonal lines next to
@@ -914,17 +1162,19 @@ function EventBadge({
   // segment so destructive affordances stay visually consistent.
   const deletableColor = isDark ? "#e05a5a" : "#d41840";
 
+  const isCompact = density === "compact";
+
   const badgeStyle: CSSProperties = {
     position: "relative",
     display: "flex",
     alignItems: "center",
-    gap: "4px",
-    height: "24px",
-    padding: `4px ${padR}px 4px ${padL}px`,
+    gap: isCompact ? "3px" : "4px",
+    height: isCompact ? "20px" : "24px",
+    padding: isCompact ? `2px ${padR}px 2px ${padL}px` : `4px ${padR}px 4px ${padL}px`,
     borderRadius: "4px",
-    fontSize: "10px",
+    fontSize: isCompact ? "9px" : "10px",
     fontWeight: 700,
-    lineHeight: "16px",
+    lineHeight: isCompact ? "14px" : "16px",
     overflow: "hidden",
     cursor: dimNonDeletable ? "not-allowed" : "pointer",
     flex: event.fullWidth ? "1 0 100%" : "1 1 0",
@@ -935,8 +1185,9 @@ function EventBadge({
     border: isDeletable
       ? `1px dashed ${deletableColor}`
       : `1px solid ${isSelected ? style.text : style.border}`,
+    boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
     color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
-    opacity: dimNonDeletable ? 0.4 : 1,
+    opacity: dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
     transition: "all 0.15s ease",
   };
 
@@ -1046,6 +1297,9 @@ function EventRow({
   colors,
   isDark,
   deleteMode = false,
+  statusVisibility,
+  density,
+  highlightMySessions,
 }: {
   events: CalendarEvent[];
   selectedId: string | null;
@@ -1055,6 +1309,9 @@ function EventRow({
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
   deleteMode?: boolean;
+  statusVisibility?: ViewStatusVisibility;
+  density?: ScheduleDensity;
+  highlightMySessions?: boolean;
 }) {
   return (
     <div style={{ display: "flex", gap: "2px", width: "100%" }}>
@@ -1069,6 +1326,9 @@ function EventRow({
           colors={colors}
           isDark={isDark}
           deleteMode={deleteMode}
+          statusVisibility={statusVisibility}
+          density={density}
+          highlightMySessions={highlightMySessions}
         />
       ))}
     </div>
@@ -1092,6 +1352,9 @@ function DateCell({
   colors,
   isDark,
   deleteMode = false,
+  statusVisibility,
+  density = "comfortable",
+  highlightMySessions,
 }: {
   day: number | null;
   isToday: boolean;
@@ -1105,7 +1368,14 @@ function DateCell({
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
   deleteMode?: boolean;
+  statusVisibility?: ViewStatusVisibility;
+  density?: ScheduleDensity;
+  highlightMySessions?: boolean;
 }) {
+  // Compact fits one extra row of sessions (see MAX_VISIBLE_EVENTS), so its
+  // floor is taller than a naive 4-row proportion would suggest — tuned to
+  // comfortably hold 5 rows of the shorter compact badge height.
+  const cellMinHeight = density === "compact" ? "120px" : "130px";
   if (day === null) {
     return (
       <div
@@ -1114,7 +1384,7 @@ function DateCell({
           // so this cell still works if reused inside a flex container.
           flex: "1 1 0",
           minWidth: 0,
-          minHeight: "130px",
+          minHeight: cellMinHeight,
           borderBottom: `1px solid ${sc.border}`,
           borderLeft: `1px solid ${sc.border}`,
           background: isDark ? sc.cellBg : "#fafafa",
@@ -1143,7 +1413,10 @@ function DateCell({
   }
   if (currentRow.length > 0) rows.push(currentRow);
 
-  const visibleRows = rows.slice(0, MAX_VISIBLE_EVENTS);
+  // Compact rows are shorter, so one extra row of sessions fits in the
+  // same cell before the rest collapse into "+N more".
+  const maxVisibleRows = density === "compact" ? MAX_VISIBLE_EVENTS + 1 : MAX_VISIBLE_EVENTS;
+  const visibleRows = rows.slice(0, maxVisibleRows);
   const hiddenCount = events.length - visibleRows.reduce((s, r) => s + r.length, 0);
 
   return (
@@ -1151,7 +1424,7 @@ function DateCell({
       style={{
         flex: "1 1 0",
         minWidth: 0,
-        minHeight: "130px",
+        minHeight: cellMinHeight,
         display: "flex",
         flexDirection: "column",
         background: sc.cellBg,
@@ -1192,6 +1465,9 @@ function DateCell({
           colors={colors}
           isDark={isDark}
           deleteMode={deleteMode}
+          statusVisibility={statusVisibility}
+          density={density}
+          highlightMySessions={highlightMySessions}
         />
       ))}
 
@@ -1242,7 +1518,9 @@ function ReservationDetailsPopover({
   onClose: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
-  onOpenDetails: () => void;
+  // Optional section lets callers (e.g. the "Book A Client" action) land
+  // directly on a specific tab instead of the default Details view.
+  onOpenDetails: (section?: string) => void;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
@@ -1292,6 +1570,8 @@ function ReservationDetailsPopover({
 
   const dateStr = formatEventDate(day, month, year);
   const available = event.capacity - event.booked;
+  const hasCapacity = event.capacity > 0;
+  const isFull = hasCapacity && available <= 0;
   // Balances owed — split the booked portion of the meter into a paid
   // (green) segment and an owed (red) segment, and surface the owed-client
   // count below "Available". When 0, the meter is purely green and the
@@ -1386,6 +1666,20 @@ function ReservationDetailsPopover({
     color: sc.body,
     cursor: "pointer",
     lineHeight: "20px",
+  };
+
+  // "Book A Client" action — mirrors the same Book/Waitlist/Full rule used
+  // in Reservation Details and Daily view: full + waitlisting off means
+  // there's no way to add anyone, so the button is disabled and relabeled.
+  const bookClientLabel = isFull
+    ? (event.waitlistEnabled ? "Waitlist" : "Fully Booked")
+    : "Book A Client";
+  const bookClientDisabled = isFull && !event.waitlistEnabled;
+  const bookClientBtn: CSSProperties = {
+    ...secondaryBtn,
+    ...(bookClientDisabled
+      ? { opacity: 0.5, cursor: "default" }
+      : null),
   };
 
   return (
@@ -1560,17 +1854,21 @@ function ReservationDetailsPopover({
 
       {/* Action buttons */}
       <div style={{ display: "flex", gap: "8px" }}>
-        <button style={secondaryBtn}>
+        <button style={secondaryBtn} onClick={() => onOpenDetails("Registered Clients")}>
           Open Clients <ArrowRight size={14} />
         </button>
-        <button style={secondaryBtn}>
-          <Plus size={14} /> Book A Client
+        <button
+          style={bookClientBtn}
+          disabled={bookClientDisabled}
+          onClick={bookClientDisabled ? undefined : () => onOpenDetails("Registration")}
+        >
+          <Plus size={14} /> {bookClientLabel}
         </button>
       </div>
 
       {/* Primary CTA */}
       <button
-        onClick={onOpenDetails}
+        onClick={() => onOpenDetails()}
         style={{
           display: "flex",
           alignItems: "center",
@@ -3450,11 +3748,13 @@ function MobileScheduleView({
           if (e.capacity <= 0) return false;
           const pct = e.booked / e.capacity;
           const isFull       = e.booked >= e.capacity;
+          const isWaitlisted = isFull && !!e.waitlistEnabled;
           const isNearlyFull = !isFull && pct >= 0.8;
           const isEmpty      = e.booked === 0;
           const isAvailable  = !isFull && !isNearlyFull && !isEmpty;
           const matches =
             (filterRegistrations.includes("Full")       && isFull)       ||
+            (filterRegistrations.includes("Waitlisted")  && isWaitlisted) ||
             (filterRegistrations.includes("NearlyFull") && isNearlyFull) ||
             (filterRegistrations.includes("Available")  && isAvailable)  ||
             (filterRegistrations.includes("Empty")      && isEmpty);
@@ -4131,12 +4431,22 @@ function getEventClients(event: CalendarEvent): BookedClient[] {
     .split("")
     .reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) | 0, 0);
   const bucket = Math.abs(idHash) % 3;
-  if (bucket === 0) {
-    // All-paid scenario — slice from the all-paid list (cap at its
-    // length so we don't read past the end if booked is unusually high).
-    return ALL_PAID_CLIENTS.slice(0, Math.min(booked, ALL_PAID_CLIENTS.length));
-  }
-  return MOCK_BOOKED_CLIENTS.slice(0, booked);
+  const roster =
+    bucket === 0
+      ? // All-paid scenario — slice from the all-paid list (cap at its
+        // length so we don't read past the end if booked is unusually high).
+        ALL_PAID_CLIENTS.slice(0, Math.min(booked, ALL_PAID_CLIENTS.length))
+      : MOCK_BOOKED_CLIENTS.slice(0, booked);
+
+  // Business rule: a session can only carry Waitlisted registrants when
+  // it's actually full AND has waitlisting enabled. The shared mock
+  // rosters above have a couple of hardcoded "Waitlisted" entries, which
+  // would otherwise leak into any event with a high enough booked count
+  // regardless of its own waitlistEnabled setting — normalize those back
+  // to "Booked" whenever the invariant doesn't hold.
+  const canHaveWaitlisted = event.capacity > 0 && booked >= event.capacity && !!event.waitlistEnabled;
+  if (canHaveWaitlisted) return roster;
+  return roster.map((c) => (c.status === "Waitlisted" ? { ...c, status: "Booked" as const } : c));
 }
 
 // Helper: how many of an event's booked clients owe a balance.
@@ -4380,19 +4690,24 @@ function SectionPriorityTabs({
 function ReservationDetailsPanelContent({
   event,
   initialEditing = false,
+  initialSection = "Details",
 }: {
   event: CalendarEvent;
   // Opens the panel straight into edit mode — used when the entry point
   // already implies an edit intent (e.g. EZCoach's edit-lookup flow),
   // so the user isn't dropped into the read-only view first.
   initialEditing?: boolean;
+  // Opens the panel with a specific section already active — used by the
+  // hover popover's "Book A Client" / "Waitlist a Client" action so the
+  // user lands directly on Registration instead of Details.
+  initialSection?: string;
 }) {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
   const { closePanel, setHeaderExtras } = useSidePanel();
   const sc = semanticColors(palette, isDark);
 
-  const [activeSection, setActiveSection] = useState("Details");
+  const [activeSection, setActiveSection] = useState(initialSection);
   const [isEditing, setIsEditing] = useState(initialEditing);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   // Additional options accordion — closed by default in edit mode so the
@@ -4427,6 +4742,7 @@ function ReservationDetailsPanelContent({
   const initPreBuffer = event.preBuffer && event.preBuffer > 0 ? String(event.preBuffer) : "";
   const initPostBuffer = event.postBuffer && event.postBuffer > 0 ? String(event.postBuffer) : "";
   const initNotes = "";
+  const initAllowWaitlisting = !!event.waitlistEnabled;
   // Additional options — currently mock defaults; once backed by real data
   // these initial values would derive from the event/reservation record.
   const initOnlineDescription = event.type === "league" ? "League Game" : "Yoga";
@@ -4449,6 +4765,7 @@ function ReservationDetailsPanelContent({
   const [preBuffer, setPreBuffer] = useState(initPreBuffer);
   const [postBuffer, setPostBuffer] = useState(initPostBuffer);
   const [notes, setNotes] = useState(initNotes);
+  const [allowWaitlisting, setAllowWaitlisting] = useState(initAllowWaitlisting);
   const [onlineDescription, setOnlineDescription] = useState(initOnlineDescription);
   const [allowSelfBooking, setAllowSelfBooking] = useState(initAllowSelfBooking);
   const [allowFreeBookings, setAllowFreeBookings] = useState(initAllowFreeBookings);
@@ -4471,6 +4788,7 @@ function ReservationDetailsPanelContent({
     preBuffer !== initPreBuffer ||
     postBuffer !== initPostBuffer ||
     notes !== initNotes ||
+    allowWaitlisting !== initAllowWaitlisting ||
     onlineDescription !== initOnlineDescription ||
     allowSelfBooking !== initAllowSelfBooking ||
     allowFreeBookings !== initAllowFreeBookings ||
@@ -4502,6 +4820,7 @@ function ReservationDetailsPanelContent({
     setPreBuffer(initPreBuffer);
     setPostBuffer(initPostBuffer);
     setNotes(initNotes);
+    setAllowWaitlisting(initAllowWaitlisting);
     setOnlineDescription(initOnlineDescription);
     setAllowSelfBooking(initAllowSelfBooking);
     setAllowFreeBookings(initAllowFreeBookings);
@@ -4659,8 +4978,12 @@ function ReservationDetailsPanelContent({
               <button onClick={handleCancelEditing} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", borderRadius: "6px", border: `1px solid ${palette.primary}`, background: `${palette.primary}15`, color: palette.primary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Pencil size={13} /> Editing</button>
               {available > 0 ? (
                 <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
-              ) : (
+              ) : event.waitlistEnabled ? (
                 <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: isDark ? "rgba(255,180,50,0.2)" : "rgba(220,150,20,0.15)", color: isDark ? "#ffb432" : "#b07a10", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Waitlist</button>
+              ) : (
+                // Full with waitlisting disabled — no way to add clients, so
+                // show a non-interactive indicator instead of an action button.
+                <span style={{ display: "inline-flex", alignItems: "center", padding: "8px 16px", borderRadius: "6px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: palette.textTertiary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "default" }}>Full</span>
               )}
             </div>
           </div>
@@ -4686,6 +5009,20 @@ function ReservationDetailsPanelContent({
 
         <div><div style={labelBoldStyle}>Title*</div><input type="text" placeholder="Enter a title" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></div>
         <div><div style={labelStyle}>Class size</div><input type="text" placeholder="e.g. 1, 10, 30, etc." style={inputStyle} defaultValue={event.capacity > 0 ? String(event.capacity) : ""} /></div>
+        {/* Allow waitlisting when full — when off, a full class shows a
+            Full status with no way to add more clients; when on, a full
+            class shows Waitlist status and clients can be waitlisted. */}
+        <div>
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+            <input type="checkbox" checked={allowWaitlisting} onChange={(e) => setAllowWaitlisting(e.target.checked)} style={{ accentColor: palette.primary }} />
+            Allow waitlisting when full
+          </label>
+          {allowWaitlisting && (
+            <div style={{ fontSize: "var(--text-xs)", color: palette.textSecondary, marginTop: "4px", paddingLeft: "20px" }}>
+              A full class will show a Waitlist status, and clients can be added to the waitlist when booking.
+            </div>
+          )}
+        </div>
         <div style={{ display: "flex", gap: "12px" }}><div style={{ flex: 1 }}><div style={labelBoldStyle}>Start date*</div><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} /></div><div style={{ flex: 1 }}><div style={labelBoldStyle}>End date*</div><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} /></div></div>
         {/* Start time / End time — themed TimeField per STYLE_GUIDE ("Time fields"), matches AddReservationPanelContent */}
         <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}><div style={{ flex: 1 }}><div style={labelBoldStyle}>Start time*</div><TimeField value={startTime} onChange={setStartTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="Start time" /></div><label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} /> All day</label><div style={{ flex: 1 }}><div style={labelBoldStyle}>End time*</div><TimeField value={endTime} onChange={setEndTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="End time" /></div></div>
@@ -4810,8 +5147,12 @@ function ReservationDetailsPanelContent({
             <button onClick={() => setIsEditing(true)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: "transparent", color: palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", whiteSpace: "nowrap" }}><Pencil size={13} /> Edit Reservation</button>
             {available > 0 ? (
               <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
-            ) : (
+            ) : event.waitlistEnabled ? (
               <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: isDark ? "rgba(255,180,50,0.2)" : "rgba(220,150,20,0.15)", color: isDark ? "#ffb432" : "#b07a10", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Waitlist</button>
+            ) : (
+              // Full with waitlisting disabled — no way to add clients, so
+              // show a non-interactive indicator instead of an action button.
+              <span style={{ display: "inline-flex", alignItems: "center", padding: "8px 16px", borderRadius: "6px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: palette.textTertiary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "default" }}>Full</span>
             )}
           </div>
         </div>
@@ -5840,6 +6181,7 @@ function AddReservationPanelContent() {
   const initReservationType = "";
   const initTitle = "";
   const initClassSize = "";
+  const initAllowWaitlisting = false;
   const initNotes = "";
   const initStartDate = "";
   const initEndDate = "";
@@ -5869,6 +6211,7 @@ function AddReservationPanelContent() {
   const [preBuffer, setPreBuffer] = useState(initPreBuffer);
   const [postBuffer, setPostBuffer] = useState(initPostBuffer);
   const [classSize, setClassSize] = useState(initClassSize);
+  const [allowWaitlisting, setAllowWaitlisting] = useState(initAllowWaitlisting);
   const [notes, setNotes] = useState(initNotes);
   // Additional options (editable on new reservation) — accordion closed by default
   const [onlineDescription, setOnlineDescription] = useState(initOnlineDescription);
@@ -5902,6 +6245,7 @@ function AddReservationPanelContent() {
     allowFreeBookings !== initAllowFreeBookings ||
     showOnEZLeagues !== initShowOnEZLeagues ||
     classSize !== initClassSize ||
+    allowWaitlisting !== initAllowWaitlisting ||
     notes !== initNotes;
 
   const handleCancelClick = () => {
@@ -6278,6 +6622,22 @@ function AddReservationPanelContent() {
         <input type="text" placeholder="e.g. 1, 10, 30, etc." value={classSize} onChange={(e) => setClassSize(e.target.value)} style={inputStyle} />
       </div>
 
+      {/* Allow waitlisting when full — when off, a class that hits its
+          registrant limit simply shows a Full status with no way to add
+          more clients. When on, a full class shows Waitlist status and
+          clients can be booked onto the waitlist. */}
+      <div>
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+          <input type="checkbox" checked={allowWaitlisting} onChange={(e) => setAllowWaitlisting(e.target.checked)} style={{ accentColor: palette.primary }} />
+          Allow waitlisting when full
+        </label>
+        {allowWaitlisting && (
+          <div style={{ fontSize: "var(--text-xs)", color: palette.textSecondary, marginTop: "4px", paddingLeft: "20px" }}>
+            A full class will show a Waitlist status, and clients can be added to the waitlist when booking.
+          </div>
+        )}
+      </div>
+
       {/* Start date / End date */}
       <div style={{ display: "flex", gap: "12px" }}>
         <div style={{ flex: 1 }}>
@@ -6445,6 +6805,120 @@ function AddReservationPanelContent() {
   );
 }
 
+/* ─── Small pill toggle switch used by the Preferences tab below. Same
+   proportions/behavior as the module toggle on the Admin page, so a switch
+   looks and behaves the same wherever it shows up in the app. ─── */
+function SchedulePrefToggle({
+  enabled,
+  onChange,
+  sc,
+  ariaLabel,
+}: {
+  enabled: boolean;
+  onChange: (next: boolean) => void;
+  sc: SemanticColors;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={ariaLabel}
+      onClick={() => onChange(!enabled)}
+      style={{
+        width: "36px",
+        height: "20px",
+        borderRadius: "10px",
+        border: "none",
+        padding: 0,
+        background: enabled ? sc.brand : sc.track,
+        cursor: "pointer",
+        position: "relative",
+        flexShrink: 0,
+        transition: "background 0.15s ease",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: "2px",
+          left: enabled ? "18px" : "2px",
+          width: "16px",
+          height: "16px",
+          borderRadius: "50%",
+          background: "#ffffff",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+          transition: "left 0.15s ease",
+        }}
+      />
+    </button>
+  );
+}
+
+/* ─── Small segmented control (pill group, one active option) used by the
+   Preferences tab's "Default view" and "Density" settings. Generic over
+   the option type so it works for either a 4-way ScheduleViewId choice or
+   a 2-way ScheduleDensity choice. ─── */
+function ScheduleSegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  sc,
+  isDark,
+  getLabel,
+}: {
+  options: readonly T[];
+  value: T;
+  onChange: (next: T) => void;
+  sc: SemanticColors;
+  isDark: boolean;
+  getLabel?: (option: T) => string;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      style={{
+        display: "flex",
+        gap: "4px",
+        padding: "3px",
+        borderRadius: "8px",
+        background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)",
+      }}
+    >
+      {options.map((option) => {
+        const isActive = option === value;
+        return (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={isActive}
+            onClick={() => onChange(option)}
+            style={{
+              flex: 1,
+              padding: "6px 8px",
+              borderRadius: "6px",
+              border: "none",
+              background: isActive ? sc.brand : "transparent",
+              color: isActive ? (isDark ? "#0a0e0f" : "#101828") : sc.body,
+              fontSize: "12px",
+              fontWeight: 600,
+              fontFamily: "var(--font-family)",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              transition: "background 0.15s ease, color 0.15s ease",
+            }}
+          >
+            {getLabel ? getLabel(option) : option}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — UpcomingTodayPanel (desktop side-rail)
    ═══════════════════════════════════════════════════════════════════════ */
@@ -6478,6 +6952,18 @@ interface UpcomingTodayPanelProps {
   setFilterVenues: (v: string[]) => void;
   activeFilterCount: number;
   clearAllFilters: () => void;
+  // Preferences tab — registration-status display setting
+  registrationStatusPrefs: RegistrationStatusPrefs;
+  setRegistrationStatusPrefs: (v: RegistrationStatusPrefs) => void;
+  // Preferences tab — general display/behavior settings
+  defaultView: ScheduleViewId;
+  setDefaultView: (v: ScheduleViewId) => void;
+  density: ScheduleDensity;
+  setDensity: (v: ScheduleDensity) => void;
+  keepMyFilters: boolean;
+  setKeepMyFilters: (v: boolean) => void;
+  highlightMySessions: boolean;
+  setHighlightMySessions: (v: boolean) => void;
 }
 
 function UpcomingTodayPanel({
@@ -6492,6 +6978,11 @@ function UpcomingTodayPanel({
   filterInstructors, setFilterInstructors,
   filterVenues, setFilterVenues,
   activeFilterCount, clearAllFilters,
+  registrationStatusPrefs, setRegistrationStatusPrefs,
+  defaultView, setDefaultView,
+  density, setDensity,
+  keepMyFilters, setKeepMyFilters,
+  highlightMySessions, setHighlightMySessions,
 }: UpcomingTodayPanelProps) {
   const today = new Date();
   const dateLabel = today.toLocaleDateString("en-US", {
@@ -6500,7 +6991,47 @@ function UpcomingTodayPanel({
     day: "numeric",
   });
 
-  const [sidebarTab, setSidebarTab] = useState<"Resources" | "Filters">("Resources");
+  const [sidebarTab, setSidebarTab] = useState<"Resources" | "Filters" | "Preferences">("Resources");
+
+  // Registration-status preference helpers ────────────────────────────
+  // Three levels of bulk-setter, none of them a separately stored value —
+  // each just reads as "on" when everything underneath it is already on,
+  // and clicking it snaps everything underneath to the opposite of that.
+  //   1. Everything (every view × every status category)
+  //   2. One view, every status category
+  //   3. One view, one status category (the actual stored leaf value)
+  const isEverythingOn = SCHEDULE_VIEW_IDS.every((v) =>
+    REGISTRATION_STATUS_CATEGORIES.every((c) => registrationStatusPrefs[v][c])
+  );
+  const toggleEverything = () => {
+    const next = !isEverythingOn;
+    const nextPrefs = {} as RegistrationStatusPrefs;
+    for (const v of SCHEDULE_VIEW_IDS) {
+      nextPrefs[v] = REGISTRATION_STATUS_CATEGORIES.reduce(
+        (acc, c) => ({ ...acc, [c]: next }),
+        {} as ViewStatusVisibility
+      );
+    }
+    setRegistrationStatusPrefs(nextPrefs);
+  };
+  const isViewAllOn = (view: ScheduleViewId) =>
+    REGISTRATION_STATUS_CATEGORIES.every((c) => registrationStatusPrefs[view][c]);
+  const toggleViewAll = (view: ScheduleViewId) => {
+    const next = !isViewAllOn(view);
+    setRegistrationStatusPrefs({
+      ...registrationStatusPrefs,
+      [view]: REGISTRATION_STATUS_CATEGORIES.reduce(
+        (acc, c) => ({ ...acc, [c]: next }),
+        {} as ViewStatusVisibility
+      ),
+    });
+  };
+  const toggleViewCategory = (view: ScheduleViewId, category: RegistrationStatusCategory) => {
+    setRegistrationStatusPrefs({
+      ...registrationStatusPrefs,
+      [view]: { ...registrationStatusPrefs[view], [category]: !registrationStatusPrefs[view][category] },
+    });
+  };
 
   // Resource checkbox toggle helpers ──────────────────────────────────
   // Empty array = "no filter" = show all (all unchecked).
@@ -6754,6 +7285,30 @@ function UpcomingTodayPanel({
               </button>
             );
           })}
+          {/* Preferences tab — icon-only (gear), no badge. Unlike Resources/
+              Filters, there's no "N active" concept here worth surfacing —
+              the setting is a persistent display preference, not a filter
+              currently narrowing what's shown. */}
+          <button
+            onClick={() => setSidebarTab("Preferences")}
+            aria-label="Schedule display preferences"
+            aria-pressed={sidebarTab === "Preferences"}
+            style={{
+              flex: 1,
+              padding: "10px 12px",
+              border: "none",
+              borderBottom: sidebarTab === "Preferences" ? `2px solid ${sc.brand}` : "2px solid transparent",
+              background: "transparent",
+              color: sidebarTab === "Preferences" ? sc.brand : sc.muted,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+            }}
+          >
+            <Settings size={16} />
+          </button>
         </div>
 
         {/* Tab content — scrolls independently */}
@@ -6837,6 +7392,28 @@ function UpcomingTodayPanel({
           {/* ── Filters tab ─────────────────────────────────────────── */}
           {sidebarTab === "Filters" && (
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* "Keep my filters" lives here (rather than the Preferences
+                  tab) since a user looking to change filter-persistence
+                  behavior is most likely to look for it right where the
+                  filters themselves live. */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
+                    Keep my filters
+                  </div>
+                  <div style={{ fontSize: "11px", color: sc.muted, marginTop: "1px", lineHeight: "15px" }}>
+                    Remember these selections the next time you visit.
+                  </div>
+                </div>
+                <SchedulePrefToggle
+                  enabled={keepMyFilters}
+                  onChange={setKeepMyFilters}
+                  sc={sc}
+                  ariaLabel="Keep my filters across visits"
+                />
+              </div>
+              <div style={{ height: "1px", background: sc.border }} />
+
               <CalendarFiltersContent
                 filterStartDate={filterStartDate}
                 setFilterStartDate={setFilterStartDate}
@@ -6866,6 +7443,147 @@ function UpcomingTodayPanel({
                 hideHeader
                 inlineClearAll={nonResourceFilterCount > 0}
               />
+            </div>
+          )}
+
+          {/* ── Preferences tab ─────────────────────────────────────── */}
+          {sidebarTab === "Preferences" && (
+            <div style={{ padding: "12px 16px 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+              {/* ── General ──────────────────────────────────────────
+                  Default view only takes effect next page load (see the
+                  comment on `desktopView`'s init in SchedulePage); density,
+                  keep-my-filters, and highlight-my-sessions all apply
+                  immediately. */}
+              <div style={{ padding: "8px 4px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading, marginBottom: "6px" }}>
+                  Default view
+                </div>
+                <ScheduleSegmentedControl
+                  options={SCHEDULE_VIEW_IDS}
+                  value={defaultView}
+                  onChange={setDefaultView}
+                  sc={sc}
+                  isDark={isDark}
+                />
+              </div>
+
+              <div style={{ padding: "8px 4px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading, marginBottom: "6px" }}>
+                  Density
+                </div>
+                <ScheduleSegmentedControl
+                  options={SCHEDULE_DENSITIES}
+                  value={density}
+                  onChange={setDensity}
+                  sc={sc}
+                  isDark={isDark}
+                  getLabel={(d) => (d === "comfortable" ? "Comfortable" : "Compact")}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", gap: "12px" }}>
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
+                    Highlight my sessions
+                  </div>
+                  <div style={{ fontSize: "11px", color: sc.muted, marginTop: "1px", lineHeight: "15px" }}>
+                    Rings sessions taught by {CURRENT_USER_INSTRUCTOR} and dims
+                    everything else. (Demo stand-in for a signed-in instructor.)
+                  </div>
+                </div>
+                <SchedulePrefToggle
+                  enabled={highlightMySessions}
+                  onChange={setHighlightMySessions}
+                  sc={sc}
+                  ariaLabel={`Highlight sessions taught by ${CURRENT_USER_INSTRUCTOR}`}
+                />
+              </div>
+
+              <div style={{ height: "1px", background: sc.border, margin: "6px 0 8px" }} />
+
+              {/* ── Registration status ──────────────────────────────── */}
+              <div style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
+                Registration status
+              </div>
+              <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "17px", marginBottom: "4px" }}>
+                Choose which statuses show up on the calendar, and on which
+                views — e.g. show only "Available" on the Monthly view and
+                hide the rest. This only changes how the calendar looks;
+                reservation details always show full registration info.
+              </div>
+
+              {/* Bulk "everything" toggle — reads "on" only when every
+                  status on every view below is already on. */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 4px",
+                }}
+              >
+                <span style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
+                  Show everywhere
+                </span>
+                <SchedulePrefToggle
+                  enabled={isEverythingOn}
+                  onChange={toggleEverything}
+                  sc={sc}
+                  ariaLabel="Show registration status for every status and every schedule view"
+                />
+              </div>
+
+              <div style={{ height: "1px", background: sc.border, margin: "4px 0 4px" }} />
+
+              {SCHEDULE_VIEW_IDS.map((view) => (
+                <div key={view}>
+                  {/* Per-view header — its own bulk toggle for all 4
+                      categories, reusing the same "Instructors"-style
+                      group-label row (uppercase label + right-aligned
+                      control) already used elsewhere in this panel. */}
+                  <div style={{ ...groupLabelStyle, padding: "10px 4px 6px" }}>
+                    <span>{view}</span>
+                    <SchedulePrefToggle
+                      enabled={isViewAllOn(view)}
+                      onChange={() => toggleViewAll(view)}
+                      sc={sc}
+                      ariaLabel={`Show registration status for every status on the ${view} view`}
+                    />
+                  </div>
+                  {REGISTRATION_STATUS_CATEGORIES.map((category) => {
+                    const meta = REGISTRATION_STATUS_CATEGORY_META[category];
+                    const isChecked = registrationStatusPrefs[view][category];
+                    return (
+                      <label
+                        key={category}
+                        style={checkRowStyle}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleViewCategory(view, category)}
+                          style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
+                        />
+                        <span
+                          aria-hidden
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            background: isDark ? meta.dotDark : meta.dotLight,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
+                          {meta.label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -7216,6 +7934,10 @@ function CalendarFiltersContent({
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           {([
             { value: "Full",       label: "Full",        pillBg: EZ_RED,   pillBorder: EZ_RED,   pillText: EZ_RED_ON_COLOR   },
+            // Translucent red — mirrors the waitlisted time-chip treatment on
+            // the calendar badges, so "red = full/blocked" stays consistent
+            // between the filter pill and the events it's filtering for.
+            { value: "Waitlisted", label: "Waitlisted",  pillBg: isDark ? "rgba(224,90,90,0.22)" : "rgba(212,24,64,0.14)", pillBorder: isDark ? "#e05a5a" : "#d41840", pillText: isDark ? "#e05a5a" : "#d41840" },
             { value: "NearlyFull", label: "Nearly Full", pillBg: "#FFE109", pillBorder: "#C4A800", pillText: "#111111"          },
             { value: "Available",  label: "Available",   pillBg: EZ_GREEN,  pillBorder: EZ_GREEN,  pillText: EZ_GREEN_ON_COLOR  },
             { value: "Empty",      label: "Empty",       pillBg: isDark ? "rgba(255,255,255,0.08)" : "#f3f4f6", pillBorder: palette.borderMedium, pillText: sc.body },
@@ -7599,25 +8321,13 @@ const RES_END_HOUR   = 22;
  *  even inside the buffer-stripe padding a pre/post-buffered session adds,
  *  and even in a stacked (same-hour) lane that's otherwise compact. */
 const RES_COL_W      = 176;
-/** Height in px of a resource row when it needs only one vertical "lane"
- *  (the common case: no two of that resource's sessions overlap in the
- *  same hour, which is now guaranteed by the data — see generateMockEvents). */
-const RES_ROW_H      = 64;
-/** Height in px of a single stacked lane, used once a row needs 2+ lanes
- *  (i.e. that resource has multiple sessions inside the same hour). */
-const RES_LANE_H     = 30;
-/** Gap in px between stacked lanes within a row. */
-const RES_LANE_GAP   = 3;
-/** Combined top+bottom inset applied to a row's content regardless of
- *  how many lanes it has, so the first/last chip never touches the
- *  row's borders. */
-const RES_ROW_PAD    = 12;
 /** Width in px of the sticky resource-name column */
 const RES_LABEL_W    = 164;
-/** Height in px of the sticky hour header row */
-const RES_HOUR_HDR_H = 36;
-/** Height in px of the "Instructors" / "Venues" section header rows */
-const RES_GRP_HDR_H  = 28;
+// Row height, lane height/gap, row padding, and the two header heights
+// (RES_ROW_H, RES_LANE_H, RES_LANE_GAP, RES_ROW_PAD, RES_HOUR_HDR_H,
+// RES_GRP_HDR_H) all vary with the Density preference, so they're declared
+// as local consts inside ResourcesView itself (shadowing these names)
+// rather than as fixed module-level values.
 
 interface ResourcesViewProps {
   eventsByDay: DayEvents;
@@ -7642,6 +8352,9 @@ interface ResourcesViewProps {
    *  nothing in them. */
   filterInstructors: string[];
   filterVenues: string[];
+  statusVisibility?: ViewStatusVisibility;
+  density?: ScheduleDensity;
+  highlightMySessions?: boolean;
 }
 
 function ResourcesView({
@@ -7658,9 +8371,18 @@ function ResourcesView({
   currentYear,
   filterInstructors,
   filterVenues,
+  statusVisibility,
+  density = "comfortable",
+  highlightMySessions = false,
 }: ResourcesViewProps) {
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const clampedDay = Math.min(Math.max(day, 1), daysInMonth);
+  // Named `isDensityCompact` (rather than `isCompact`) because
+  // renderEventBlock below declares its own unrelated local `isCompact`
+  // (short-lane vs. full-height chip) — same word, different meaning, so
+  // this avoids the two silently shadowing each other.
+  const isDensityCompact = density === "compact";
+  const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
 
   // Only non-closed events for this day
   const events: CalendarEvent[] = (eventsByDay[clampedDay] ?? []).filter(
@@ -7671,6 +8393,17 @@ function ResourcesView({
   const hours: number[] = [];
   for (let h = RES_START_HOUR; h <= RES_END_HOUR; h++) hours.push(h);
   const totalW = hours.length * RES_COL_W;
+
+  // Shadow the module-level row/lane constants for the rest of this
+  // component when density is "compact" — every downstream usage below
+  // (assignLanes, renderEventBlock, the row/lane math in the render body)
+  // picks these up automatically since they're the same names.
+  const RES_ROW_H = isDensityCompact ? 48 : 64;
+  const RES_LANE_H = isDensityCompact ? 22 : 30;
+  const RES_LANE_GAP = isDensityCompact ? 2 : 3;
+  const RES_ROW_PAD = isDensityCompact ? 8 : 12;
+  const RES_HOUR_HDR_H = isDensityCompact ? 30 : 36;
+  const RES_GRP_HDR_H = isDensityCompact ? 24 : 28;
 
   const formatHour = (h: number) => {
     if (h === 0)  return "12am";
@@ -7725,13 +8458,37 @@ function ResourcesView({
       event.capacity > 0 && event.type !== "closed" && event.type !== "league";
     const attendancePct  = hasCapacityData ? event.booked / event.capacity : 0;
     const isFull         = hasCapacityData && event.booked >= event.capacity;
+    const isWaitlisted   = isFull && !!event.waitlistEnabled;
     const isNearlyFull   = !isFull && hasCapacityData && attendancePct >= 0.8;
-    const showStatusPill = hasCapacityData && showSecondLine;
-    const statusBg       = isFull
-      ? (isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)")
+    // Preferences tab can turn this indicator off per view AND per status
+    // category; when the event's own category is off, `showCapacityIndicator`
+    // gates both the full pill (single-lane) and the compact dot (stacked
+    // lane) below so neither renders.
+    const categoryVisible = hasCapacityData
+      ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
+          registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+        ]
+      : false;
+    const showCapacityIndicator = hasCapacityData && categoryVisible;
+    const showStatusPill = showCapacityIndicator && showSecondLine;
+    // Same red/yellow/green treatment as the Monthly/Weekly EventBadge time
+    // chip: full = solid red, waitlisted = translucent red (red text), so
+    // fullness reads identically across every schedule view.
+    const statusBg       = isWaitlisted
+      ? (isDark ? "rgba(224,90,90,0.18)" : "rgba(212,24,64,0.12)")
+      : isFull
+      ? EZ_RED
       : isNearlyFull ? "#FFE109" : EZ_GREEN;
-    const statusColor    = isFull ? style.text : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+    const statusColor    = isWaitlisted
+      ? (isDark ? "#e05a5a" : "#d41840")
+      : isFull
+      ? EZ_RED_ON_COLOR
+      : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
     const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
+
+    // "Highlight my sessions" — same ring + dim treatment as EventBadge.
+    const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
+    const dimNotMine = highlightMySessions && !isMine;
 
     return (
       // Outer shell: handles absolute placement within the row
@@ -7767,6 +8524,8 @@ function ResourcesView({
             borderRadius: "5px",
             background: isHovered ? style.text : style.bg,
             border: `1px solid ${isHovered ? style.text : style.border}`,
+            boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
+            opacity: dimNotMine ? 0.5 : 1,
             color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
             fontSize: "11px",
             fontWeight: 600,
@@ -7848,7 +8607,7 @@ function ResourcesView({
               >
                 {width >= 70 ? `${event.title} · ${timeRangeLabel}` : timeRangeLabel}
               </span>
-              {hasCapacityData && (
+              {showCapacityIndicator && (
                 width >= 100 ? (
                   <span
                     style={{
@@ -8263,8 +9022,215 @@ function ResourcesView({
 
 /** Width in px of the sticky hour-label column. */
 const WK_HOUR_LABEL_W = 72;
-/** Minimum height in px of an hour row, used even when every cell in it is empty. */
-const WK_MIN_ROW_H = 56;
+// Minimum hour-row height varies with the Density preference, so it's
+// declared as a local const inside WeeklyView itself (shadowing this name).
+
+/* ─── WeeklyEventChip ─────────────────────────────────────────────────
+   Weekly's day-hour cells have real room to breathe (unlike Monthly's
+   compact grid), so registration status here is shown the same way
+   ResourcesView shows it — a plain time label plus a separate colored
+   status pill — rather than Monthly's colored badge wrapped around the
+   time itself. Deliberately its own component (not a shared one with
+   EventBadge) since the two layouts genuinely differ: this one is a
+   two-line block (title, then time + pill) sized by content and stacked
+   in normal flow, where EventBadge is a single-line pill sized to a
+   fixed row height. Delete Mode and "highlight my sessions" mirror
+   EventBadge's treatment so those two behaviors stay consistent across
+   every view that has them.
+   ───────────────────────────────────────────────────────────────────── */
+function WeeklyEventChip({
+  event,
+  isSelected,
+  onClick,
+  onHoverEnter,
+  onHoverLeave,
+  colors,
+  isDark,
+  deleteMode = false,
+  statusVisibility,
+  density = "comfortable",
+  highlightMySessions = false,
+}: {
+  event: CalendarEvent;
+  isSelected: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onHoverEnter?: (e: React.MouseEvent) => void;
+  onHoverLeave?: () => void;
+  colors: Record<ReservationType, BadgeColors>;
+  isDark: boolean;
+  deleteMode?: boolean;
+  statusVisibility?: ViewStatusVisibility;
+  density?: ScheduleDensity;
+  highlightMySessions?: boolean;
+}) {
+  const style = colors[event.type] || colors.yoga;
+  const isCompact = density === "compact";
+
+  const hasPre = (event.preBuffer ?? 0) > 0;
+  const hasPost = (event.postBuffer ?? 0) > 0;
+
+  // Delete Mode — same convention as EventBadge/DailyView: dashed red for
+  // events a click will remove, dimmed for everything else.
+  const isDeletable = deleteMode && event.booked === 0 && event.type !== "league";
+  const dimNonDeletable = deleteMode && !isDeletable;
+
+  // "Highlight my sessions" — same ring + dim treatment as EventBadge.
+  const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
+  const dimNotMine = highlightMySessions && !isMine;
+  const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
+
+  // Registration status — mirrors ResourcesView's category logic exactly,
+  // including the Preferences tab's per-category visibility check.
+  const hasCapacityData = event.capacity > 0 && event.type !== "league";
+  const attendancePct = hasCapacityData ? event.booked / event.capacity : 0;
+  const isFull = hasCapacityData && event.booked >= event.capacity;
+  const isWaitlisted = isFull && !!event.waitlistEnabled;
+  const isNearlyFull = !isFull && hasCapacityData && attendancePct >= 0.8;
+  const categoryVisible = hasCapacityData
+    ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
+        registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+      ]
+    : false;
+  const showStatusPill = hasCapacityData && categoryVisible;
+  const statusBg = isWaitlisted
+    ? (isDark ? "rgba(224,90,90,0.18)" : "rgba(212,24,64,0.12)")
+    : isFull
+    ? EZ_RED
+    : isNearlyFull ? "#FFE109" : EZ_GREEN;
+  const statusColor = isWaitlisted
+    ? (isDark ? "#e05a5a" : "#d41840")
+    : isFull
+    ? EZ_RED_ON_COLOR
+    : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+  const statusLabel = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
+
+  const timeRangeLabel = getSessionTimeRangeLabel(event);
+
+  const STRIPE_W = 12;
+  const basePad = isCompact ? 6 : 8;
+  const padL = hasPre ? STRIPE_W + 2 : basePad;
+  const padR = hasPost ? STRIPE_W + 2 : basePad;
+
+  const deletableColor = isDark ? "#e05a5a" : "#d41840";
+  const stripeColor = isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text;
+
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={onHoverEnter}
+      onMouseLeave={onHoverLeave}
+      title={[
+        event.title,
+        event.instructor && event.instructor !== "—" ? event.instructor : null,
+        event.venue || null,
+        timeRangeLabel,
+        hasCapacityData ? `${event.booked}/${event.capacity}` : null,
+      ].filter(Boolean).join(" · ")}
+      style={{
+        position: "relative",
+        borderRadius: "5px",
+        background: isDeletable
+          ? (isDark ? "rgba(224,90,90,0.12)" : "rgba(212,24,64,0.10)")
+          : isSelected ? style.text : style.bg,
+        border: isDeletable
+          ? `1px dashed ${deletableColor}`
+          : `1px solid ${isSelected ? style.text : style.border}`,
+        boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
+        color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
+        opacity: dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
+        padding: isCompact ? `3px ${padR}px 3px ${padL}px` : `5px ${padR}px 5px ${padL}px`,
+        display: "flex",
+        flexDirection: "column",
+        gap: "2px",
+        overflow: "hidden",
+        cursor: dimNonDeletable ? "not-allowed" : "pointer",
+        transition: "all 0.15s ease",
+      }}
+    >
+      {hasPre && (
+        <div
+          aria-hidden
+          title={`${event.preBuffer} min pre-buffer`}
+          style={{
+            position: "absolute", top: 0, bottom: 0, left: 0, width: `${STRIPE_W}px`,
+            pointerEvents: "none",
+            backgroundImage: `repeating-linear-gradient(135deg, ${stripeColor} 0px, ${stripeColor} 1.5px, transparent 1.5px, transparent 5px)`,
+            opacity: 0.5,
+          }}
+        />
+      )}
+      {hasPost && (
+        <div
+          aria-hidden
+          title={`${event.postBuffer} min post-buffer`}
+          style={{
+            position: "absolute", top: 0, bottom: 0, right: 0, width: `${STRIPE_W}px`,
+            pointerEvents: "none",
+            backgroundImage: `repeating-linear-gradient(135deg, ${stripeColor} 0px, ${stripeColor} 1.5px, transparent 1.5px, transparent 5px)`,
+            opacity: 0.5,
+          }}
+        />
+      )}
+
+      {/* Title line */}
+      <div style={{ display: "flex", alignItems: "center", gap: "4px", minWidth: 0 }}>
+        {event.type === "league" && <Trophy size={11} style={{ flexShrink: 0 }} />}
+        <span
+          style={{
+            fontWeight: 700,
+            fontSize: isCompact ? "11px" : "12px",
+            lineHeight: "15px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {event.title}
+        </span>
+      </div>
+
+      {/* Second line — plain time range, plus a separate status pill
+          (rather than coloring the time itself, since there's room here
+          for the two to sit side by side). */}
+      {event.time && (
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+          <span
+            style={{
+              opacity: 0.7,
+              fontWeight: 400,
+              fontSize: isCompact ? "10px" : "11px",
+              lineHeight: "13px",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {timeRangeLabel}
+          </span>
+          {showStatusPill && (
+            <span
+              style={{
+                flexShrink: 0,
+                background: isSelected
+                  ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
+                  : statusBg,
+                color: isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                fontSize: "9px",
+                fontWeight: 700,
+                lineHeight: "13px",
+                padding: "0 5px",
+                borderRadius: "3px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {statusLabel}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface WeeklyViewProps {
   eventsByDay: DayEvents;
@@ -8286,6 +9252,9 @@ interface WeeklyViewProps {
   onHoverLeave: () => void;
   hoveredEventId: string | null;
   deleteMode?: boolean;
+  statusVisibility?: ViewStatusVisibility;
+  density?: ScheduleDensity;
+  highlightMySessions?: boolean;
 }
 
 function WeeklyView({
@@ -8299,10 +9268,15 @@ function WeeklyView({
   onHoverLeave,
   hoveredEventId,
   deleteMode = false,
+  statusVisibility,
+  density = "comfortable",
+  highlightMySessions,
 }: WeeklyViewProps) {
   const today = new Date();
   const isSameDate = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  // Shadows the module-level WK_MIN_ROW_H for the rest of this component.
+  const WK_MIN_ROW_H = density === "compact" ? 40 : 56;
 
   // The 7 dates spanned by the week (Mon → Sun). Mock events are keyed only
   // by day-of-month (see `DayEvents`), so a week that crosses a month
@@ -8469,7 +9443,7 @@ function WeeklyView({
                   >
                     {cellEvents.map((event) => (
                       <div key={event.id} style={{ marginBottom: "3px" }}>
-                        <EventBadge
+                        <WeeklyEventChip
                           event={event}
                           isSelected={event.id === hoveredEventId}
                           onClick={(e) => onClickEvent(event, date.getDate(), e)}
@@ -8483,6 +9457,9 @@ function WeeklyView({
                           colors={colors}
                           isDark={isDark}
                           deleteMode={deleteMode}
+                          statusVisibility={statusVisibility}
+                          density={density}
+                          highlightMySessions={highlightMySessions}
                         />
                       </div>
                     ))}
@@ -8521,9 +9498,26 @@ interface DailyViewProps {
   isDark: boolean;
   onClickEvent: (event: CalendarEvent, day: number, e: React.MouseEvent) => void;
   deleteMode?: boolean;
+  /** Preferences tab display setting, per status category — when a
+   *  session's category is false, hides the colored capacity meter for it
+   *  (booked/capacity text and everything else stays either way). */
+  statusVisibility?: ViewStatusVisibility;
+  density?: ScheduleDensity;
+  highlightMySessions?: boolean;
 }
 
-function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode = false }: DailyViewProps) {
+function DailyView({
+  events,
+  day,
+  sc,
+  colors,
+  isDark,
+  onClickEvent,
+  deleteMode = false,
+  statusVisibility,
+  density = "comfortable",
+  highlightMySessions = false,
+}: DailyViewProps) {
   // Closed/all-day markers render as a banner up top rather than a normal
   // session row — they have no time to sort by and no registrations.
   const closedEvents = events.filter((e) => e.type === "closed");
@@ -8534,6 +9528,9 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
 
   const statusPillColors = getStatusPillColors(isDark);
   const deletableColor = isDark ? "#e05a5a" : "#d41840";
+  const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
+  const isCompact = density === "compact";
+  const rowPadding = isCompact ? "10px 24px" : "16px 24px";
 
   return (
     <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
@@ -8544,7 +9541,7 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            padding: "16px 24px",
+            padding: rowPadding,
             borderBottom: `1px solid ${sc.border}`,
             background: isDark ? "rgba(161,189,198,0.06)" : "rgba(0,0,0,0.02)",
           }}
@@ -8576,7 +9573,27 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
         const hasCapacity = event.capacity > 0;
         const available = Math.max(0, event.capacity - event.booked);
         const isFull = hasCapacity && available === 0;
+        const isWaitlisted = isFull && !!event.waitlistEnabled;
         const bookedPct = hasCapacity ? Math.min(100, (event.booked / event.capacity) * 100) : 0;
+        const isNearlyFull = hasCapacity && !isFull && bookedPct >= 80;
+        // Registration meter fill — same fullness palette as the Monthly/
+        // Weekly time chip and the Resources view status pill (green /
+        // yellow / red, translucent red once a waitlist opens), so a
+        // session's "how full is it" signal reads identically everywhere.
+        const meterColor = isWaitlisted
+          ? (isDark ? "rgba(224,90,90,0.55)" : "rgba(212,24,64,0.5)")
+          : isFull
+          ? EZ_RED
+          : isNearlyFull
+          ? "#FFE109"
+          : EZ_GREEN;
+        // Preferences tab, per status category — the meter for this
+        // specific session only renders when its own category is visible.
+        const showMeter = hasCapacity
+          ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
+              registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+            ]
+          : false;
 
         const clients = hasCapacity ? getEventClients(event) : [];
         const statusCounts = hasCapacity ? getClientStatusCounts(event) : null;
@@ -8612,6 +9629,12 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
         const isDeletable = deleteMode && event.booked === 0 && event.type !== "league";
         const dimNonDeletable = deleteMode && !isDeletable;
 
+        // "Highlight my sessions" — mirrors EventBadge's ring + dim
+        // treatment. Delete Mode's dashed-red border takes priority over
+        // the "mine" accent if both are somehow active at once.
+        const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
+        const dimNotMine = highlightMySessions && !isMine;
+
         return (
           <div
             key={event.id}
@@ -8619,12 +9642,16 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: "10px",
-              padding: "16px 24px",
+              gap: isCompact ? "6px" : "10px",
+              padding: rowPadding,
               borderBottom: `1px solid ${sc.border}`,
-              borderLeft: isDeletable ? `3px dashed ${deletableColor}` : "3px solid transparent",
+              borderLeft: isDeletable
+                ? `3px dashed ${deletableColor}`
+                : isMine
+                ? `3px solid ${mineRingColor}`
+                : "3px solid transparent",
               background: isDeletable ? (isDark ? "rgba(224,90,90,0.06)" : "rgba(212,24,64,0.04)") : "transparent",
-              opacity: dimNonDeletable ? 0.5 : 1,
+              opacity: dimNonDeletable ? 0.5 : dimNotMine ? 0.55 : 1,
               cursor: "pointer",
             }}
           >
@@ -8658,28 +9685,33 @@ function DailyView({ events, day, sc, colors, isDark, onClickEvent, deleteMode =
             {hasCapacity && (
               <div style={{ display: "flex", alignItems: "center", gap: "16px", paddingLeft: "20px", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                  <div
-                    style={{
-                      width: "80px",
-                      height: "6px",
-                      borderRadius: "3px",
-                      background: sc.track,
-                      position: "relative",
-                      overflow: "hidden",
-                    }}
-                  >
+                  {/* Capacity meter — hidden entirely under the Preferences
+                      tab's "hide registration status" setting; the plain
+                      booked/capacity count below stays either way. */}
+                  {showMeter && (
                     <div
                       style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        bottom: 0,
-                        width: `${bookedPct}%`,
+                        width: "80px",
+                        height: "6px",
                         borderRadius: "3px",
-                        background: sc.success,
+                        background: sc.track,
+                        position: "relative",
+                        overflow: "hidden",
                       }}
-                    />
-                  </div>
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          bottom: 0,
+                          width: `${bookedPct}%`,
+                          borderRadius: "3px",
+                          background: meterColor,
+                        }}
+                      />
+                    </div>
+                  )}
                   <span style={{ fontSize: "12px", fontWeight: 500, color: sc.muted, whiteSpace: "nowrap" }}>
                     {event.booked}/{event.capacity} registered
                   </span>
@@ -8765,7 +9797,14 @@ export function SchedulePage() {
   const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
   const [searchQuery, setSearchQuery] = useState("");
-  const [desktopView, setDesktopView] = useState("Monthly");
+  // Initial view comes from the "Default view" preference (Preferences tab);
+  // after that, `desktopView` just tracks whatever the user clicks during
+  // this session — changing the preference later doesn't yank the user out
+  // of whatever view they're currently looking at, only affects the next
+  // time the Schedule page loads.
+  const [desktopView, setDesktopView] = useState<string>(() =>
+    loadStringPref(DEFAULT_VIEW_PREF_KEY, "Monthly", SCHEDULE_VIEW_IDS)
+  );
   const [showDesktopViewDropdown, setShowDesktopViewDropdown] = useState(false);
   const desktopViewRef = useRef<HTMLDivElement>(null);
 
@@ -8787,6 +9826,64 @@ export function SchedulePage() {
   const [dailyDay, setDailyDay] = useState(() => new Date().getDate());
   const [showDailyDayPicker, setShowDailyDayPicker] = useState(false);
   const dailyDayPickerRef = useRef<HTMLDivElement>(null);
+
+  // ── Registration-status display preference (Preferences sidebar tab) ──
+  // Purely cosmetic — whether the full/waitlisted/nearly-full/available
+  // signal is painted onto each view (time chip / status pill / capacity
+  // meter). Persists to localStorage so it's remembered across sessions;
+  // never affects the Reservation Details panel.
+  const [registrationStatusPrefs, setRegistrationStatusPrefsState] = useState<RegistrationStatusPrefs>(
+    loadRegistrationStatusPrefs
+  );
+  const setRegistrationStatusPrefs = useCallback((next: RegistrationStatusPrefs) => {
+    setRegistrationStatusPrefsState(next);
+    persistRegistrationStatusPrefs(next);
+  }, []);
+
+  // ── Default view preference — what desktopView initializes to on the
+  // *next* page load. Editable from the Preferences tab; see the comment
+  // on the `desktopView` state above for why changing it doesn't also
+  // jump the current session to a different view. ──
+  const [defaultView, setDefaultViewState] = useState<ScheduleViewId>(() =>
+    loadStringPref(DEFAULT_VIEW_PREF_KEY, "Monthly", SCHEDULE_VIEW_IDS)
+  );
+  const setDefaultView = useCallback((next: ScheduleViewId) => {
+    setDefaultViewState(next);
+    persistPref(DEFAULT_VIEW_PREF_KEY, next);
+  }, []);
+
+  // ── Density preference — comfortable (today's spacing) vs. compact
+  // (tighter rows/padding) across all four views. Unlike Default view,
+  // this applies immediately since it's a pure display setting for
+  // whatever's already on screen. ──
+  const [density, setDensityState] = useState<ScheduleDensity>(() =>
+    loadStringPref(DENSITY_PREF_KEY, "comfortable", SCHEDULE_DENSITIES)
+  );
+  const setDensity = useCallback((next: ScheduleDensity) => {
+    setDensityState(next);
+    persistPref(DENSITY_PREF_KEY, next);
+  }, []);
+
+  // ── "Highlight my sessions" — see CURRENT_USER_INSTRUCTOR above for the
+  // mock-identity caveat. ──
+  const [highlightMySessions, setHighlightMySessionsState] = useState<boolean>(() =>
+    loadBoolPref(HIGHLIGHT_MINE_PREF_KEY, false)
+  );
+  const setHighlightMySessions = useCallback((next: boolean) => {
+    setHighlightMySessionsState(next);
+    persistPref(HIGHLIGHT_MINE_PREF_KEY, String(next));
+  }, []);
+
+  // ── "Keep my filters" — see the persistence effect further down (after
+  // the filter state itself is declared) for how this actually saves and
+  // restores the 9 filter values. ──
+  const [keepMyFilters, setKeepMyFiltersState] = useState<boolean>(() =>
+    loadBoolPref(KEEP_FILTERS_PREF_KEY, false)
+  );
+  const setKeepMyFilters = useCallback((next: boolean) => {
+    setKeepMyFiltersState(next);
+    persistPref(KEEP_FILTERS_PREF_KEY, String(next));
+  }, []);
 
   // ── Calendar Filters popover state ──
   // Mirrors the criteria available in reservation details: date range,
@@ -8815,22 +9912,61 @@ export function SchedulePage() {
   // toggles off, the user dismisses it, or the next event click runs.
   const [deleteBlockedHint, setDeleteBlockedHint] = useState<{ top: number; left: number } | null>(null);
   const deleteBlockedHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [filterStartDate, setFilterStartDate] = useState("");
-  const [filterEndDate, setFilterEndDate] = useState("");
-  const [filterStartTime, setFilterStartTime] = useState("");
-  const [filterEndTime, setFilterEndTime] = useState("");
-  const [filterVenues, setFilterVenues] = useState<string[]>([]);
-  const [filterInstructors, setFilterInstructors] = useState<string[]>([]);
-  const [filterTypes, setFilterTypes] = useState<ReservationType[]>([]);
+
+  // "Keep my filters" is checked once here, up front — if it was already on
+  // at the end of the last session, every filter below initializes from the
+  // saved snapshot instead of the usual empty defaults.
+  const persistedFilters = keepMyFilters ? loadPersistedFilters() : null;
+  const [filterStartDate, setFilterStartDate] = useState(() => persistedFilters?.filterStartDate ?? "");
+  const [filterEndDate, setFilterEndDate] = useState(() => persistedFilters?.filterEndDate ?? "");
+  const [filterStartTime, setFilterStartTime] = useState(() => persistedFilters?.filterStartTime ?? "");
+  const [filterEndTime, setFilterEndTime] = useState(() => persistedFilters?.filterEndTime ?? "");
+  const [filterVenues, setFilterVenues] = useState<string[]>(() => persistedFilters?.filterVenues ?? []);
+  const [filterInstructors, setFilterInstructors] = useState<string[]>(() => persistedFilters?.filterInstructors ?? []);
+  const [filterTypes, setFilterTypes] = useState<ReservationType[]>(() => persistedFilters?.filterTypes ?? []);
   // Payment status — "" means "Any" (no filter). "Owed" shows only events
   // where at least one registered client has an outstanding balance;
   // "Paid" shows only events where every registered client is paid up.
-  const [filterPaymentStatus, setFilterPaymentStatus] = useState<"" | "Owed" | "Paid">("");
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState<"" | "Owed" | "Paid">(
+    () => persistedFilters?.filterPaymentStatus ?? ""
+  );
   // Registrations — empty array means no filter. Multiple values are OR'd.
   // "Full" = booked >= capacity; "NearlyFull" = ≥80% booked; "Available" =
   // 1+ booked and < 80%; "Empty" = 0 booked. Events without capacity
   // (league games, closures) are excluded when any option is active.
-  const [filterRegistrations, setFilterRegistrations] = useState<string[]>([]);
+  const [filterRegistrations, setFilterRegistrations] = useState<string[]>(
+    () => persistedFilters?.filterRegistrations ?? []
+  );
+
+  // Persist the current filters whenever "Keep my filters" is on — this
+  // fires immediately when the preference is switched on too, so turning
+  // it on snapshots whatever's currently applied rather than only
+  // capturing filter changes made after the fact.
+  useEffect(() => {
+    if (!keepMyFilters) return;
+    persistFilters({
+      filterStartDate,
+      filterEndDate,
+      filterStartTime,
+      filterEndTime,
+      filterVenues,
+      filterInstructors,
+      filterTypes,
+      filterPaymentStatus,
+      filterRegistrations,
+    });
+  }, [
+    keepMyFilters,
+    filterStartDate,
+    filterEndDate,
+    filterStartTime,
+    filterEndTime,
+    filterVenues,
+    filterInstructors,
+    filterTypes,
+    filterPaymentStatus,
+    filterRegistrations,
+  ]);
 
   // Active-filter count for the badge on the Filters button.
   const activeFilterCount =
@@ -9065,13 +10201,13 @@ export function SchedulePage() {
     setHoveredEvent(null);
   }, []);
 
-  const handleOpenDetailsFromPopover = useCallback(() => {
+  const handleOpenDetailsFromPopover = useCallback((section?: string) => {
     if (!hoveredEvent) return;
     const ev = hoveredEvent.event;
     setHoveredEvent(null);
     isInsidePopoverRef.current = false;
     openPanel(
-      <ReservationDetailsPanelContent key={ev.id} event={ev} />,
+      <ReservationDetailsPanelContent key={ev.id} event={ev} initialSection={section ?? "Details"} />,
       { size: "third", title: `Reservation Details: ${ev.title}` }
     );
   }, [hoveredEvent, openPanel]);
@@ -9251,11 +10387,13 @@ export function SchedulePage() {
           if (e.capacity <= 0) return false;
           const pct = e.booked / e.capacity;
           const isFull       = e.booked >= e.capacity;
+          const isWaitlisted = isFull && !!e.waitlistEnabled;
           const isNearlyFull = !isFull && pct >= 0.8;
           const isEmpty      = e.booked === 0;
           const isAvailable  = !isFull && !isNearlyFull && !isEmpty;
           const matches =
             (filterRegistrations.includes("Full")       && isFull)       ||
+            (filterRegistrations.includes("Waitlisted")  && isWaitlisted) ||
             (filterRegistrations.includes("NearlyFull") && isNearlyFull) ||
             (filterRegistrations.includes("Available")  && isAvailable)  ||
             (filterRegistrations.includes("Empty")      && isEmpty);
@@ -9778,16 +10916,22 @@ export function SchedulePage() {
                same ResourcesDayPicker popover, keyed off its own dailyDay
                state so Daily and Resources can be on different dates). ── */
             <div ref={dailyDayPickerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
-              {/* Prev day */}
+              {/* Prev day — crosses a month boundary automatically (e.g. day 1
+                  back a day lands on the last day of the previous month)
+                  instead of clamping at the edge and forcing a manual month
+                  change first. Mirrors the Weekly view's cross-month nav. */}
               <button
-                onClick={() => setDailyDay((d) => Math.max(1, d - 1))}
-                disabled={clampedDailyDay === 1}
+                onClick={() => {
+                  const d = new Date(currentYear, currentMonth, clampedDailyDay - 1);
+                  setDailyDay(d.getDate());
+                  setCurrentMonth(d.getMonth());
+                  setCurrentYear(d.getFullYear());
+                }}
                 aria-label="Previous day"
                 style={{
                   width: "32px", height: "32px", borderRadius: "8px",
                   border: `1px solid ${sc.border}`, background: sc.controlBg,
-                  color: sc.body, cursor: clampedDailyDay === 1 ? "not-allowed" : "pointer",
-                  opacity: clampedDailyDay === 1 ? 0.4 : 1,
+                  color: sc.body, cursor: "pointer",
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                 }}
               >
@@ -9847,17 +10991,21 @@ export function SchedulePage() {
                 />
               )}
 
-              {/* Next day */}
+              {/* Next day — crosses into the following month automatically
+                  once it runs past the current month's last day. */}
               <button
-                onClick={() => setDailyDay((d) => Math.min(getDaysInMonth(currentYear, currentMonth), d + 1))}
-                disabled={clampedDailyDay === getDaysInMonth(currentYear, currentMonth)}
+                onClick={() => {
+                  const d = new Date(currentYear, currentMonth, clampedDailyDay + 1);
+                  setDailyDay(d.getDate());
+                  setCurrentMonth(d.getMonth());
+                  setCurrentYear(d.getFullYear());
+                }}
                 aria-label="Next day"
                 style={{
                   width: "32px", height: "32px", borderRadius: "8px",
                   border: `1px solid ${sc.border}`, background: sc.controlBg,
                   color: sc.body,
-                  cursor: clampedDailyDay === getDaysInMonth(currentYear, currentMonth) ? "not-allowed" : "pointer",
-                  opacity: clampedDailyDay === getDaysInMonth(currentYear, currentMonth) ? 0.4 : 1,
+                  cursor: "pointer",
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                 }}
               >
@@ -10208,6 +11356,9 @@ export function SchedulePage() {
             currentYear={currentYear}
             filterInstructors={filterInstructors}
             filterVenues={filterVenues}
+            statusVisibility={registrationStatusPrefs.Resources}
+            density={density}
+            highlightMySessions={highlightMySessions}
           />
         ) : desktopView === "Weekly" ? (
           <WeeklyView
@@ -10221,6 +11372,9 @@ export function SchedulePage() {
             onHoverLeave={handleHoverLeave}
             hoveredEventId={hoveredEvent?.event.id ?? null}
             deleteMode={deleteMode}
+            statusVisibility={registrationStatusPrefs.Weekly}
+            density={density}
+            highlightMySessions={highlightMySessions}
           />
         ) : desktopView === "Daily" ? (
           <DailyView
@@ -10231,6 +11385,9 @@ export function SchedulePage() {
             isDark={isDark}
             onClickEvent={handleClickEvent}
             deleteMode={deleteMode}
+            statusVisibility={registrationStatusPrefs.Daily}
+            density={density}
+            highlightMySessions={highlightMySessions}
           />
         ) : (
           /* Monthly grid — headers + weeks share one grid so all column
@@ -10247,7 +11404,7 @@ export function SchedulePage() {
               display: "grid",
               gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
               gridTemplateRows: "auto",
-              gridAutoRows: "minmax(130px, 1fr)",
+              gridAutoRows: density === "compact" ? "minmax(120px, 1fr)" : "minmax(130px, 1fr)",
               minHeight: "100%",
             }}
           >
@@ -10297,6 +11454,9 @@ export function SchedulePage() {
                   colors={colors}
                   isDark={isDark}
                   deleteMode={deleteMode}
+                  statusVisibility={registrationStatusPrefs.Monthly}
+                  density={density}
+                  highlightMySessions={highlightMySessions}
                 />
               ))
             )}
@@ -10370,6 +11530,16 @@ export function SchedulePage() {
           setFilterVenues={setFilterVenues}
           activeFilterCount={activeFilterCount}
           clearAllFilters={clearAllFilters}
+          registrationStatusPrefs={registrationStatusPrefs}
+          setRegistrationStatusPrefs={setRegistrationStatusPrefs}
+          defaultView={defaultView}
+          setDefaultView={setDefaultView}
+          density={density}
+          setDensity={setDensity}
+          keepMyFilters={keepMyFilters}
+          setKeepMyFilters={setKeepMyFilters}
+          highlightMySessions={highlightMySessions}
+          setHighlightMySessions={setHighlightMySessions}
         />
       </div>
       </div>
