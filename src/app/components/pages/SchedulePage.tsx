@@ -206,6 +206,12 @@ function semanticColors(palette: ThemePalette, isDark: boolean): SemanticColors 
    PinnedPagesContext. Defaults to "on" everywhere (today's behavior).
    ═══════════════════════════════════════════════════════════════════════ */
 
+/** Feature flag — hides the Delete Mode toggle from every schedule view's
+ *  toolbar while keeping the feature (state, event dimming, click-to-delete
+ *  gating) fully wired up underneath. Flip back to `true` to bring the
+ *  toggle back with no other changes needed. */
+const SHOW_DELETE_MODE_TOGGLE = false;
+
 /** The four independently-toggleable schedule views. */
 type ScheduleViewId = "Monthly" | "Weekly" | "Daily" | "Resources";
 
@@ -9255,6 +9261,15 @@ interface WeeklyViewProps {
   statusVisibility?: ViewStatusVisibility;
   density?: ScheduleDensity;
   highlightMySessions?: boolean;
+  /** "View by resource" toggle — when true, the left hour-of-day column is
+   *  replaced with a resource column (Instructors, then Venues — same
+   *  grouping/order as the standalone Resources view), and each day's
+   *  events are grouped by resource instead of by hour. */
+  viewByResource?: boolean;
+  /** Resource filters from the sidebar's Resources tab — same narrowing
+   *  behavior as ResourcesView: empty = show every resource on that axis. */
+  filterInstructors?: string[];
+  filterVenues?: string[];
 }
 
 function WeeklyView({
@@ -9271,6 +9286,9 @@ function WeeklyView({
   statusVisibility,
   density = "comfortable",
   highlightMySessions,
+  viewByResource = false,
+  filterInstructors = [],
+  filterVenues = [],
 }: WeeklyViewProps) {
   const today = new Date();
   const isSameDate = (a: Date, b: Date) =>
@@ -9309,6 +9327,81 @@ function WeeklyView({
     });
   };
 
+  // ── "View by resource" support ──────────────────────────────────────
+  // Row axis becomes resources (Instructors, then Venues) instead of
+  // hours. A day's cell shows every session where that resource is
+  // involved, time-sorted — exactly like ResourcesView, a session that
+  // has both an instructor and a venue shows up once in each of their
+  // rows, i.e. it's duplicated across resources rather than picking one.
+  const visibleInstructors = filterInstructors.length > 0
+    ? INSTRUCTOR_OPTIONS.filter((name) => filterInstructors.includes(name))
+    : INSTRUCTOR_OPTIONS;
+  const visibleVenues = filterVenues.length > 0
+    ? VENUE_OPTIONS.filter((name) => filterVenues.includes(name))
+    : VENUE_OPTIONS;
+  type ResourceRow = { kind: "instructor" | "venue"; name: string };
+  const resourceRows: ResourceRow[] = [
+    ...visibleInstructors.map((name): ResourceRow => ({ kind: "instructor", name })),
+    ...visibleVenues.map((name): ResourceRow => ({ kind: "venue", name })),
+  ];
+
+  const eventsForDateByResource = (date: Date, resource: ResourceRow): CalendarEvent[] => {
+    const dayEvents = eventsByDay[date.getDate()] ?? [];
+    return dayEvents
+      .filter((e) => {
+        if (e.type === "closed") return false;
+        return resource.kind === "instructor" ? e.instructor === resource.name : e.venue === resource.name;
+      })
+      .sort((a, b) => parseEventTimeToMinutes(a.time) - parseEventTimeToMinutes(b.time));
+  };
+
+  // Left label column widens in resource mode — a resource name needs
+  // more room than a 3-4 character hour label.
+  const labelW = viewByResource ? RES_LABEL_W : WK_HOUR_LABEL_W;
+
+  /** One day column's worth of event chips, stacked in normal flow —
+   *  shared by both the by-hour grid and the by-resource grid so a chip
+   *  looks and behaves identically in either mode. */
+  const renderDayCell = (date: Date, di: number, cellEvents: CalendarEvent[]) => (
+    <div
+      key={di}
+      style={{
+        flex: "1 1 0",
+        minWidth: 0,
+        padding: "3px",
+        borderRight: `1px solid ${sc.border}`,
+        boxSizing: "border-box",
+      }}
+    >
+      {cellEvents.map((event) => (
+        <div key={event.id} style={{ marginBottom: "3px" }}>
+          <WeeklyEventChip
+            event={event}
+            isSelected={event.id === hoveredEventId}
+            onClick={(e) => onClickEvent(event, date.getDate(), e)}
+            onHoverEnter={(e) =>
+              onHoverEvent(event, date.getDate(), e, {
+                month: date.getMonth(),
+                year: date.getFullYear(),
+              })
+            }
+            onHoverLeave={onHoverLeave}
+            colors={colors}
+            isDark={isDark}
+            deleteMode={deleteMode}
+            statusVisibility={statusVisibility}
+            density={density}
+            highlightMySessions={highlightMySessions}
+          />
+        </div>
+      ))}
+    </div>
+  );
+
+  // Semi-opaque background for the sticky "Instructors"/"Venues" group
+  // headers in resource mode — same treatment as ResourcesView.
+  const sectionHdrBg = isDark ? "rgba(24,32,35,0.97)" : "rgba(247,248,249,0.97)";
+
   // Alternating hour-row background for scan-ability across a tall grid.
   const rowBg = (i: number) =>
     i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.018)" : "rgba(0,0,0,0.016)") : "transparent";
@@ -9332,7 +9425,7 @@ function WeeklyView({
             {/* Top-left corner cell — sticky in both axes */}
             <div
               style={{
-                width: `${WK_HOUR_LABEL_W}px`,
+                width: `${labelW}px`,
                 flexShrink: 0,
                 position: "sticky",
                 left: 0,
@@ -9391,83 +9484,151 @@ function WeeklyView({
             })}
           </div>
 
-          {/* Hour rows — height is intentionally NOT fixed; flexbox stretch
-              (the row's default cross-axis behavior) grows every cell in a
-              row to match whichever day needs the most space. */}
-          {hours.map((h, hi) => (
-            <div
-              key={h}
-              style={{
-                display: "flex",
-                alignItems: "stretch",
-                minHeight: `${WK_MIN_ROW_H}px`,
-                borderBottom: `1px solid ${sc.border}`,
-                background: rowBg(hi),
-              }}
-            >
-              {/* Sticky hour label */}
-              <div
-                style={{
-                  width: `${WK_HOUR_LABEL_W}px`,
-                  flexShrink: 0,
-                  position: "sticky",
-                  left: 0,
-                  background: isDark ? sc.cellBg : "#ffffff",
-                  borderRight: `1px solid ${sc.border}`,
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "flex-end",
-                  padding: "6px 8px 0 0",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: sc.muted,
-                  boxSizing: "border-box",
-                  zIndex: 2,
-                }}
-              >
-                {formatHour(h)}
-              </div>
-
-              {weekDates.map((date, di) => {
-                const cellEvents = eventsForDateAtHour(date, h);
+          {viewByResource ? (
+            /* ── By-resource rows — Instructors, then Venues, same
+                 grouping/order as the standalone Resources view. A session
+                 with both an instructor and a venue appears once in each
+                 matching row (duplicated across resources), same as
+                 ResourcesView. ── */
+            <>
+              {(["instructor", "venue"] as const).map((kind) => {
+                const rowsForKind = resourceRows.filter((r) => r.kind === kind);
+                if (rowsForKind.length === 0) return null;
                 return (
-                  <div
-                    key={di}
-                    style={{
-                      flex: "1 1 0",
-                      minWidth: 0,
-                      padding: "3px",
-                      borderRight: `1px solid ${sc.border}`,
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    {cellEvents.map((event) => (
-                      <div key={event.id} style={{ marginBottom: "3px" }}>
-                        <WeeklyEventChip
-                          event={event}
-                          isSelected={event.id === hoveredEventId}
-                          onClick={(e) => onClickEvent(event, date.getDate(), e)}
-                          onHoverEnter={(e) =>
-                            onHoverEvent(event, date.getDate(), e, {
-                              month: date.getMonth(),
-                              year: date.getFullYear(),
-                            })
-                          }
-                          onHoverLeave={onHoverLeave}
-                          colors={colors}
-                          isDark={isDark}
-                          deleteMode={deleteMode}
-                          statusVisibility={statusVisibility}
-                          density={density}
-                          highlightMySessions={highlightMySessions}
-                        />
+                  <div key={kind}>
+                    {/* Section header — scrolls with content (not sticky
+                        vertically, since Weekly's day-header row above
+                        doesn't have a fixed height to stack a second sticky
+                        header underneath). Label cell stays sticky
+                        horizontally so it lines up with the resource rows
+                        below it as the grid scrolls sideways. */}
+                    <div
+                      style={{
+                        display: "flex",
+                        height: "28px",
+                        flexShrink: 0,
+                        borderTop: kind === "venue" ? `2px solid ${sc.border}` : undefined,
+                        borderBottom: `1px solid ${sc.border}`,
+                        background: sectionHdrBg,
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "sticky",
+                          left: 0,
+                          width: `${labelW}px`,
+                          flexShrink: 0,
+                          background: sectionHdrBg,
+                          borderRight: `1px solid ${sc.border}`,
+                          display: "flex",
+                          alignItems: "center",
+                          paddingLeft: "12px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          letterSpacing: "0.07em",
+                          textTransform: "uppercase",
+                          color: sc.muted,
+                          zIndex: 5,
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        {kind === "instructor" ? "Instructors" : "Venues"}
+                      </div>
+                      <div style={{ flex: 1, background: sectionHdrBg }} />
+                    </div>
+
+                    {rowsForKind.map((resource, ri) => (
+                      <div
+                        key={resource.name}
+                        style={{
+                          display: "flex",
+                          alignItems: "stretch",
+                          minHeight: `${WK_MIN_ROW_H}px`,
+                          borderBottom: `1px solid ${sc.border}`,
+                          background: rowBg(ri),
+                        }}
+                      >
+                        {/* Sticky resource label */}
+                        <div
+                          style={{
+                            width: `${labelW}px`,
+                            flexShrink: 0,
+                            position: "sticky",
+                            left: 0,
+                            background: isDark ? sc.cellBg : "#ffffff",
+                            borderRight: `1px solid ${sc.border}`,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "0 12px",
+                            fontSize: "13px",
+                            fontWeight: 500,
+                            color: sc.body,
+                            boxSizing: "border-box",
+                            zIndex: 2,
+                          }}
+                        >
+                          {resource.kind === "instructor" ? (
+                            <User size={13} style={{ color: sc.muted, flexShrink: 0 }} />
+                          ) : (
+                            <MapPin size={13} style={{ color: sc.muted, flexShrink: 0 }} />
+                          )}
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {resource.name}
+                          </span>
+                        </div>
+
+                        {weekDates.map((date, di) =>
+                          renderDayCell(date, di, eventsForDateByResource(date, resource))
+                        )}
                       </div>
                     ))}
                   </div>
                 );
               })}
-            </div>
-          ))}
+            </>
+          ) : (
+            /* Hour rows — height is intentionally NOT fixed; flexbox stretch
+                (the row's default cross-axis behavior) grows every cell in a
+                row to match whichever day needs the most space. */
+            hours.map((h, hi) => (
+              <div
+                key={h}
+                style={{
+                  display: "flex",
+                  alignItems: "stretch",
+                  minHeight: `${WK_MIN_ROW_H}px`,
+                  borderBottom: `1px solid ${sc.border}`,
+                  background: rowBg(hi),
+                }}
+              >
+                {/* Sticky hour label */}
+                <div
+                  style={{
+                    width: `${labelW}px`,
+                    flexShrink: 0,
+                    position: "sticky",
+                    left: 0,
+                    background: isDark ? sc.cellBg : "#ffffff",
+                    borderRight: `1px solid ${sc.border}`,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "flex-end",
+                    padding: "6px 8px 0 0",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    color: sc.muted,
+                    boxSizing: "border-box",
+                    zIndex: 2,
+                  }}
+                >
+                  {formatHour(h)}
+                </div>
+
+                {weekDates.map((date, di) => renderDayCell(date, di, eventsForDateAtHour(date, h)))}
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -9504,6 +9665,15 @@ interface DailyViewProps {
   statusVisibility?: ViewStatusVisibility;
   density?: ScheduleDensity;
   highlightMySessions?: boolean;
+  /** "View by resource" toggle — when true, adds a resource column on the
+   *  left (Instructors, then Venues — same grouping/order as the
+   *  standalone Resources view) and groups the day's sessions under it
+   *  instead of showing one flat chronological list. */
+  viewByResource?: boolean;
+  /** Resource filters from the sidebar's Resources tab — same narrowing
+   *  behavior as ResourcesView: empty = show every resource on that axis. */
+  filterInstructors?: string[];
+  filterVenues?: string[];
 }
 
 function DailyView({
@@ -9517,6 +9687,9 @@ function DailyView({
   statusVisibility,
   density = "comfortable",
   highlightMySessions = false,
+  viewByResource = false,
+  filterInstructors = [],
+  filterVenues = [],
 }: DailyViewProps) {
   // Closed/all-day markers render as a banner up top rather than a normal
   // session row — they have no time to sort by and no registrations.
@@ -9531,6 +9704,31 @@ function DailyView({
   const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
   const isCompact = density === "compact";
   const rowPadding = isCompact ? "10px 24px" : "16px 24px";
+
+  // ── "View by resource" support ──────────────────────────────────────
+  // Same grouping/order and duplication rule as ResourcesView: a session
+  // with both an instructor and a venue shows up once under each.
+  const visibleInstructors = filterInstructors.length > 0
+    ? INSTRUCTOR_OPTIONS.filter((name) => filterInstructors.includes(name))
+    : INSTRUCTOR_OPTIONS;
+  const visibleVenues = filterVenues.length > 0
+    ? VENUE_OPTIONS.filter((name) => filterVenues.includes(name))
+    : VENUE_OPTIONS;
+  const sectionHdrBg = isDark ? "rgba(24,32,35,0.97)" : "rgba(247,248,249,0.97)";
+  const resourceLabelCellStyle: CSSProperties = {
+    width: `${RES_LABEL_W}px`,
+    flexShrink: 0,
+    borderRight: `1px solid ${sc.border}`,
+    background: isDark ? sc.cellBg : "#ffffff",
+    display: "flex",
+    alignItems: "flex-start",
+    padding: "16px 12px",
+    gap: "8px",
+    fontSize: "13px",
+    fontWeight: 500,
+    color: sc.body,
+    boxSizing: "border-box",
+  };
 
   return (
     <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
@@ -9568,7 +9766,19 @@ function DailyView({
         </div>
       )}
 
-      {sessionEvents.map((event) => {
+      {(() => {
+      /** One session row — dot, time, title, instructor/venue, status button,
+       *  plus the capacity/registration line underneath. Shared by the flat
+       *  chronological list and the by-resource grouping so a session looks
+       *  and behaves identically in either mode.
+       *  `omitResourceKind` — when a row is rendered inside a resource
+       *  group (e.g. under Sarah Chen's Instructors row), the group label
+       *  already identifies that resource, so the inline instructor/venue
+       *  text next to the status button skips it and only shows the
+       *  *other* resource (e.g. just "Studio A" instead of
+       *  "Sarah Chen · Studio A"). The flat chronological list passes
+       *  nothing and always shows both. */
+      const renderSessionRow = (event: CalendarEvent, omitResourceKind?: "instructor" | "venue") => {
         const style = colors[event.type] || colors.yoga;
         const hasCapacity = event.capacity > 0;
         const available = Math.max(0, event.capacity - event.booked);
@@ -9673,7 +9883,12 @@ function DailyView({
               </span>
               <span style={{ flex: 1, minWidth: "12px" }} />
               <span style={{ fontSize: "13px", fontWeight: 500, color: sc.muted, flexShrink: 0, whiteSpace: "nowrap" }}>
-                {[event.instructor && event.instructor !== "—" ? event.instructor : null, event.venue || null]
+                {[
+                  omitResourceKind !== "instructor" && event.instructor && event.instructor !== "—"
+                    ? event.instructor
+                    : null,
+                  omitResourceKind !== "venue" && event.venue ? event.venue : null,
+                ]
                   .filter(Boolean)
                   .join(" · ")}
               </span>
@@ -9778,7 +9993,75 @@ function DailyView({
             )}
           </div>
         );
-      })}
+      };
+
+      if (!viewByResource) {
+        return <>{sessionEvents.map((event) => renderSessionRow(event))}</>;
+      }
+
+      // ── By-resource grouping — Instructors, then Venues, same order as
+      //    the standalone Resources view. A session with both an instructor
+      //    and a venue appears once under each (duplicated), same rule
+      //    ResourcesView applies. ──
+      return (
+        <>
+          {(["instructor", "venue"] as const).map((kind) => {
+            const names = kind === "instructor" ? visibleInstructors : visibleVenues;
+            if (names.length === 0) return null;
+            return (
+              <div key={kind}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    height: "28px",
+                    flexShrink: 0,
+                    borderTop: kind === "venue" ? `2px solid ${sc.border}` : undefined,
+                    borderBottom: `1px solid ${sc.border}`,
+                    background: sectionHdrBg,
+                    paddingLeft: "12px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    letterSpacing: "0.07em",
+                    textTransform: "uppercase",
+                    color: sc.muted,
+                  }}
+                >
+                  {kind === "instructor" ? "Instructors" : "Venues"}
+                </div>
+
+                {names.map((name) => {
+                  const resourceSessions = sessionEvents.filter((e) =>
+                    kind === "instructor" ? e.instructor === name : e.venue === name
+                  );
+                  return (
+                    <div key={name} style={{ display: "flex", borderBottom: `1px solid ${sc.border}` }}>
+                      <div style={resourceLabelCellStyle}>
+                        {kind === "instructor" ? (
+                          <User size={13} style={{ color: sc.muted, flexShrink: 0, marginTop: "2px" }} />
+                        ) : (
+                          <MapPin size={13} style={{ color: sc.muted, flexShrink: 0, marginTop: "2px" }} />
+                        )}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+                      </div>
+                      <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                        {resourceSessions.length === 0 ? (
+                          <div style={{ padding: rowPadding, fontSize: "13px", color: sc.muted }}>
+                            No sessions
+                          </div>
+                        ) : (
+                          resourceSessions.map((event) => renderSessionRow(event, kind))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </>
+      );
+      })()}
     </div>
   );
 }
@@ -9807,6 +10090,13 @@ export function SchedulePage() {
   );
   const [showDesktopViewDropdown, setShowDesktopViewDropdown] = useState(false);
   const desktopViewRef = useRef<HTMLDivElement>(null);
+
+  // "View by resource" — only meaningful on Weekly/Daily (Monthly and the
+  // standalone Resources view are untouched). Kept as one shared flag
+  // rather than per-view so switching between Weekly and Daily mid-session
+  // doesn't silently reset it — matches how `density` and the registration-
+  // status prefs behave (session-level, not reset by navigation).
+  const [viewByResource, setViewByResource] = useState(false);
 
   // Resources view — selected day (day-of-month within currentMonth/currentYear)
   const [resourcesDay, setResourcesDay] = useState(() => new Date().getDate());
@@ -9903,6 +10193,10 @@ export function SchedulePage() {
   // so the deletable subset stands out. Removed ids live in
   // `deletedEventIds` and are filtered out at the start of the events
   // memo so deletions feel immediate.
+  //
+  // The toggle itself is hidden from every schedule view for now (see
+  // SHOW_DELETE_MODE_TOGGLE below) — the feature stays fully wired up
+  // underneath so it can be switched back on later with one flag flip.
   const [deleteMode, setDeleteMode] = useState(false);
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(() => new Set());
   // Click-on-ineligible feedback. When the user clicks an event that
@@ -10743,6 +11037,29 @@ export function SchedulePage() {
             )}
           </div>
 
+          {/* "View by resource" toggle — only meaningful on Weekly/Daily;
+              Monthly and the standalone Resources view are untouched. */}
+          {(desktopView === "Weekly" || desktopView === "Daily") && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "6px 10px",
+              }}
+            >
+              <span style={{ fontSize: "14px", fontWeight: 500, color: sc.body, whiteSpace: "nowrap" }}>
+                View by resource
+              </span>
+              <SchedulePrefToggle
+                enabled={viewByResource}
+                onChange={setViewByResource}
+                sc={sc}
+                ariaLabel="View by resource"
+              />
+            </div>
+          )}
+
         </div>
 
         {/* Date picker — centered; Resources view shows a day picker,
@@ -11216,92 +11533,96 @@ export function SchedulePage() {
             <span style={{ fontSize: "14px", fontWeight: 500, color: sc.body, lineHeight: "14px" }}>
               Found {displayedCount} {displayedCount === 1 ? "reservation" : "reservations"}
             </span>
-            {/* Subtle vertical divider to visually separate the count
-                (meta-info) from the Delete Mode toggle (mode toggle).
-                Without it the three left-side items (Info button, count
-                text, toggle pill) sit at uneven visual weights with
-                ambiguous grouping — the divider gives the row a clear
-                "info | mode" rhythm. */}
-            <span
-              role="separator"
-              aria-orientation="vertical"
-              style={{
-                width: "1px",
-                height: "18px",
-                background: sc.border,
-                flexShrink: 0,
-              }}
-            />
-            {/* Delete Mode — slider toggle living in the sub-header's
-                meta-info zone (left side, after the result count) so it's
-                findable but visually subordinate to Search/Filters and
-                far from the Add Reservation primary action. The track
-                turns red when active to telegraph the destructive intent
-                of the mode (matches the dashed-red treatment we apply to
-                deletable events on the calendar). */}
-            <label
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                cursor: "pointer",
-                userSelect: "none",
-              }}
-              title="Quickly delete sessions that have no registered clients"
-            >
-              <input
-                type="checkbox"
-                checked={deleteMode}
-                onChange={(e) => setDeleteMode(e.target.checked)}
-                style={{
-                  position: "absolute",
-                  opacity: 0,
-                  width: 0,
-                  height: 0,
-                  pointerEvents: "none",
-                }}
-              />
-              <span
-                aria-hidden
-                style={{
-                  position: "relative",
-                  display: "inline-block",
-                  width: "32px",
-                  height: "18px",
-                  borderRadius: "9px",
-                  background: deleteMode
-                    ? (isDark ? "#e05a5a" : "#d41840")
-                    : sc.border,
-                  transition: "background 0.15s ease",
-                  flexShrink: 0,
-                }}
-              >
+            {SHOW_DELETE_MODE_TOGGLE && (
+              <>
+                {/* Subtle vertical divider to visually separate the count
+                    (meta-info) from the Delete Mode toggle (mode toggle).
+                    Without it the three left-side items (Info button, count
+                    text, toggle pill) sit at uneven visual weights with
+                    ambiguous grouping — the divider gives the row a clear
+                    "info | mode" rhythm. */}
                 <span
+                  role="separator"
+                  aria-orientation="vertical"
                   style={{
-                    position: "absolute",
-                    top: "2px",
-                    left: deleteMode ? "16px" : "2px",
-                    width: "14px",
-                    height: "14px",
-                    borderRadius: "50%",
-                    background: "#ffffff",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
-                    transition: "left 0.15s ease",
+                    width: "1px",
+                    height: "18px",
+                    background: sc.border,
+                    flexShrink: 0,
                   }}
                 />
-              </span>
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: deleteMode ? (isDark ? "#e05a5a" : "#d41840") : sc.muted,
-                  lineHeight: "14px",
-                  transition: "color 0.15s ease",
-                }}
-              >
-                Delete Mode
-              </span>
-            </label>
+                {/* Delete Mode — slider toggle living in the sub-header's
+                    meta-info zone (left side, after the result count) so it's
+                    findable but visually subordinate to Search/Filters and
+                    far from the Add Reservation primary action. The track
+                    turns red when active to telegraph the destructive intent
+                    of the mode (matches the dashed-red treatment we apply to
+                    deletable events on the calendar). */}
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                  title="Quickly delete sessions that have no registered clients"
+                >
+                  <input
+                    type="checkbox"
+                    checked={deleteMode}
+                    onChange={(e) => setDeleteMode(e.target.checked)}
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      width: 0,
+                      height: 0,
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "relative",
+                      display: "inline-block",
+                      width: "32px",
+                      height: "18px",
+                      borderRadius: "9px",
+                      background: deleteMode
+                        ? (isDark ? "#e05a5a" : "#d41840")
+                        : sc.border,
+                      transition: "background 0.15s ease",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "2px",
+                        left: deleteMode ? "16px" : "2px",
+                        width: "14px",
+                        height: "14px",
+                        borderRadius: "50%",
+                        background: "#ffffff",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                        transition: "left 0.15s ease",
+                      }}
+                    />
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      color: deleteMode ? (isDark ? "#e05a5a" : "#d41840") : sc.muted,
+                      lineHeight: "14px",
+                      transition: "color 0.15s ease",
+                    }}
+                  >
+                    Delete Mode
+                  </span>
+                </label>
+              </>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             {/* Search */}
@@ -11375,6 +11696,9 @@ export function SchedulePage() {
             statusVisibility={registrationStatusPrefs.Weekly}
             density={density}
             highlightMySessions={highlightMySessions}
+            viewByResource={viewByResource}
+            filterInstructors={filterInstructors}
+            filterVenues={filterVenues}
           />
         ) : desktopView === "Daily" ? (
           <DailyView
@@ -11388,6 +11712,9 @@ export function SchedulePage() {
             statusVisibility={registrationStatusPrefs.Daily}
             density={density}
             highlightMySessions={highlightMySessions}
+            viewByResource={viewByResource}
+            filterInstructors={filterInstructors}
+            filterVenues={filterVenues}
           />
         ) : (
           /* Monthly grid — headers + weeks share one grid so all column
