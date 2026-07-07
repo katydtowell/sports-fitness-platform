@@ -861,7 +861,9 @@ function generateMockEvents(): DayEvents {
     // double-booking bug that got reported.
     if ([1, 8, 15, 22, 29].includes(day)) {
       // Each "track" is one instructor+venue pair running consecutive,
-      // non-overlapping sessions whose durations add up to one hour.
+      // non-overlapping sessions whose durations add up to (at most) one
+      // hour. Every start time/duration here is on a 15-minute block, same
+      // rule as the real TimeField input (see STYLE_GUIDE.md "Time fields").
       const tracks: Array<{ type: ReservationType; sessions: Array<[string, number, string]> }> = [
         // 4 × 15-minute back-to-back sessions
         { type: "hiit", sessions: [
@@ -875,17 +877,20 @@ function generateMockEvents(): DayEvents {
           ["11:00am", 30, "Express Pilates"],
           ["11:30am", 30, "Express Pilates"],
         ] },
-        // A 20-minute session followed by a 40-minute one — unequal
-        // lengths on purpose, still adds up to exactly one hour.
+        // A 15-minute session followed by a 45-minute one — unequal
+        // lengths on purpose, still adds up to exactly one hour. All
+        // session times/durations across the app are constrained to
+        // 15-minute blocks (see STYLE_GUIDE.md "Time fields"), so this
+        // no longer uses the old 20/40 split.
         { type: "meditation", sessions: [
-          ["11:00am", 20, "Quick Reset"],
-          ["11:20am", 40, "Deep Meditation"],
+          ["11:00am", 15, "Quick Reset"],
+          ["11:15am", 45, "Deep Meditation"],
         ] },
-        // 3 × 20-minute back-to-back sessions
+        // 3 × 15-minute back-to-back sessions
         { type: "yoga", sessions: [
-          ["11:00am", 20, "Micro Flow"],
-          ["11:20am", 20, "Micro Flow"],
-          ["11:40am", 20, "Micro Flow"],
+          ["11:00am", 15, "Micro Flow"],
+          ["11:15am", 15, "Micro Flow"],
+          ["11:30am", 15, "Micro Flow"],
         ] },
       ];
 
@@ -1399,25 +1404,53 @@ function DateCell({
     );
   }
 
+  // Sessions are packed up to 3-per-row, but ONLY sessions that start
+  // within the same clock hour are allowed to share a row — three
+  // half-hour sessions starting between 11am and noon can split a row,
+  // but an 11am session can never share a row with a 2pm one, even if
+  // there'd be room left. Sorting chronologically first makes the
+  // hour-boundary check below correct regardless of the order events
+  // happen to be stored in (generated "busy day" sessions can otherwise
+  // land out of order in the array).
+  const sortedEvents = events
+    .slice()
+    .sort((a, b) => parseEventTimeToMinutes(a.time) - parseEventTimeToMinutes(b.time));
+
   const rows: CalendarEvent[][] = [];
   let currentRow: CalendarEvent[] = [];
+  // Hour (0-23) of whatever's currently in `currentRow`; null once flushed
+  // or for an unparseable time (shouldn't happen for a non-fullWidth
+  // event, but treated as its own always-flushed bucket just in case).
+  let currentHour: number | null = null;
+  const flushRow = () => {
+    if (currentRow.length > 0) {
+      rows.push(currentRow);
+      currentRow = [];
+    }
+  };
 
-  for (const ev of events) {
+  for (const ev of sortedEvents) {
     if (ev.fullWidth) {
-      if (currentRow.length > 0) {
-        rows.push(currentRow);
-        currentRow = [];
-      }
+      flushRow();
       rows.push([ev]);
-    } else {
-      currentRow.push(ev);
-      if (currentRow.length >= 3) {
-        rows.push(currentRow);
-        currentRow = [];
-      }
+      currentHour = null;
+      continue;
+    }
+    const mins = parseEventTimeToMinutes(ev.time);
+    const hour = mins === -1 ? null : Math.floor(mins / 60);
+    // Hour changed since the last session in this row — start a fresh
+    // row even though the current one isn't at the 3-session cap yet.
+    if (currentRow.length > 0 && hour !== currentHour) {
+      flushRow();
+    }
+    currentRow.push(ev);
+    currentHour = hour;
+    if (currentRow.length >= 3) {
+      flushRow();
+      currentHour = null;
     }
   }
-  if (currentRow.length > 0) rows.push(currentRow);
+  flushRow();
 
   // Compact rows are shorter, so one extra row of sessions fits in the
   // same cell before the rest collapse into "+N more".
