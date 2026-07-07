@@ -76,14 +76,35 @@ export function SidePanel() {
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          // On mobile, header extras (e.g. EZCoach's "Switch back to manual"
+          // link) drop to their own line under the title instead of sharing
+          // the row — the narrow panel width doesn't leave room for title +
+          // extras + close button side by side. Top-align in that case so
+          // the close button sits level with the title, not the two-line
+          // block's vertical center.
+          alignItems: isMobile && headerExtras ? "flex-start" : "center",
           justifyContent: "space-between",
+          // Reserves breathing room between the title group and the close
+          // button. Matters most on desktop, where header extras (e.g.
+          // EZCoach's "Switch back to manual" link) sit inline right up
+          // against the title-group's edge — without this gap they'd butt
+          // up against the X.
+          gap: "12px",
           padding: "16px 20px",
           borderBottom: `1px solid ${palette.borderMedium}`,
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: isMobile && headerExtras ? "column" : "row",
+            alignItems: isMobile && headerExtras ? "flex-start" : "center",
+            gap: "6px",
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
           <span
             style={{
               color: palette.textPrimary,

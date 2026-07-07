@@ -1002,6 +1002,22 @@ function getSessionTimeRangeLabel(event: CalendarEvent): string {
   return `${formatMinutesToTime(start)}–${formatMinutesToTime(start + duration)}`;
 }
 
+/** Whether a session's scheduled start has already happened, given the
+ *  specific calendar date it's being rendered under (day-of-month + month
+ *  + year — the same trio every view already threads through to place an
+ *  event on one particular date). Once a session's start time arrives, it
+ *  reads as "passed": dimmed to 50% opacity and no longer bookable,
+ *  though it's still clickable to view its details. Closed/all-day
+ *  markers and anything with an unparseable time are never "past" since
+ *  there's no single start moment to compare against. */
+function isSessionPast(event: CalendarEvent, day: number, month: number, year: number): boolean {
+  if (event.type === "closed") return false;
+  const mins = parseEventTimeToMinutes(event.time);
+  if (mins === -1) return false;
+  const start = new Date(year, month, day, Math.floor(mins / 60), mins % 60, 0, 0);
+  return start.getTime() <= Date.now();
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1082,6 +1098,7 @@ function EventBadge({
   statusVisibility,
   density = "comfortable",
   highlightMySessions = false,
+  isPast = false,
 }: {
   event: CalendarEvent;
   isSelected: boolean;
@@ -1108,6 +1125,11 @@ function EventBadge({
    *  CURRENT_USER_INSTRUCTOR get a brand-colored ring and everything else
    *  dims slightly. */
   highlightMySessions?: boolean;
+  /** Whether this session's start time has already passed (see
+   *  `isSessionPast`) — dims the badge to 50% opacity. Still fully
+   *  clickable (opens Reservation Details); booking itself is disabled
+   *  inside that panel, not here. */
+  isPast?: boolean;
 }) {
   const style = colors[event.type] || colors.yoga;
 
@@ -1198,7 +1220,7 @@ function EventBadge({
       : `1px solid ${isSelected ? style.text : style.border}`,
     boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
     color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
-    opacity: dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
+    opacity: isPast ? 0.5 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
     transition: "all 0.15s ease",
   };
 
@@ -1311,6 +1333,7 @@ function EventRow({
   statusVisibility,
   density,
   highlightMySessions,
+  isEventPast,
 }: {
   events: CalendarEvent[];
   selectedId: string | null;
@@ -1323,6 +1346,10 @@ function EventRow({
   statusVisibility?: ViewStatusVisibility;
   density?: ScheduleDensity;
   highlightMySessions?: boolean;
+  /** Resolves whether a given event has already passed on the date this
+   *  row is showing — supplied by DateCell, which is the one that
+   *  actually knows the day/month/year this row belongs to. */
+  isEventPast?: (event: CalendarEvent) => boolean;
 }) {
   return (
     <div style={{ display: "flex", gap: "2px", width: "100%" }}>
@@ -1340,6 +1367,7 @@ function EventRow({
           statusVisibility={statusVisibility}
           density={density}
           highlightMySessions={highlightMySessions}
+          isPast={isEventPast ? isEventPast(ev) : false}
         />
       ))}
     </div>
@@ -1366,6 +1394,8 @@ function DateCell({
   statusVisibility,
   density = "comfortable",
   highlightMySessions,
+  month,
+  year,
 }: {
   day: number | null;
   isToday: boolean;
@@ -1382,6 +1412,10 @@ function DateCell({
   statusVisibility?: ViewStatusVisibility;
   density?: ScheduleDensity;
   highlightMySessions?: boolean;
+  /** Month/year this cell's `day` belongs to — needed alongside `day` to
+   *  tell whether a session on it has already passed (see `isSessionPast`). */
+  month: number;
+  year: number;
 }) {
   // Compact fits one extra row of sessions (see MAX_VISIBLE_EVENTS), so its
   // floor is taller than a naive 4-row proportion would suggest — tuned to
@@ -1458,6 +1492,9 @@ function DateCell({
   const visibleRows = rows.slice(0, maxVisibleRows);
   const hiddenCount = events.length - visibleRows.reduce((s, r) => s + r.length, 0);
 
+  // `day` is guaranteed non-null past the early return above.
+  const isEventPast = (ev: CalendarEvent) => isSessionPast(ev, day, month, year);
+
   return (
     <div
       style={{
@@ -1507,6 +1544,7 @@ function DateCell({
           statusVisibility={statusVisibility}
           density={density}
           highlightMySessions={highlightMySessions}
+          isEventPast={isEventPast}
         />
       ))}
 
@@ -1710,10 +1748,16 @@ function ReservationDetailsPopover({
   // "Book A Client" action — mirrors the same Book/Waitlist/Full rule used
   // in Reservation Details and Daily view: full + waitlisting off means
   // there's no way to add anyone, so the button is disabled and relabeled.
-  const bookClientLabel = isFull
+  // A session whose start time has already passed (see `isSessionPast`)
+  // takes precedence over all of that — it's never bookable regardless of
+  // remaining capacity.
+  const isPast = isSessionPast(event, day, month, year);
+  const bookClientLabel = isPast
+    ? "Session Passed"
+    : isFull
     ? (event.waitlistEnabled ? "Waitlist" : "Fully Booked")
     : "Book A Client";
-  const bookClientDisabled = isFull && !event.waitlistEnabled;
+  const bookClientDisabled = isPast || (isFull && !event.waitlistEnabled);
   const bookClientBtn: CSSProperties = {
     ...secondaryBtn,
     ...(bookClientDisabled
@@ -4135,6 +4179,12 @@ interface SearchableMultiSelectProps {
 function SearchableMultiSelect({ options, selected, onChange, placeholder, palette, getLabel, getLeading }: SearchableMultiSelectProps) {
   const { mode } = useTheme();
   const isDark = mode === "dark";
+  // Native <select> and <input> elements get bumped to 16px on mobile by a
+  // global CSS rule (theme.css) so iOS Safari doesn't zoom on focus. This
+  // trigger is a plain <div> (not a real form control), so it's invisible to
+  // that rule — match its font size here so the placeholder/option text
+  // doesn't end up smaller than a native select's on mobile.
+  const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -4219,7 +4269,7 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
     border: `1px solid ${isOpen ? palette.primary : palette.borderMedium}`,
     borderRadius: "6px",
     color: palette.textPrimary,
-    fontSize: "var(--text-base)",
+    fontSize: isMobile ? "16px" : "var(--text-base)",
     fontFamily: "var(--font-family)",
     padding: "6px 32px 6px 12px",
     cursor: "pointer",
@@ -4347,7 +4397,7 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
           {/* Options list */}
           <div style={{ maxHeight: "200px", overflowY: "auto" }}>
             {filtered.length === 0 ? (
-              <div style={{ padding: "10px 12px", color: palette.textTertiary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)" }}>
+              <div style={{ padding: "10px 12px", color: palette.textTertiary, fontSize: isMobile ? "16px" : "var(--text-base)", fontFamily: "var(--font-family)" }}>
                 No results found
               </div>
             ) : (
@@ -4366,7 +4416,7 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
                       border: "none",
                       background: isChecked ? `${palette.primary}18` : "transparent",
                       color: palette.textPrimary,
-                      fontSize: "var(--text-sm)",
+                      fontSize: isMobile ? "16px" : "var(--text-base)",
                       fontFamily: "var(--font-family)",
                       cursor: "pointer",
                       textAlign: "left",
@@ -4544,7 +4594,7 @@ function SectionPriorityTabs({
   sections,
   activeSection,
   onSelectSection,
-  maxVisible = 4,
+  maxVisible,
 }: {
   sections: string[];
   activeSection: string;
@@ -4552,6 +4602,13 @@ function SectionPriorityTabs({
   maxVisible?: number;
 }) {
   const { palette } = useTheme();
+  // Mobile's narrower panel width has room for fewer tabs before the row
+  // needs to overflow into More — three plus More reads more comfortably
+  // than four plus More at that width. Callers can still force a specific
+  // count via the `maxVisible` prop; this default only applies when they
+  // don't.
+  const isMobile = useIsMobile();
+  const effectiveMaxVisible = maxVisible ?? (isMobile ? 3 : 4);
   const [order, setOrder] = useState<string[]>(sections);
   const [menuOpen, setMenuOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -4571,13 +4628,13 @@ function SectionPriorityTabs({
   useEffect(() => {
     setOrder((prev) => {
       const idx = prev.indexOf(activeSection);
-      if (idx === -1 || idx < maxVisible) return prev;
+      if (idx === -1 || idx < effectiveMaxVisible) return prev;
       const next = [...prev];
-      next[maxVisible - 1] = activeSection;
-      next[idx] = prev[maxVisible - 1];
+      next[effectiveMaxVisible - 1] = activeSection;
+      next[idx] = prev[effectiveMaxVisible - 1];
       return next;
     });
-  }, [activeSection, maxVisible]);
+  }, [activeSection, effectiveMaxVisible]);
 
   // Close the More menu on outside click.
   useEffect(() => {
@@ -4589,8 +4646,8 @@ function SectionPriorityTabs({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
-  const visible = order.slice(0, maxVisible);
-  const overflow = order.slice(maxVisible);
+  const visible = order.slice(0, effectiveMaxVisible);
+  const overflow = order.slice(effectiveMaxVisible);
 
   // Tabs shrink and ellipsize before the row overflows, so four tabs +
   // More survive the quarter-width panel; full labels stay available via
@@ -4730,6 +4787,9 @@ function ReservationDetailsPanelContent({
   event,
   initialEditing = false,
   initialSection = "Details",
+  day,
+  month,
+  year,
 }: {
   event: CalendarEvent;
   // Opens the panel straight into edit mode — used when the entry point
@@ -4740,11 +4800,24 @@ function ReservationDetailsPanelContent({
   // hover popover's "Book A Client" / "Waitlist a Client" action so the
   // user lands directly on Registration instead of Details.
   initialSection?: string;
+  // The specific calendar date this occurrence was opened from — lets the
+  // panel tell whether the session has already passed (see
+  // `isSessionPast`) and disable booking accordingly. Omitted by a couple
+  // of entry points that don't have a reliable date to hand (mobile, and
+  // EZCoach's AI lookup flow) — those simply never treat the session as
+  // past, same as today's behavior.
+  day?: number;
+  month?: number;
+  year?: number;
 }) {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
+  const isMobile = useIsMobile();
   const { closePanel, setHeaderExtras } = useSidePanel();
   const sc = semanticColors(palette, isDark);
+  const isPast = day != null && month != null && year != null
+    ? isSessionPast(event, day, month, year)
+    : false;
 
   const [activeSection, setActiveSection] = useState(initialSection);
   const [isEditing, setIsEditing] = useState(initialEditing);
@@ -5039,11 +5112,17 @@ function ReservationDetailsPanelContent({
 
         <div><div style={labelBoldStyle}>Reservation type*</div><select style={selectStyle} value={reservationType} onChange={(e) => setReservationType(e.target.value)}><option value="" disabled>—Select reservation type—</option>{RESERVATION_TYPE_OPTIONS.map((rt) => <option key={rt} value={rt}>{rt}</option>)}</select></div>
 
-        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: "100px" }}><div style={labelStyle}>Pre-buffer</div><div style={fieldDescStyle}>Blocks transitional time prior to session</div><select style={useDefaultBuffer ? disabledInputStyle : selectStyle} disabled={useDefaultBuffer} value={preBuffer} onChange={(e) => setPreBuffer(e.target.value)}><option value="">None</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></div>
-          <span style={{ fontSize: "var(--text-sm)", color: palette.textTertiary, paddingBottom: "10px", fontFamily: "var(--font-family)" }}>and/or</span>
-          <div style={{ flex: 1, minWidth: "100px" }}><div style={labelStyle}>Post-buffer</div><div style={fieldDescStyle}>Blocks transitional time after session</div><select style={useDefaultBuffer ? disabledInputStyle : selectStyle} disabled={useDefaultBuffer} value={postBuffer} onChange={(e) => setPostBuffer(e.target.value)}><option value="">None</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></div>
-          <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={useDefaultBuffer} onChange={(e) => setUseDefaultBuffer(e.target.checked)} style={{ accentColor: palette.primary }} /> Use default</label>
+        <div>
+          <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: "100px" }}><div style={labelStyle}>Pre-buffer</div><div style={fieldDescStyle}>Blocks transitional time prior to session</div><select style={useDefaultBuffer ? disabledInputStyle : selectStyle} disabled={useDefaultBuffer} value={preBuffer} onChange={(e) => setPreBuffer(e.target.value)}><option value="">None</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></div>
+            <span style={{ fontSize: "var(--text-sm)", color: palette.textTertiary, paddingBottom: "10px", fontFamily: "var(--font-family)" }}>and/or</span>
+            <div style={{ flex: 1, minWidth: "100px" }}><div style={labelStyle}>Post-buffer</div><div style={fieldDescStyle}>Blocks transitional time after session</div><select style={useDefaultBuffer ? disabledInputStyle : selectStyle} disabled={useDefaultBuffer} value={postBuffer} onChange={(e) => setPostBuffer(e.target.value)}><option value="">None</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></div>
+            {!isMobile && <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={useDefaultBuffer} onChange={(e) => setUseDefaultBuffer(e.target.checked)} style={{ accentColor: palette.primary }} /> Use default</label>}
+          </div>
+          {/* On mobile, the "Use default" checkbox drops below the buffer
+              fields instead of squeezing into the same row, and stays
+              left-aligned. */}
+          {isMobile && <label style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={useDefaultBuffer} onChange={(e) => setUseDefaultBuffer(e.target.checked)} style={{ accentColor: palette.primary }} /> Use default</label>}
         </div>
 
         <div><div style={labelBoldStyle}>Title*</div><input type="text" placeholder="Enter a title" value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></div>
@@ -5064,7 +5143,12 @@ function ReservationDetailsPanelContent({
         </div>
         <div style={{ display: "flex", gap: "12px" }}><div style={{ flex: 1 }}><div style={labelBoldStyle}>Start date*</div><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} /></div><div style={{ flex: 1 }}><div style={labelBoldStyle}>End date*</div><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} /></div></div>
         {/* Start time / End time — themed TimeField per STYLE_GUIDE ("Time fields"), matches AddReservationPanelContent */}
-        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}><div style={{ flex: 1 }}><div style={labelBoldStyle}>Start time*</div><TimeField value={startTime} onChange={setStartTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="Start time" /></div><label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} /> All day</label><div style={{ flex: 1 }}><div style={labelBoldStyle}>End time*</div><TimeField value={endTime} onChange={setEndTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="End time" /></div></div>
+        <div>
+          <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}><div style={{ flex: 1 }}><div style={labelBoldStyle}>Start time*</div><TimeField value={startTime} onChange={setStartTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="Start time" /></div>{!isMobile && <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} /> All day</label>}<div style={{ flex: 1 }}><div style={labelBoldStyle}>End time*</div><TimeField value={endTime} onChange={setEndTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="End time" /></div></div>
+          {/* On mobile, "All day" drops below the time fields instead of
+              squeezing between them, and stays left-aligned. */}
+          {isMobile && <label style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} /> All day</label>}
+        </div>
 
         <div><div style={labelBoldStyle}>Recurring*</div><div style={{ display: "flex", gap: "16px", alignItems: "center", marginTop: "4px" }}><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailRecurring" checked={recurring === "yes"} onChange={() => setRecurring("yes")} style={{ accentColor: palette.primary }} /> Yes</label><label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}><input type="radio" name="detailRecurring" checked={recurring === "no"} onChange={() => setRecurring("no")} style={{ accentColor: palette.primary }} /> No</label></div></div>
         <div style={{ opacity: 0.5 }}><div style={labelStyle}>Split session</div><select style={disabledInputStyle} disabled defaultValue=""><option value="" disabled>—Set the session length before selecting split increments—</option></select></div>
@@ -5139,15 +5223,26 @@ function ReservationDetailsPanelContent({
 
         </div>
         <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
-          <button onClick={handleCancelEditing} style={secondaryBtnStyle}>Cancel</button>
+          {/* On mobile, Cancel is redundant with the panel's closing X, so its
+              slot is repurposed for Back — mobile users navigate sections
+              from the same bottom-left spot they'd otherwise use to cancel. */}
+          {isMobile ? (
+            !isFirstSection ? (
+              <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> Back</button>
+            ) : <div />
+          ) : (
+            <button onClick={handleCancelEditing} style={secondaryBtnStyle}>Cancel</button>
+          )}
           {/* Right-side group: Back ↔ Next pair the section navigation; Save &
               Close stays primary in the middle. Back uses secondary styling so
               the visual weight matches Cancel without sitting next to it —
-              navigation actions live to the right, exit on the left. */}
+              navigation actions live to the right, exit on the left. On
+              mobile, Back has already moved to the left (Cancel's old slot),
+              so it's omitted here to avoid showing it twice. */}
           <div style={{ display: "flex", gap: "8px" }}>
-            {!isFirstSection && <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> Back: {prevSectionName}</button>}
+            {!isMobile && !isFirstSection && <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> {`Back: ${prevSectionName}`}</button>}
             <button style={primaryBtnStyle} onClick={() => setIsEditing(false)}>Save &amp; Close</button>
-            {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>Next: {nextSectionName} <ArrowRight size={14} /></button>}
+            {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>{isMobile ? "Next" : `Next: ${nextSectionName}`} <ArrowRight size={14} /></button>}
           </div>
         </div>
       </div>
@@ -5184,7 +5279,12 @@ function ReservationDetailsPanelContent({
           <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, fontWeight: 500 }}>{available > 0 ? <><span style={{ fontWeight: 700, fontSize: "var(--text-base)", color: palette.primary }}>{available}</span> spot{available !== 1 ? "s" : ""} available</> : <span style={{ color: isDark ? "#ff6b6b" : "#d32f2f", fontWeight: 600 }}>Fully booked</span>}</span>
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
             <button onClick={() => setIsEditing(true)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: "transparent", color: palette.textPrimary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", whiteSpace: "nowrap" }}><Pencil size={13} /> Edit Reservation</button>
-            {available > 0 ? (
+            {isPast ? (
+              // Session has already started/passed — no longer bookable.
+              // Viewing/editing details still works; only the booking
+              // action itself is blocked (see `isSessionPast`).
+              <span style={{ display: "inline-flex", alignItems: "center", padding: "8px 16px", borderRadius: "6px", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: palette.textTertiary, fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "default" }}>Session Passed</span>
+            ) : available > 0 ? (
               <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: palette.primary, color: isDark ? "#0a0e0f" : "#101828", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Book</button>
             ) : event.waitlistEnabled ? (
               <button onClick={() => setActiveSection("Registration")} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", borderRadius: "6px", border: "none", background: isDark ? "rgba(255,180,50,0.2)" : "rgba(220,150,20,0.15)", color: isDark ? "#ffb432" : "#b07a10", fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}><Plus size={13} /> Waitlist</button>
@@ -5437,8 +5537,8 @@ function ReservationDetailsPanelContent({
             uses secondary styling but is physically separated from Close by
             the wide flex gap, so misclicks are unlikely. */}
         <div style={{ display: "flex", gap: "8px" }}>
-          {!isFirstSection && <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> Back: {prevSectionName}</button>}
-          {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>Next: {nextSectionName} <ArrowRight size={14} /></button>}
+          {!isFirstSection && <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> {isMobile ? "Back" : `Back: ${prevSectionName}`}</button>}
+          {!isLastSection && <button onClick={goToNextSection} style={{ ...primaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>{isMobile ? "Next" : `Next: ${nextSectionName}`} <ArrowRight size={14} /></button>}
         </div>
       </div>
     </div>
@@ -6139,7 +6239,11 @@ function EZCoachChat({
           padding: "12px 0",
           marginTop: "16px",
           display: "flex",
-          alignItems: "flex-end",
+          // Centered rather than bottom-aligned — with the input back to its
+          // full two-line height, flex-end pinned the send button to the
+          // bottom edge in a way that read as an alignment accident rather
+          // than a deliberate choice.
+          alignItems: "center",
           gap: "8px",
           zIndex: 5,
         }}
@@ -6200,6 +6304,7 @@ function EZCoachChat({
 function AddReservationPanelContent() {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
+  const isMobile = useIsMobile();
   const { openPanel, closePanel, setHeaderExtras } = useSidePanel();
 
   const [activeSection, setActiveSection] = useState("Details");
@@ -6315,7 +6420,11 @@ function AddReservationPanelContent() {
           type="button"
           onClick={() => setAiMode(false)}
           style={{
-            marginLeft: "auto",
+            // Desktop keeps this pinned to the right of the title (shares
+            // the header row); on mobile it drops to its own line under the
+            // title (see SidePanel.tsx), so it stays left-aligned there
+            // instead of auto-margining to the right.
+            marginLeft: isMobile ? 0 : "auto",
             background: "none",
             border: "none",
             padding: 0,
@@ -6338,7 +6447,7 @@ function AddReservationPanelContent() {
     }
     return () => setHeaderExtras(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiMode, palette, setHeaderExtras]);
+  }, [aiMode, palette, setHeaderExtras, isMobile]);
 
   const labelStyle: CSSProperties = {
     color: palette.textPrimary,
@@ -6433,10 +6542,15 @@ function AddReservationPanelContent() {
 
   const currentSectionIndex = sections.indexOf(activeSection);
   const isLastSection = currentSectionIndex === sections.length - 1;
+  const isFirstSection = currentSectionIndex === 0;
   const nextSectionName = isLastSection ? null : sections[currentSectionIndex + 1];
+  const prevSectionName = isFirstSection ? null : sections[currentSectionIndex - 1];
 
   const goToNextSection = () => {
     if (nextSectionName) setActiveSection(nextSectionName);
+  };
+  const goToPrevSection = () => {
+    if (prevSectionName) setActiveSection(prevSectionName);
   };
 
   const disabledPrimaryBtnStyle: CSSProperties = {
@@ -6609,44 +6723,56 @@ function AddReservationPanelContent() {
       </div>
 
       {/* Pre-buffer / Post-buffer */}
-      <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: "100px" }}>
-          <div style={labelStyle}>Pre-buffer</div>
-          <div style={fieldDescStyle}>Blocks transitional time prior to session</div>
-          <select
-            style={useDefaultBuffer ? disabledInputStyle : selectStyle}
-            disabled={useDefaultBuffer}
-            value={preBuffer}
-            onChange={(e) => setPreBuffer(e.target.value)}
-          >
-            <option value="">None</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="45">45 minutes</option>
-            <option value="60">60 minutes</option>
-          </select>
+      <div>
+        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: "100px" }}>
+            <div style={labelStyle}>Pre-buffer</div>
+            <div style={fieldDescStyle}>Blocks transitional time prior to session</div>
+            <select
+              style={useDefaultBuffer ? disabledInputStyle : selectStyle}
+              disabled={useDefaultBuffer}
+              value={preBuffer}
+              onChange={(e) => setPreBuffer(e.target.value)}
+            >
+              <option value="">None</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">60 minutes</option>
+            </select>
+          </div>
+          <span style={{ fontSize: "var(--text-sm)", color: palette.textTertiary, paddingBottom: "10px", fontFamily: "var(--font-family)" }}>and/or</span>
+          <div style={{ flex: 1, minWidth: "100px" }}>
+            <div style={labelStyle}>Post-buffer</div>
+            <div style={fieldDescStyle}>Blocks transitional time after session</div>
+            <select
+              style={useDefaultBuffer ? disabledInputStyle : selectStyle}
+              disabled={useDefaultBuffer}
+              value={postBuffer}
+              onChange={(e) => setPostBuffer(e.target.value)}
+            >
+              <option value="">None</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">60 minutes</option>
+            </select>
+          </div>
+          {!isMobile && (
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+              <input type="checkbox" checked={useDefaultBuffer} onChange={(e) => setUseDefaultBuffer(e.target.checked)} style={{ accentColor: palette.primary }} />
+              Use default
+            </label>
+          )}
         </div>
-        <span style={{ fontSize: "var(--text-sm)", color: palette.textTertiary, paddingBottom: "10px", fontFamily: "var(--font-family)" }}>and/or</span>
-        <div style={{ flex: 1, minWidth: "100px" }}>
-          <div style={labelStyle}>Post-buffer</div>
-          <div style={fieldDescStyle}>Blocks transitional time after session</div>
-          <select
-            style={useDefaultBuffer ? disabledInputStyle : selectStyle}
-            disabled={useDefaultBuffer}
-            value={postBuffer}
-            onChange={(e) => setPostBuffer(e.target.value)}
-          >
-            <option value="">None</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="45">45 minutes</option>
-            <option value="60">60 minutes</option>
-          </select>
-        </div>
-        <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-          <input type="checkbox" checked={useDefaultBuffer} onChange={(e) => setUseDefaultBuffer(e.target.checked)} style={{ accentColor: palette.primary }} />
-          Use default
-        </label>
+        {/* On mobile, "Use default" drops below the buffer fields instead of
+            squeezing into the same row, and stays left-aligned. */}
+        {isMobile && (
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+            <input type="checkbox" checked={useDefaultBuffer} onChange={(e) => setUseDefaultBuffer(e.target.checked)} style={{ accentColor: palette.primary }} />
+            Use default
+          </label>
+        )}
       </div>
 
       {/* Title */}
@@ -6690,19 +6816,31 @@ function AddReservationPanelContent() {
       </div>
 
       {/* Start time / End time — themed TimeField per STYLE_GUIDE ("Time fields") */}
-      <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
-        <div style={{ flex: 1 }}>
-          <div style={labelBoldStyle}>Start time*</div>
-          <TimeField value={startTime} onChange={setStartTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="Start time" />
+      <div>
+        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
+          <div style={{ flex: 1 }}>
+            <div style={labelBoldStyle}>Start time*</div>
+            <TimeField value={startTime} onChange={setStartTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="Start time" />
+          </div>
+          {!isMobile && (
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+              <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} />
+              All day
+            </label>
+          )}
+          <div style={{ flex: 1 }}>
+            <div style={labelBoldStyle}>End time*</div>
+            <TimeField value={endTime} onChange={setEndTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="End time" />
+          </div>
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "10px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-          <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} />
-          All day
-        </label>
-        <div style={{ flex: 1 }}>
-          <div style={labelBoldStyle}>End time*</div>
-          <TimeField value={endTime} onChange={setEndTime} sc={sc} isDark={isDark} disabled={allDay} ariaLabel="End time" />
-        </div>
+        {/* On mobile, "All day" drops below the time fields instead of
+            squeezing between them, and stays left-aligned. */}
+        {isMobile && (
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
+            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: palette.primary }} />
+            All day
+          </label>
+        )}
       </div>
 
       {/* Recurring */}
@@ -6811,7 +6949,15 @@ function AddReservationPanelContent() {
       </div>
       {/* Footer buttons — sticky bottom bar */}
       <div style={{ position: "sticky", bottom: -20, background: palette.surfacePrimary, borderTop: `1px solid ${palette.borderLight}`, padding: "12px 0", marginTop: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 5 }}>
-        <button onClick={handleCancelClick} style={secondaryBtnStyle}>Cancel</button>
+        {/* On mobile, Cancel is redundant with the panel's closing X, so its
+            slot is repurposed for Back. */}
+        {isMobile ? (
+          !isFirstSection ? (
+            <button onClick={goToPrevSection} style={{ ...secondaryBtnStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}><ChevronLeft size={14} /> Back</button>
+          ) : <div />
+        ) : (
+          <button onClick={handleCancelClick} style={secondaryBtnStyle}>Cancel</button>
+        )}
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             disabled={!isFormValid}
@@ -6835,7 +6981,7 @@ function AddReservationPanelContent() {
                 gap: "6px",
               }}
             >
-              Next: {nextSectionName} <ArrowRight size={14} />
+              {isMobile ? "Next" : `Next: ${nextSectionName}`} <ArrowRight size={14} />
             </button>
           )}
         </div>
@@ -8528,6 +8674,7 @@ function ResourcesView({
     // "Highlight my sessions" — same ring + dim treatment as EventBadge.
     const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
     const dimNotMine = highlightMySessions && !isMine;
+    const isPast = isSessionPast(event, clampedDay, currentMonth, currentYear);
 
     return (
       // Outer shell: handles absolute placement within the row
@@ -8564,7 +8711,7 @@ function ResourcesView({
             background: isHovered ? style.text : style.bg,
             border: `1px solid ${isHovered ? style.text : style.border}`,
             boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
-            opacity: dimNotMine ? 0.5 : 1,
+            opacity: isPast ? 0.5 : dimNotMine ? 0.5 : 1,
             color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
             fontSize: "11px",
             fontWeight: 600,
@@ -9089,6 +9236,7 @@ function WeeklyEventChip({
   statusVisibility,
   density = "comfortable",
   highlightMySessions = false,
+  isPast = false,
 }: {
   event: CalendarEvent;
   isSelected: boolean;
@@ -9101,6 +9249,9 @@ function WeeklyEventChip({
   statusVisibility?: ViewStatusVisibility;
   density?: ScheduleDensity;
   highlightMySessions?: boolean;
+  /** Whether this session's start time has already passed (see
+   *  `isSessionPast`) — dims the chip to 50% opacity. Still clickable. */
+  isPast?: boolean;
 }) {
   const style = colors[event.type] || colors.yoga;
   const isCompact = density === "compact";
@@ -9176,7 +9327,7 @@ function WeeklyEventChip({
           : `1px solid ${isSelected ? style.text : style.border}`,
         boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
         color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
-        opacity: dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
+        opacity: isPast ? 0.5 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
         padding: isCompact ? `3px ${padR}px 3px ${padL}px` : `5px ${padR}px 5px ${padL}px`,
         display: "flex",
         flexDirection: "column",
@@ -9278,7 +9429,16 @@ interface WeeklyViewProps {
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
-  onClickEvent: (event: CalendarEvent, day: number, e: React.MouseEvent) => void;
+  /** `dateOverride` carries the clicked cell's actual month/year — a week
+   *  can straddle two months, so the day number alone isn't enough to
+   *  know whether that occurrence is in the past, or to label the
+   *  Reservation Details panel with the right date. */
+  onClickEvent: (
+    event: CalendarEvent,
+    day: number,
+    e: React.MouseEvent,
+    dateOverride?: { month: number; year: number }
+  ) => void;
   /** `dateOverride` carries the hovered cell's actual month/year — a week
    *  can straddle two months, so the day number alone isn't enough to
    *  label the hover popover correctly. */
@@ -9411,7 +9571,12 @@ function WeeklyView({
           <WeeklyEventChip
             event={event}
             isSelected={event.id === hoveredEventId}
-            onClick={(e) => onClickEvent(event, date.getDate(), e)}
+            onClick={(e) =>
+              onClickEvent(event, date.getDate(), e, {
+                month: date.getMonth(),
+                year: date.getFullYear(),
+              })
+            }
             onHoverEnter={(e) =>
               onHoverEvent(event, date.getDate(), e, {
                 month: date.getMonth(),
@@ -9425,6 +9590,7 @@ function WeeklyView({
             statusVisibility={statusVisibility}
             density={density}
             highlightMySessions={highlightMySessions}
+            isPast={isSessionPast(event, date.getDate(), date.getMonth(), date.getFullYear())}
           />
         </div>
       ))}
@@ -9687,6 +9853,11 @@ interface DailyViewProps {
   events: CalendarEvent[];
   /** Day-of-month the list is showing, forwarded to onClickEvent. */
   day: number;
+  /** Month/year the displayed `day` belongs to — needed alongside `day`
+   *  to tell whether a session on it has already passed (see
+   *  `isSessionPast`). */
+  month: number;
+  year: number;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
@@ -9712,6 +9883,8 @@ interface DailyViewProps {
 function DailyView({
   events,
   day,
+  month,
+  year,
   sc,
   colors,
   isDark,
@@ -9813,6 +9986,7 @@ function DailyView({
        *  nothing and always shows both. */
       const renderSessionRow = (event: CalendarEvent, omitResourceKind?: "instructor" | "venue") => {
         const style = colors[event.type] || colors.yoga;
+        const isPast = isSessionPast(event, day, month, year);
         const hasCapacity = event.capacity > 0;
         const available = Math.max(0, event.capacity - event.booked);
         const isFull = hasCapacity && available === 0;
@@ -9866,6 +10040,12 @@ function DailyView({
           statusLabel = "Full";
           statusStyle = { ...statusStyle, background: sc.muted, color: sc.cellBg, cursor: "default", opacity: 0.6 };
         }
+        // A session that's already passed is never bookable, regardless
+        // of remaining capacity — takes precedence over Book/Waitlist/Full.
+        if (isPast && hasCapacity) {
+          statusLabel = "Passed";
+          statusStyle = { ...statusStyle, background: sc.muted, color: sc.cellBg, cursor: "default" };
+        }
 
         // Delete Mode styling mirrors EventBadge's convention: dashed red
         // for events a click will remove, dimmed for everything else.
@@ -9894,7 +10074,7 @@ function DailyView({
                 ? `3px solid ${mineRingColor}`
                 : "3px solid transparent",
               background: isDeletable ? (isDark ? "rgba(224,90,90,0.06)" : "rgba(212,24,64,0.04)") : "transparent",
-              opacity: dimNonDeletable ? 0.5 : dimNotMine ? 0.55 : 1,
+              opacity: isPast ? 0.5 : dimNonDeletable ? 0.5 : dimNotMine ? 0.55 : 1,
               cursor: "pointer",
             }}
           >
@@ -10424,7 +10604,7 @@ export function SchedulePage() {
   //     the panel-open path entirely
   // Outside Delete Mode, every click opens the details panel as usual.
   const handleClickEvent = useCallback(
-    (event: CalendarEvent, _day: number, e: React.MouseEvent) => {
+    (event: CalendarEvent, day: number, e: React.MouseEvent, dateOverride?: { month: number; year: number }) => {
       e.stopPropagation();
       setHoveredEvent(null);
       if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
@@ -10455,11 +10635,17 @@ export function SchedulePage() {
         return;
       }
       openPanel(
-        <ReservationDetailsPanelContent key={event.id} event={event} />,
+        <ReservationDetailsPanelContent
+          key={event.id}
+          event={event}
+          day={day}
+          month={dateOverride?.month ?? currentMonth}
+          year={dateOverride?.year ?? currentYear}
+        />,
         { size: "third", title: `Reservation Details: ${event.title}` }
       );
     },
-    [openPanel, deleteMode]
+    [openPanel, deleteMode, currentMonth, currentYear]
   );
 
   // "+X more" handler — opens a side panel listing all events for the day
@@ -10476,7 +10662,13 @@ export function SchedulePage() {
           events={dayEvents}
           onSelectEvent={(event) => {
             openPanel(
-              <ReservationDetailsPanelContent key={event.id} event={event} />,
+              <ReservationDetailsPanelContent
+                key={event.id}
+                event={event}
+                day={day}
+                month={currentMonth}
+                year={currentYear}
+              />,
               { size: "third", title: `Reservation Details: ${event.title}` }
             );
           }}
@@ -10534,7 +10726,14 @@ export function SchedulePage() {
     setHoveredEvent(null);
     isInsidePopoverRef.current = false;
     openPanel(
-      <ReservationDetailsPanelContent key={ev.id} event={ev} initialSection={section ?? "Details"} />,
+      <ReservationDetailsPanelContent
+        key={ev.id}
+        event={ev}
+        day={hoveredEvent.day}
+        month={hoveredEvent.month}
+        year={hoveredEvent.year}
+        initialSection={section ?? "Details"}
+      />,
       { size: "third", title: `Reservation Details: ${ev.title}` }
     );
   }, [hoveredEvent, openPanel]);
@@ -11737,6 +11936,8 @@ export function SchedulePage() {
           <DailyView
             events={filteredEvents[clampedDailyDay] ?? []}
             day={clampedDailyDay}
+            month={currentMonth}
+            year={currentYear}
             sc={sc}
             colors={colors}
             isDark={isDark}
@@ -11817,6 +12018,8 @@ export function SchedulePage() {
                   statusVisibility={registrationStatusPrefs.Monthly}
                   density={density}
                   highlightMySessions={highlightMySessions}
+                  month={currentMonth}
+                  year={currentYear}
                 />
               ))
             )}

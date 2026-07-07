@@ -122,3 +122,20 @@ body {
 [data-theme="dark"] .always-show-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #a1bdc6;
 }
+
+/* iOS Safari zooms the viewport on focus of any text input whose computed
+   font-size is under 16px. The app's design tokens default well below that
+   (--text-base is 13px), so on mobile widths we force every text-entry
+   control up to 16px regardless of inline styles set by individual
+   components. `!important` is required here because inline `style` props
+   (used pervasively across the app) otherwise win over stylesheet rules;
+   note native inline styles can never carry their own `!important`, so a
+   stylesheet declaration with `!important` always takes precedence. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+}
