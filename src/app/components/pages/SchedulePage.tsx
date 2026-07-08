@@ -5802,8 +5802,11 @@ function ReservationDetailsPanelContent({
         />
       </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* ── Availability + Edit Reservation + Book action ── */}
-      {event.capacity > 0 && (
+      {/* ── Availability + Edit Reservation + Book action ── hidden on the
+          Registered Clients tab; that tab is a client roster, not a
+          booking surface, so the status/edit/book bar doesn't belong
+          there (Book/Waitlist already jump to Registration from here). */}
+      {event.capacity > 0 && activeSection !== "Registered Clients" && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: "8px", background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", border: `1px solid ${palette.borderLight}` }}>
           <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, fontWeight: 500 }}>{available > 0 ? <><span style={{ fontWeight: 700, fontSize: "var(--text-base)", color: palette.primary }}>{available}</span> spot{available !== 1 ? "s" : ""} available</> : <span style={{ color: isDark ? "#ff6b6b" : "#d32f2f", fontWeight: 600 }}>Fully booked</span>}</span>
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -8699,31 +8702,39 @@ function CalendarFiltersContent({
       </div>
       <div>
         <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Payment status</div>
-        <select
-          value={filterPaymentStatus}
-          onChange={(e) => setFilterPaymentStatus(e.target.value as "" | "Owed" | "Paid")}
-          style={{
-            width: "100%",
-            padding: "6px 32px 6px 12px",
-            fontSize: "13px",
-            fontFamily: "var(--font-family)",
-            border: `1px solid ${palette.borderMedium}`,
-            borderRadius: "6px",
-            backgroundColor: palette.surfaceBg,
-            color: palette.textPrimary,
-            colorScheme: isDark ? "dark" : "light",
-            cursor: "pointer",
-            appearance: "none",
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='${encodeURIComponent(isDark ? "#a1bdc6" : "#475467")}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "right 12px center",
-            minHeight: "42px",
-          }}
-        >
-          <option value="">Any</option>
-          <option value="Owed">Overdue Balance</option>
-          <option value="Paid">Paid</option>
-        </select>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {([
+            // Reuses the Waitlisted pill's translucent red — same "red =
+            // needs attention" language as the Registrations row above —
+            // and the Empty pill's neutral gray for Paid.
+            { value: "Owed", label: "Overdue Balance", pillBg: isDark ? "rgba(224,90,90,0.22)" : "rgba(212,24,64,0.14)", pillBorder: isDark ? "#e05a5a" : "#d41840", pillText: isDark ? "#e05a5a" : "#d41840" },
+            { value: "Paid", label: "Paid", pillBg: isDark ? "rgba(255,255,255,0.08)" : "#f3f4f6", pillBorder: palette.borderMedium, pillText: sc.body },
+          ] as const).map(({ value, label, pillBg, pillBorder, pillText }) => {
+            const isActive = filterPaymentStatus === value;
+            return (
+              <button
+                key={value}
+                onClick={() => setFilterPaymentStatus(isActive ? "" : value)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  border: `1px solid ${isActive ? pillBorder : palette.borderMedium}`,
+                  background: isActive ? pillBg : "transparent",
+                  color: isActive ? pillText : sc.body,
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-family)",
+                  cursor: "pointer",
+                  lineHeight: 1.4,
+                  opacity: isActive ? 1 : 0.7,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </>
   );
