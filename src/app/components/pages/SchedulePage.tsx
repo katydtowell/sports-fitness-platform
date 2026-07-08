@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Plus,
   Search,
   SlidersHorizontal,
@@ -1597,7 +1598,10 @@ function ReservationDetailsPopover({
   onMouseLeave: () => void;
   // Optional section lets callers (e.g. the "Book A Client" action) land
   // directly on a specific tab instead of the default Details view.
-  onOpenDetails: (section?: string) => void;
+  // `options.filterOverdue` additionally pre-filters the Registered
+  // Clients grid to just overdue balances — used by the overdue badge
+  // below so clicking it both navigates and narrows the view in one step.
+  onOpenDetails: (section?: string, options?: { filterOverdue?: boolean }) => void;
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
@@ -1648,16 +1652,28 @@ function ReservationDetailsPopover({
   const dateStr = formatEventDate(day, month, year);
   const available = event.capacity - event.booked;
   const hasCapacity = event.capacity > 0;
+  const attendancePct = hasCapacity ? event.booked / event.capacity : 0;
   const isFull = hasCapacity && available <= 0;
-  // Balances owed — split the booked portion of the meter into a paid
-  // (green) segment and an owed (red) segment, and surface the owed-client
-  // count below "Available". When 0, the meter is purely green and the
-  // Overdue Balances line is hidden.
+  const isWaitlisted = isFull && !!event.waitlistEnabled;
+  const isNearlyFull = !isFull && hasCapacity && attendancePct >= 0.8;
+  // Meter fill reflects attendance status (green = available, yellow =
+  // nearly full, red = full, translucent red = waitlisted) — the same
+  // palette every other view's capacity indicator uses — rather than
+  // billing status. A green bar that actually meant "paid" read as
+  // confusing next to a green bar that means "plenty of open spots".
+  const meterColor = isWaitlisted
+    ? (isDark ? "rgba(224,90,90,0.55)" : "rgba(212,24,64,0.5)")
+    : isFull
+    ? EZ_RED
+    : isNearlyFull
+    ? "#FFE109"
+    : EZ_GREEN;
+  // Overdue balances now surface as their own clickable badge (opens
+  // straight to the Registered Clients tab) instead of tinting part of the
+  // meter red, since billing status and attendance status are two
+  // different signals that don't belong in the same bar.
   const owedCount = getOwedCount(event);
-  const paidPct = event.capacity > 0 ? ((event.booked - owedCount) / event.capacity) * 100 : 0;
-  const owedPct = event.capacity > 0 ? (owedCount / event.capacity) * 100 : 0;
-  // Theme-aware red: brighter on dark, deeper on light, so the meter
-  // segment reads against either backdrop without overpowering the green.
+  // Theme-aware red: brighter on dark, deeper on light.
   const owedColor = isDark ? "#e05a5a" : "#d41840";
 
   const iconStyle: CSSProperties = { opacity: 0.5, flexShrink: 0, width: "24px", height: "24px" };
@@ -1875,22 +1891,13 @@ function ReservationDetailsPopover({
                 display: "flex",
               }}
             >
-              {/* Paid (green) segment — sits at the meter's start. */}
-              {paidPct > 0 && (
+              {/* Single fill reflecting attendance status — green/yellow/red/
+                  waitlist, same as every other view's capacity indicator. */}
+              {attendancePct > 0 && (
                 <div
                   style={{
-                    width: `${paidPct}%`,
-                    background: sc.success,
-                  }}
-                />
-              )}
-              {/* Owed (red) segment — sits immediately to the right of paid,
-                  so the booked total is the sum of the two colored segments. */}
-              {owedPct > 0 && (
-                <div
-                  style={{
-                    width: `${owedPct}%`,
-                    background: owedColor,
+                    width: `${attendancePct * 100}%`,
+                    background: meterColor,
                   }}
                 />
               )}
@@ -1913,23 +1920,28 @@ function ReservationDetailsPopover({
               </span>
             </div>
             {owedCount > 0 && (
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <span style={{ flex: 1, fontSize: "12px", fontWeight: 500, color: sc.body }}>
-                  Overdue Balances
+              <button
+                onClick={() => onOpenDetails("Registered Clients", { filterOverdue: true })}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                  width: "100%",
+                  padding: "6px 10px",
+                  marginTop: "2px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.10)",
+                  cursor: "pointer",
+                  fontFamily: "var(--font-family)",
+                }}
+              >
+                <span style={{ fontSize: "12px", fontWeight: 600, color: owedColor }}>
+                  {owedCount} Overdue Balance{owedCount !== 1 ? "s" : ""}
                 </span>
-                <span
-                  style={{
-                    flex: 1,
-                    fontSize: "16px",
-                    fontWeight: 700,
-                    color: owedColor,
-                    textAlign: "right",
-                    letterSpacing: "-0.4px",
-                  }}
-                >
-                  {owedCount}
-                </span>
-              </div>
+                <ArrowRight size={12} style={{ color: owedColor, flexShrink: 0 }} />
+              </button>
             )}
           </div>
         )}
@@ -4518,35 +4530,41 @@ function SearchableMultiSelect({ options, selected, onChange, placeholder, palet
 // `paymentStatus` + `balance` (USD) drive the new "overdue balances" UI in the
 // hover popover capacity meter, the clients-list payment column, and the
 // calendar's Filters popover ("only events with overdue balances").
+// `age`/`phone`/`packageType`/`isMember` back the Registered Clients tab's
+// grid columns.
 type BookedClient = {
   name: string;
   status: "Booked" | "Waitlisted" | "Reserved";
   paymentStatus: "Paid" | "Owed";
   balance: number;
+  age: number;
+  phone: string;
+  packageType: string;
+  isMember: boolean;
 };
 const MOCK_BOOKED_CLIENTS: BookedClient[] = [
-  { name: "Emma Rodriguez",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "James Wilson",     status: "Booked",     paymentStatus: "Owed", balance: 35 },
-  { name: "Sophia Lee",       status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Liam Martinez",    status: "Booked",     paymentStatus: "Owed", balance: 25 },
-  { name: "Olivia Chen",      status: "Reserved",   paymentStatus: "Owed", balance: 50 },
-  { name: "Noah Thompson",    status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Ava Patel",        status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Mason Brown",      status: "Waitlisted", paymentStatus: "Paid", balance: 0 },
-  { name: "Isabella Garcia",  status: "Booked",     paymentStatus: "Owed", balance: 60 },
-  { name: "Ethan Davis",      status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Mia Johnson",      status: "Booked",     paymentStatus: "Owed", balance: 25 },
-  { name: "Lucas Anderson",   status: "Reserved",   paymentStatus: "Paid", balance: 0 },
-  { name: "Charlotte Taylor", status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Aiden Moore",      status: "Booked",     paymentStatus: "Owed", balance: 40 },
-  { name: "Amelia Jackson",   status: "Waitlisted", paymentStatus: "Paid", balance: 0 },
-  { name: "Harper White",     status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Elijah Harris",    status: "Booked",     paymentStatus: "Owed", balance: 25 },
-  { name: "Abigail Martin",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Benjamin Clark",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Emily Lewis",      status: "Booked",     paymentStatus: "Owed", balance: 15 },
-  { name: "Daniel Walker",    status: "Booked",     paymentStatus: "Paid", balance: 0 },
-  { name: "Elizabeth Hall",   status: "Booked",     paymentStatus: "Paid", balance: 0 },
+  { name: "Emma Rodriguez",   status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 34, phone: "(555) 201-4471", packageType: "Monthly Unlimited", isMember: true },
+  { name: "James Wilson",     status: "Booked",     paymentStatus: "Owed", balance: 35, age: 41, phone: "(555) 348-9021", packageType: "10-Class Pack",      isMember: false },
+  { name: "Sophia Lee",       status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 27, phone: "(555) 812-3390", packageType: "Annual Membership",  isMember: true },
+  { name: "Liam Martinez",    status: "Booked",     paymentStatus: "Owed", balance: 25, age: 22, phone: "(555) 675-2214", packageType: "Drop-in",            isMember: false },
+  { name: "Olivia Chen",      status: "Reserved",   paymentStatus: "Owed", balance: 50, age: 38, phone: "(555) 903-7765", packageType: "10-Class Pack",      isMember: false },
+  { name: "Noah Thompson",    status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 45, phone: "(555) 220-8814", packageType: "Monthly Unlimited",  isMember: true },
+  { name: "Ava Patel",        status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 31, phone: "(555) 447-1189", packageType: "Annual Membership",  isMember: true },
+  { name: "Mason Brown",      status: "Waitlisted", paymentStatus: "Paid", balance: 0,  age: 29, phone: "(555) 561-3302", packageType: "Drop-in",            isMember: false },
+  { name: "Isabella Garcia",  status: "Booked",     paymentStatus: "Owed", balance: 60, age: 24, phone: "(555) 738-4456", packageType: "10-Class Pack",      isMember: false },
+  { name: "Ethan Davis",      status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 52, phone: "(555) 894-2207", packageType: "Monthly Unlimited",  isMember: true },
+  { name: "Mia Johnson",      status: "Booked",     paymentStatus: "Owed", balance: 25, age: 19, phone: "(555) 302-6690", packageType: "Punch Card",         isMember: false },
+  { name: "Lucas Anderson",   status: "Reserved",   paymentStatus: "Paid", balance: 0,  age: 36, phone: "(555) 471-8823", packageType: "Annual Membership",  isMember: true },
+  { name: "Charlotte Taylor", status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 43, phone: "(555) 659-1147", packageType: "Monthly Unlimited",  isMember: true },
+  { name: "Aiden Moore",      status: "Booked",     paymentStatus: "Owed", balance: 40, age: 26, phone: "(555) 780-3325", packageType: "Punch Card",         isMember: false },
+  { name: "Amelia Jackson",   status: "Waitlisted", paymentStatus: "Paid", balance: 0,  age: 33, phone: "(555) 215-9908", packageType: "10-Class Pack",      isMember: false },
+  { name: "Harper White",     status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 48, phone: "(555) 926-4471", packageType: "Annual Membership",  isMember: true },
+  { name: "Elijah Harris",    status: "Booked",     paymentStatus: "Owed", balance: 25, age: 30, phone: "(555) 384-7712", packageType: "Drop-in",            isMember: false },
+  { name: "Abigail Martin",   status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 39, phone: "(555) 617-2298", packageType: "Monthly Unlimited",  isMember: true },
+  { name: "Benjamin Clark",   status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 55, phone: "(555) 843-9934", packageType: "Annual Membership",  isMember: true },
+  { name: "Emily Lewis",      status: "Booked",     paymentStatus: "Owed", balance: 15, age: 21, phone: "(555) 502-1176", packageType: "Punch Card",         isMember: false },
+  { name: "Daniel Walker",    status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 47, phone: "(555) 269-8845", packageType: "Monthly Unlimited",  isMember: true },
+  { name: "Elizabeth Hall",   status: "Booked",     paymentStatus: "Paid", balance: 0,  age: 28, phone: "(555) 731-5563", packageType: "10-Class Pack",      isMember: false },
 ];
 
 // All-paid subset, used when an event maps to the "no overdue balances"
@@ -4621,6 +4639,513 @@ function getStatusPillColors(isDark: boolean): Record<BookedClient["status"], { 
     Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.22)", text: isDark ? "#ffb432" : "#b07800" },
     Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.18)", text: isDark ? "#78a0c8" : "#2d6cab" },
   };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT — RegisteredClientsGrid
+   Content for the Reservation Details panel's "Registered Clients" tab —
+   the same roster the compact Details view used to show inline, but as a
+   full grid with more columns (age, phone, package type, membership) plus
+   billing/booking status badges. When the session itself is in a
+   Waitlisted status, a "Manage Waitlist" button narrows the grid to just
+   the waitlisted clients and adds priority controls — the order clients
+   will be offered a spot in as one opens up. Reordering is local-only
+   state (no backend here to persist it to).
+   ═══════════════════════════════════════════════════════════════════════ */
+function RegisteredClientsGrid({
+  event,
+  palette,
+  isDark,
+  initialOverdueFilter = false,
+}: {
+  event: CalendarEvent;
+  palette: ThemePalette;
+  isDark: boolean;
+  // Pre-applies the Owed billing filter — set when the hover popover's
+  // "N Overdue Balances" badge is what navigated the user to this tab.
+  initialOverdueFilter?: boolean;
+}) {
+  const bookedClients = getEventClients(event);
+  const statusColors = getStatusPillColors(isDark);
+  const balanceColorsFor = (client: BookedClient) =>
+    client.paymentStatus === "Owed"
+      ? { bg: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.14)", text: isDark ? "#e05a5a" : "#a31030" }
+      : { bg: isDark ? "rgba(161,189,198,0.10)" : "rgba(62,83,91,0.06)", text: isDark ? "#a1bdc6" : "#3e535b" };
+
+  // ── Search + filters (non-waitlist view only) ──────────────────────────
+  // Replaces the old pill-row filters with a text search and a single
+  // "Filters" popover — pills didn't scale to the extra dimensions this
+  // grid now needs (package, member, age range) on top of the original
+  // attendance/billing pair.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+  const [filters, setFilters] = useState<{
+    attendance: Record<BookedClient["status"], boolean>;
+    billing: Record<BookedClient["paymentStatus"], boolean>;
+    packages: string[];
+    member: Record<"yes" | "no", boolean>;
+    ageMin: string;
+    ageMax: string;
+  }>({
+    attendance: { Booked: false, Reserved: false, Waitlisted: false },
+    billing: { Paid: false, Owed: initialOverdueFilter },
+    packages: [],
+    member: { yes: false, no: false },
+    ageMin: "",
+    ageMax: "",
+  });
+
+  // Close the filter popover on outside click — same pattern used by every
+  // other popover in this file.
+  useEffect(() => {
+    if (!showFilters) return;
+    function handleClick(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setShowFilters(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showFilters]);
+
+  const packageOptions = Array.from(new Set(bookedClients.map((c) => c.packageType))).sort();
+
+  const isAttendanceAllActive = !filters.attendance.Booked && !filters.attendance.Reserved && !filters.attendance.Waitlisted;
+  const isBillingAllActive = !filters.billing.Paid && !filters.billing.Owed;
+  const isPackageAllActive = filters.packages.length === 0;
+  // No "All" option for member — neither pill selected simply means both
+  // are shown, same collapse-to-none convention used by attendance/billing.
+  const isMemberAllActive = !filters.member.yes && !filters.member.no;
+
+  const toggleAttendance = (status: BookedClient["status"]) => {
+    setFilters((prev) => ({ ...prev, attendance: { ...prev.attendance, [status]: !prev.attendance[status] } }));
+    setPage(1);
+  };
+  const toggleBilling = (key: BookedClient["paymentStatus"]) => {
+    setFilters((prev) => {
+      const next = { ...prev.billing, [key]: !prev.billing[key] };
+      return { ...prev, billing: next.Paid && next.Owed ? { Paid: false, Owed: false } : next };
+    });
+    setPage(1);
+  };
+  const setPackageFilter = (vals: string[]) => {
+    setFilters((prev) => ({ ...prev, packages: vals }));
+    setPage(1);
+  };
+  const toggleMember = (key: "yes" | "no") => {
+    setFilters((prev) => {
+      const next = { ...prev.member, [key]: !prev.member[key] };
+      return { ...prev, member: next.yes && next.no ? { yes: false, no: false } : next };
+    });
+    setPage(1);
+  };
+  const setAgeMin = (val: string) => {
+    setFilters((prev) => ({ ...prev, ageMin: val }));
+    setPage(1);
+  };
+  const setAgeMax = (val: string) => {
+    setFilters((prev) => ({ ...prev, ageMax: val }));
+    setPage(1);
+  };
+  const clearFilters = () => {
+    setFilters({
+      attendance: { Booked: false, Reserved: false, Waitlisted: false },
+      billing: { Paid: false, Owed: false },
+      packages: [],
+      member: { yes: false, no: false },
+      ageMin: "",
+      ageMax: "",
+    });
+    setPage(1);
+  };
+
+  const activeFilterCount =
+    (filters.attendance.Booked ? 1 : 0) +
+    (filters.attendance.Reserved ? 1 : 0) +
+    (filters.attendance.Waitlisted ? 1 : 0) +
+    (filters.billing.Paid ? 1 : 0) +
+    (filters.billing.Owed ? 1 : 0) +
+    filters.packages.length +
+    (filters.member.yes ? 1 : 0) +
+    (filters.member.no ? 1 : 0) +
+    (filters.ageMin !== "" ? 1 : 0) +
+    (filters.ageMax !== "" ? 1 : 0);
+
+  // Search matches against every visible data point for a client, not just
+  // name/phone — e.g. "yoga" (package), "owed", "42" (age), or "member" all
+  // work as expected.
+  const searchNorm = searchQuery.trim().toLowerCase();
+  const clientSearchFields = (c: BookedClient): string[] => [
+    c.name,
+    c.phone,
+    c.packageType,
+    c.status,
+    c.paymentStatus,
+    c.paymentStatus === "Owed" ? "overdue" : "paid",
+    String(c.age),
+    c.isMember ? "member" : "non-member",
+    c.paymentStatus === "Owed" ? `$${c.balance}` : "",
+  ];
+  const filteredClients = bookedClients.filter((c) => {
+    const attendanceOk = isAttendanceAllActive || filters.attendance[c.status];
+    const billingOk = isBillingAllActive || filters.billing[c.paymentStatus];
+    const packageOk = isPackageAllActive || filters.packages.includes(c.packageType);
+    const memberOk = isMemberAllActive || (filters.member.yes && c.isMember) || (filters.member.no && !c.isMember);
+    const minAge = filters.ageMin === "" ? null : Number(filters.ageMin);
+    const maxAge = filters.ageMax === "" ? null : Number(filters.ageMax);
+    const ageOk = (minAge === null || c.age >= minAge) && (maxAge === null || c.age <= maxAge);
+    const searchOk = !searchNorm || clientSearchFields(c).some((f) => f.toLowerCase().includes(searchNorm));
+    return attendanceOk && billingOk && packageOk && memberOk && ageOk && searchOk;
+  });
+
+  // ── Pagination (non-waitlist view only) — 10 rows per page. Reset to
+  // page 1 happens alongside every filter/search change above; clamping
+  // here also guards the case where the active page becomes empty after a
+  // filter shrinks the result set.
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const pagedClients = filteredClients.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
+
+  // ── Waitlist management ──────────────────────────────────────────────
+  const waitlistedClients = bookedClients.filter((c) => c.status === "Waitlisted");
+  // A session only actually carries a Waitlisted registration status once
+  // it's full and waitlisting is turned on — same rule used everywhere
+  // else the attendance status is computed (registrationStatusCategoryOf).
+  const isFull = event.capacity > 0 && event.booked >= event.capacity;
+  const isWaitlistedStatus = isFull && !!event.waitlistEnabled;
+  const [manageWaitlist, setManageWaitlist] = useState(false);
+  // Priority order — the sequence waitlisted clients will be offered an
+  // opening in. Initialized from the roster's natural order (which
+  // doubles as "who waitlisted first" in the mock data); reordering only
+  // lives in this panel session since there's no backend to persist it to.
+  const [priorityOrder, setPriorityOrder] = useState<string[]>(() => waitlistedClients.map((c) => c.name));
+  const orderedWaitlist = priorityOrder
+    .map((name) => waitlistedClients.find((c) => c.name === name))
+    .filter((c): c is BookedClient => c !== undefined);
+  const moveInPriority = (index: number, direction: -1 | 1) => {
+    setPriorityOrder((prev) => {
+      const next = [...prev];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const rowsToShow = manageWaitlist ? orderedWaitlist : pagedClients;
+
+  const thStyle: CSSProperties = {
+    textAlign: "left",
+    padding: "8px 10px",
+    fontSize: "10px",
+    fontWeight: 700,
+    letterSpacing: "0.05em",
+    textTransform: "uppercase",
+    color: palette.textTertiary,
+    fontFamily: "var(--font-family)",
+    borderBottom: `1px solid ${palette.borderLight}`,
+    whiteSpace: "nowrap",
+    background: isDark ? "#1f292d" : "#f3f6f8",
+  };
+  const tdStyle: CSSProperties = {
+    padding: "8px 10px",
+    fontSize: "var(--text-sm)",
+    fontFamily: "var(--font-family)",
+    color: palette.textPrimary,
+    borderBottom: `1px solid ${palette.borderLight}`,
+    whiteSpace: "nowrap",
+  };
+  const pillStyle = (bg: string, text: string): CSSProperties => ({
+    display: "inline-block",
+    fontSize: "10px",
+    fontWeight: 600,
+    fontFamily: "var(--font-family)",
+    padding: "2px 8px",
+    borderRadius: "10px",
+    background: bg,
+    color: text,
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <Users size={14} style={{ opacity: 0.5, color: palette.textTertiary }} />
+          <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {manageWaitlist ? `Waitlist (${orderedWaitlist.length})` : `Registered Clients (${bookedClients.length})`}
+          </span>
+        </div>
+        {isWaitlistedStatus && (
+          <button
+            onClick={() => setManageWaitlist((v) => !v)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "6px 12px",
+              borderRadius: "6px",
+              border: `1px solid ${manageWaitlist ? palette.primary : palette.borderMedium}`,
+              background: manageWaitlist ? `${palette.primary}18` : "transparent",
+              color: manageWaitlist ? palette.primary : palette.textPrimary,
+              fontSize: "var(--text-sm)",
+              fontWeight: 600,
+              fontFamily: "var(--font-family)",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <ArrowUpDown size={13} /> {manageWaitlist ? "All Clients" : "Manage Waitlist"}
+          </button>
+        )}
+      </div>
+
+      {manageWaitlist ? (
+        <div style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", color: palette.textTertiary, marginTop: "-6px" }}>
+          Reorder clients to change who gets offered the next open spot.
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+            <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: palette.textTertiary, pointerEvents: "none" }} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+              placeholder="Search clients"
+              style={{ width: "100%", padding: "7px 10px 7px 30px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: palette.surfaceBg, color: palette.textPrimary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", outline: "none" }}
+            />
+          </div>
+          <div ref={filterRef} style={{ position: "relative", flexShrink: 0 }}>
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              aria-expanded={showFilters}
+              aria-label={activeFilterCount > 0 ? `Filters (${activeFilterCount} active)` : "Filters"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 12px",
+                borderRadius: "6px",
+                border: `1px solid ${activeFilterCount > 0 ? palette.primary : palette.borderMedium}`,
+                background: activeFilterCount > 0 ? `${palette.primary}18` : "transparent",
+                color: activeFilterCount > 0 ? palette.primary : palette.textPrimary,
+                fontSize: "var(--text-sm)",
+                fontWeight: 600,
+                fontFamily: "var(--font-family)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <SlidersHorizontal size={13} /> Filters
+              {activeFilterCount > 0 && (
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "16px", height: "16px", padding: "0 4px", borderRadius: "8px", background: palette.primary, color: isDark ? "#0a0e0f" : "#101828", fontSize: "10px", fontWeight: 700, lineHeight: 1 }}>
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+            {showFilters && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  width: "260px",
+                  background: palette.surfacePrimary,
+                  border: `1px solid ${palette.borderMedium}`,
+                  borderRadius: "10px",
+                  boxShadow: `0px 12px 24px -6px ${palette.shadow}, 0px 4px 6px 0px ${palette.shadow}`,
+                  padding: "14px",
+                  zIndex: 50,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "14px",
+                  fontFamily: "var(--font-family)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: palette.textPrimary }}>Filters</span>
+                  {activeFilterCount > 0 && (
+                    <button onClick={clearFilters} style={{ background: "none", border: "none", padding: 0, fontSize: "11px", fontWeight: 600, color: palette.primary, cursor: "pointer", fontFamily: "var(--font-family)" }}>
+                      Clear all
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: palette.textTertiary, marginBottom: "6px" }}>Attendance status</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    {(["Booked", "Reserved", "Waitlisted"] as const).map((status) => (
+                      <label key={status} style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                        <input type="checkbox" checked={filters.attendance[status]} onChange={() => toggleAttendance(status)} style={{ accentColor: palette.primary, width: "13px", height: "13px", cursor: "pointer" }} />
+                        <span style={{ fontSize: "var(--text-sm)", color: palette.textPrimary }}>{status}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: palette.textTertiary, marginBottom: "6px" }}>Billing status</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {(["Paid", "Owed"] as const).map((key) => {
+                      const isActive = filters.billing[key];
+                      const accent = key === "Owed"
+                        ? { bg: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.14)", text: isDark ? "#e05a5a" : "#a31030" }
+                        : { bg: isDark ? "rgba(161,189,198,0.12)" : "rgba(62,83,91,0.08)", text: isDark ? "#a1bdc6" : "#3e535b" };
+                      const label = key === "Owed" ? "Overdue" : key;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => toggleBilling(key)}
+                          style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 10px", borderRadius: "12px", border: `1px solid ${isActive ? accent.text : palette.borderMedium}`, background: isActive ? accent.bg : "transparent", color: isActive ? accent.text : palette.textTertiary, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}
+                        >
+                          <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: isActive ? accent.text : palette.textTertiary, flexShrink: 0 }} />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {packageOptions.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: palette.textTertiary, marginBottom: "6px" }}>Package</div>
+                    <SearchableMultiSelect
+                      options={packageOptions}
+                      selected={filters.packages}
+                      onChange={setPackageFilter}
+                      placeholder="All packages"
+                      palette={palette}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: palette.textTertiary, marginBottom: "6px" }}>Member</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {(["yes", "no"] as const).map((key) => {
+                      const isActive = filters.member[key];
+                      const label = key === "yes" ? "Member" : "Non-member";
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => toggleMember(key)}
+                          style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 10px", borderRadius: "12px", border: `1px solid ${isActive ? palette.primary : palette.borderMedium}`, background: isActive ? `${palette.primary}18` : "transparent", color: isActive ? palette.primary : palette.textTertiary, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer" }}
+                        >
+                          <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: isActive ? palette.primary : palette.textTertiary, flexShrink: 0 }} />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: palette.textTertiary, marginBottom: "6px" }}>Age range</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <input type="number" min={0} placeholder="Min" value={filters.ageMin} onChange={(e) => setAgeMin(e.target.value)} style={{ width: "100%", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: palette.surfaceBg, color: palette.textPrimary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", outline: "none" }} />
+                    <span style={{ color: palette.textTertiary, fontSize: "var(--text-sm)" }}>–</span>
+                    <input type="number" min={0} placeholder="Max" value={filters.ageMax} onChange={(e) => setAgeMax(e.target.value)} style={{ width: "100%", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: palette.surfaceBg, color: palette.textPrimary, fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", outline: "none" }} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="always-show-scrollbar" style={{ overflowX: "auto", border: `1px solid ${palette.borderLight}`, borderRadius: "8px" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: manageWaitlist ? "620px" : "680px" }}>
+          <thead>
+            <tr>
+              {manageWaitlist && <th style={{ ...thStyle, width: "70px" }}>Priority</th>}
+              <th style={{ ...thStyle, minWidth: "140px" }}>Name</th>
+              {!manageWaitlist && <th style={thStyle}>Status</th>}
+              <th style={thStyle}>Billing</th>
+              <th style={thStyle}>Age</th>
+              <th style={thStyle}>Phone</th>
+              <th style={thStyle}>Package</th>
+              <th style={thStyle}>Member</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rowsToShow.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ ...tdStyle, textAlign: "center", color: palette.textTertiary, whiteSpace: "normal" }}>
+                  {manageWaitlist ? "No clients on the waitlist." : "No clients match the selected filters."}
+                </td>
+              </tr>
+            ) : rowsToShow.map((client, i) => {
+              const balanceColors = balanceColorsFor(client);
+              return (
+                <tr key={client.name}>
+                  {manageWaitlist && (
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontWeight: 700, color: palette.textTertiary, fontSize: "12px", minWidth: "14px" }}>{i + 1}</span>
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <button onClick={() => moveInPriority(i, -1)} disabled={i === 0} aria-label={`Move ${client.name} up in priority`} style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.3 : 1, color: palette.textTertiary, lineHeight: 0 }}>
+                            <ChevronUp size={13} />
+                          </button>
+                          <button onClick={() => moveInPriority(i, 1)} disabled={i === rowsToShow.length - 1} aria-label={`Move ${client.name} down in priority`} style={{ background: "none", border: "none", padding: 0, cursor: i === rowsToShow.length - 1 ? "default" : "pointer", opacity: i === rowsToShow.length - 1 ? 0.3 : 1, color: palette.textTertiary, lineHeight: 0 }}>
+                            <ChevronDown size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  )}
+                  <td style={tdStyle}>{client.name}</td>
+                  {!manageWaitlist && (
+                    <td style={tdStyle}>
+                      <span style={pillStyle(statusColors[client.status].bg, statusColors[client.status].text)}>{client.status}</span>
+                    </td>
+                  )}
+                  <td style={tdStyle}>
+                    <span style={pillStyle(balanceColors.bg, balanceColors.text)}>
+                      {client.paymentStatus === "Owed" ? `$${client.balance}` : "Paid"}
+                    </span>
+                  </td>
+                  <td style={tdStyle}>{client.age}</td>
+                  <td style={tdStyle}>{client.phone}</td>
+                  <td style={tdStyle}>{client.packageType}</td>
+                  <td style={tdStyle}>{client.isMember ? "Yes" : "No"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {!manageWaitlist && filteredClients.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+          <span style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", color: palette.textTertiary }}>
+            Showing {(clampedPage - 1) * PAGE_SIZE + 1}–{Math.min(clampedPage * PAGE_SIZE, filteredClients.length)} of {filteredClients.length}
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={clampedPage <= 1}
+              aria-label="Previous page"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "26px", height: "26px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: "transparent", color: palette.textPrimary, opacity: clampedPage <= 1 ? 0.4 : 1, cursor: clampedPage <= 1 ? "default" : "pointer" }}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", color: palette.textTertiary, minWidth: "64px", textAlign: "center" }}>
+              Page {clampedPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={clampedPage >= totalPages}
+              aria-label="Next page"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "26px", height: "26px", borderRadius: "6px", border: `1px solid ${palette.borderMedium}`, background: "transparent", color: palette.textPrimary, opacity: clampedPage >= totalPages ? 0.4 : 1, cursor: clampedPage >= totalPages ? "default" : "pointer" }}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -4841,6 +5366,7 @@ function ReservationDetailsPanelContent({
   event,
   initialEditing = false,
   initialSection = "Details",
+  initialOverdueFilter = false,
   day,
   month,
   year,
@@ -4854,6 +5380,10 @@ function ReservationDetailsPanelContent({
   // hover popover's "Book A Client" / "Waitlist a Client" action so the
   // user lands directly on Registration instead of Details.
   initialSection?: string;
+  // Pre-applies the Owed billing filter in the Registered Clients tab —
+  // set when the hover popover's "N Overdue Balances" badge is what sent
+  // the user here, so they land on the already-filtered view.
+  initialOverdueFilter?: boolean;
   // The specific calendar date this occurrence was opened from — lets the
   // panel tell whether the session has already passed (see
   // `isSessionPast`) and disable booking accordingly. Omitted by a couple
@@ -5040,67 +5570,12 @@ function ReservationDetailsPanelContent({
 
   const bookedPct = event.capacity > 0 ? (event.booked / event.capacity) * 100 : 0;
   const available = event.capacity - event.booked;
-  // Pulled via getEventClients so the panel matches the hover popover's
-  // balance scenario for this event (some events are all-paid, others
-  // show the mixed roster).
+  // Simplified at-a-glance roster shown on the Details tab — no
+  // filters/search/pagination, those live on the dedicated Registered
+  // Clients tab (RegisteredClientsGrid). Pulled via getEventClients so
+  // this matches the hover popover's balance scenario for this event.
   const bookedClients = getEventClients(event);
-
-  // Pill backgrounds. Light-mode tints have been pushed brighter so the
-  // status colour reads at a glance against the (also light)
-  // `surfaceSecondary` list background. Amber needs slightly more
-  // saturation than the cooler greens/blues to feel equally punchy.
-  const statusColors: Record<string, { bg: string; text: string }> = {
-    // Light-mode bg alphas were dropped from 0.38–0.45 down to 0.18–0.22 so
-    // the pills sit lightly on the new lighter list background instead of
-    // overpowering it. Light-mode text was retoned from muted earth shades
-    // (#076a52 / #8a5e0a / #385f8c) to deeper jewel cousins of the dark-mode
-    // values — same hue family as the brand's #00c4a0 / #ffb432 / #78a0c8,
-    // just darkened enough to keep WCAG-acceptable contrast on the lighter
-    // pill backgrounds. Dark mode is unchanged.
-    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.18)", text: isDark ? "#00c4a0" : "#00876c" },
-    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.22)", text: isDark ? "#ffb432" : "#b07800" },
-    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.18)", text: isDark ? "#78a0c8" : "#2d6cab" },
-  };
-
-  // Filter toggles for registered clients — two independent dimensions:
-  // status (Booked/Reserved/Waitlisted) and payment (Paid/Owed). Each
-  // dimension is "All" when none of its toggles are active. Selecting all
-  // toggles in a dimension collapses back to "All" (cleared) so the user
-  // doesn't end up in a redundant "every status" state.
-  const [clientFilters, setClientFilters] = useState<Record<string, boolean>>({
-    Booked: false, Reserved: false, Waitlisted: false,
-  });
-  const [paymentFilters, setPaymentFilters] = useState<Record<string, boolean>>({
-    Paid: false, Owed: false,
-  });
-  const isStatusAllActive = !clientFilters.Booked && !clientFilters.Reserved && !clientFilters.Waitlisted;
-  const isPaymentAllActive = !paymentFilters.Paid && !paymentFilters.Owed;
-  const isAllActive = isStatusAllActive && isPaymentAllActive;
-  const toggleFilter = (status: string) =>
-    setClientFilters((prev) => {
-      const next = { ...prev, [status]: !prev[status] };
-      if (next.Booked && next.Reserved && next.Waitlisted) {
-        return { Booked: false, Reserved: false, Waitlisted: false };
-      }
-      return next;
-    });
-  const togglePaymentFilter = (key: string) =>
-    setPaymentFilters((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      if (next.Paid && next.Owed) {
-        return { Paid: false, Owed: false };
-      }
-      return next;
-    });
-  const toggleAll = () => {
-    setClientFilters({ Booked: false, Reserved: false, Waitlisted: false });
-    setPaymentFilters({ Paid: false, Owed: false });
-  };
-  const filteredClients = bookedClients.filter((c) => {
-    const statusOk = isStatusAllActive || clientFilters[c.status];
-    const paymentOk = isPaymentAllActive || paymentFilters[c.paymentStatus];
-    return statusOk && paymentOk;
-  });
+  const registeredStatusColors = getStatusPillColors(isDark);
 
   // ─── Edit mode renders the full form (same as before) ───
   if (isEditing) {
@@ -5393,67 +5868,50 @@ function ReservationDetailsPanelContent({
         </div>
       )}
 
-      {/* ── Registered clients list ── */}
+      {/* ── Registered Clients tab ── the full grid (name, status, billing,
+          age, phone, package, member) plus waitlist priority management —
+          replaces the old always-visible inline roster now that section
+          switching actually gates content. */}
+      {activeSection === "Registered Clients" && (
+        <RegisteredClientsGrid event={event} palette={palette} isDark={isDark} initialOverdueFilter={initialOverdueFilter} />
+      )}
+
+      {/* ── Details tab (and fallback for Registration/Linked/History,
+          which don't yet have dedicated content of their own) ── */}
+      {activeSection !== "Registered Clients" && (
+        <>
+      {/* ── Registered clients — simplified at-a-glance roster. No
+          filters/search/pagination here; that's what the dedicated
+          Registered Clients tab (RegisteredClientsGrid) is for. This is
+          just a quick "who's on this session" summary, with a link over
+          to the full tab. */}
       {bookedClients.length > 0 && (
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
-            <Users size={14} style={{ opacity: 0.5, color: palette.textTertiary }} />
-            <span style={{ flex: 1, fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>Registered Clients ({bookedClients.length})</span>
-          </div>
-          {/* Filter toggles — single wrap row across both filter axes
-              (status + payment). flex-wrap lets pills flow to the next
-              visual line if the panel is narrow, but they stay one
-              contiguous group. */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "14px" }}>
-            <button onClick={toggleAll} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${isAllActive ? palette.textPrimary : palette.borderMedium}`, background: isAllActive ? (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : "transparent", color: isAllActive ? palette.textPrimary : palette.textTertiary, fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isAllActive ? 1 : 0.5, transition: "all 0.15s ease", lineHeight: "16px" }}>
-              All ({bookedClients.length})
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <Users size={14} style={{ opacity: 0.5, color: palette.textTertiary }} />
+              <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>Registered Clients ({bookedClients.length})</span>
+            </div>
+            <button
+              onClick={() => setActiveSection("Registered Clients")}
+              style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: "none", border: "none", padding: 0, fontSize: "var(--text-xs)", fontWeight: 600, color: palette.primary, cursor: "pointer", fontFamily: "var(--font-family)" }}
+            >
+              View all <ArrowRight size={11} />
             </button>
-            {(["Booked", "Reserved", "Waitlisted"] as const).map((status) => {
-              const sc = statusColors[status];
-              const isActive = clientFilters[status];
-              const count = bookedClients.filter((c) => c.status === status).length;
-              return (
-                <button key={status} onClick={() => toggleFilter(status)} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${isActive ? sc.text : palette.borderMedium}`, background: isActive ? sc.bg : "transparent", color: isActive ? sc.text : palette.textTertiary, fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isActive ? 1 : 0.5, transition: "all 0.15s ease", lineHeight: "16px" }}>
-                  <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: isActive ? sc.text : palette.textTertiary, flexShrink: 0 }} />
-                  {status} ({count})
-                </button>
-              );
-            })}
-            {/* Payment-status pills — same shape, but Owed uses red and Paid
-                a muted neutral so they're clearly a different filter axis. */}
-            {(["Paid", "Owed"] as const).map((key) => {
-              const isActive = paymentFilters[key];
-              const count = bookedClients.filter((c) => c.paymentStatus === key).length;
-              const accent = key === "Owed"
-                ? { bg: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.14)", text: isDark ? "#e05a5a" : "#a31030" }
-                : { bg: isDark ? "rgba(161,189,198,0.12)" : "rgba(62,83,91,0.08)",  text: isDark ? "#a1bdc6" : "#3e535b" };
-              // "Owed" maps to a friendlier "Overdue" in the UI; the
-              // internal filter key + data model stay "Owed" so existing
-              // logic and pill colors don't have to fan out.
-              const label = key === "Owed" ? "Overdue" : key;
-              return (
-                <button key={key} onClick={() => togglePaymentFilter(key)} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${isActive ? accent.text : palette.borderMedium}`, background: isActive ? accent.bg : "transparent", color: isActive ? accent.text : palette.textTertiary, fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", cursor: "pointer", opacity: isActive ? 1 : 0.5, transition: "all 0.15s ease", lineHeight: "16px" }}>
-                  <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: isActive ? accent.text : palette.textTertiary, flexShrink: 0 }} />
-                  {label} ({count})
-                </button>
-              );
-            })}
           </div>
           <div className="always-show-scrollbar" style={{ maxHeight: "200px", border: `1px solid ${palette.borderLight}`, borderRadius: "8px", background: isDark ? "#1f292d" : "#f3f6f8" }}>
-            {filteredClients.length === 0 ? (
-              <div style={{ padding: "16px 12px", textAlign: "center", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textTertiary, opacity: 0.6 }}>No clients match the selected filters</div>
-            ) : filteredClients.map((client, i) => {
-              const sc = statusColors[client.status] || statusColors.Booked;
+            {bookedClients.map((client, i) => {
+              const sc = registeredStatusColors[client.status] || registeredStatusColors.Booked;
               const isOwed = client.paymentStatus === "Owed";
               const balanceColors = isOwed
                 ? { bg: isDark ? "rgba(224,90,90,0.15)" : "rgba(212,24,64,0.14)", text: isDark ? "#e05a5a" : "#a31030" }
-                : { bg: isDark ? "rgba(161,189,198,0.10)" : "rgba(62,83,91,0.06)",  text: isDark ? "#a1bdc6" : "#3e535b" };
+                : { bg: isDark ? "rgba(161,189,198,0.10)" : "rgba(62,83,91,0.06)", text: isDark ? "#a1bdc6" : "#3e535b" };
               return (
                 // 3-column grid: name | payment | status. Each pill is
                 // left-aligned within its column (justifySelf:start) so the
                 // payment column reads as a true middle column rather than
                 // floating right next to the status pill on the right edge.
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 90px 100px", gap: "8px", alignItems: "center", padding: "8px 12px", borderBottom: i < filteredClients.length - 1 ? `1px solid ${palette.borderLight}` : "none" }}>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 90px 100px", gap: "8px", alignItems: "center", padding: "8px 12px", borderBottom: i < bookedClients.length - 1 ? `1px solid ${palette.borderLight}` : "none" }}>
                   <span style={{ fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client.name}</span>
                   <span style={{ justifySelf: "start", fontSize: "10px", fontWeight: 600, fontFamily: "var(--font-family)", padding: "2px 8px", borderRadius: "10px", background: balanceColors.bg, color: balanceColors.text }}>
                     {isOwed ? `$${client.balance}` : "Paid"}
@@ -5582,6 +6040,8 @@ function ReservationDetailsPanelContent({
         )}
         <div><span style={detailLabel}>Scheduled on</span><div style={{ ...detailValue, marginTop: "2px" }}>02/26/2021</div></div>
       </div>
+        </>
+      )}
 
       </div>
       {/* Footer — sticky bottom bar */}
@@ -10916,7 +11376,7 @@ export function SchedulePage() {
     setHoveredEvent(null);
   }, []);
 
-  const handleOpenDetailsFromPopover = useCallback((section?: string) => {
+  const handleOpenDetailsFromPopover = useCallback((section?: string, options?: { filterOverdue?: boolean }) => {
     if (!hoveredEvent) return;
     const ev = hoveredEvent.event;
     setHoveredEvent(null);
@@ -10929,6 +11389,7 @@ export function SchedulePage() {
         month={hoveredEvent.month}
         year={hoveredEvent.year}
         initialSection={section ?? "Details"}
+        initialOverdueFilter={!!options?.filterOverdue}
       />,
       { size: "third", title: `Reservation Details: ${ev.title}` }
     );
