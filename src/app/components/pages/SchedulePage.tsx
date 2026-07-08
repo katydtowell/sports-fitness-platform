@@ -4016,46 +4016,100 @@ function MobileScheduleView({
 
       {/* Filters drawer — same content as the desktop popover. The
           colored Reservation Types chips inside double as the legend
-          on mobile, so there's no separate Info button on this view. */}
+          on mobile, so there's no separate Info button on this view.
+          Full-screen overlay (not inline content that pushes the schedule
+          down) — matches SidePanel's mobile treatment: fixed between the
+          TopNav (44px) and MobileUtilityBar (52px), with its own closing X
+          since it now fully covers the schedule underneath. */}
       {showFilter && (
         <div
           style={{
-            padding: "16px",
+            position: "fixed",
+            top: 44,
+            left: 0,
+            right: 0,
+            bottom: 52,
+            zIndex: 95,
             background: sc.cellBg,
-            borderBottom: `1px solid ${sc.border}`,
             display: "flex",
             flexDirection: "column",
-            gap: "16px",
             fontFamily: "var(--font-family)",
           }}
         >
-          <CalendarFiltersContent
-            filterStartDate={filterStartDate}
-            setFilterStartDate={setFilterStartDate}
-            filterEndDate={filterEndDate}
-            setFilterEndDate={setFilterEndDate}
-            filterStartTime={filterStartTime}
-            setFilterStartTime={setFilterStartTime}
-            filterEndTime={filterEndTime}
-            setFilterEndTime={setFilterEndTime}
-            filterVenues={filterVenues}
-            setFilterVenues={setFilterVenues}
-            filterInstructors={filterInstructors}
-            setFilterInstructors={setFilterInstructors}
-            filterTypes={filterTypes}
-            setFilterTypes={setFilterTypes}
-            filterPaymentStatus={filterPaymentStatus}
-            setFilterPaymentStatus={setFilterPaymentStatus}
-            filterRegistrations={filterRegistrations}
-            setFilterRegistrations={setFilterRegistrations}
-            activeFilterCount={activeFilterCount}
-            clearAllFilters={clearAllFilters}
-            palette={palette}
-            isDark={isDark}
-            sc={sc}
-            colors={colors}
-            mobileLayout
-          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "16px",
+              borderBottom: `1px solid ${sc.border}`,
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: sc.heading }}>Filters</span>
+            <button
+              onClick={() => setShowFilter(false)}
+              aria-label="Close filters"
+              style={{
+                background: sc.controlBg,
+                border: `1px solid ${sc.border}`,
+                borderRadius: "6px",
+                color: sc.muted,
+                width: "30px",
+                height: "30px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+          >
+            <CalendarFiltersContent
+              filterStartDate={filterStartDate}
+              setFilterStartDate={setFilterStartDate}
+              filterEndDate={filterEndDate}
+              setFilterEndDate={setFilterEndDate}
+              filterStartTime={filterStartTime}
+              setFilterStartTime={setFilterStartTime}
+              filterEndTime={filterEndTime}
+              setFilterEndTime={setFilterEndTime}
+              filterVenues={filterVenues}
+              setFilterVenues={setFilterVenues}
+              filterInstructors={filterInstructors}
+              setFilterInstructors={setFilterInstructors}
+              filterTypes={filterTypes}
+              setFilterTypes={setFilterTypes}
+              filterPaymentStatus={filterPaymentStatus}
+              setFilterPaymentStatus={setFilterPaymentStatus}
+              filterRegistrations={filterRegistrations}
+              setFilterRegistrations={setFilterRegistrations}
+              activeFilterCount={activeFilterCount}
+              clearAllFilters={clearAllFilters}
+              palette={palette}
+              isDark={isDark}
+              sc={sc}
+              colors={colors}
+              mobileLayout
+              dateFilterDisabledMessage={
+                selectedEnd
+                  ? undefined
+                  : "You're viewing a single date. Turn on Date range above the schedule to filter by a range of dates."
+              }
+            />
+          </div>
         </div>
       )}
 
@@ -7149,6 +7203,10 @@ interface UpcomingTodayPanelProps {
   setKeepMyFilters: (v: boolean) => void;
   highlightMySessions: boolean;
   setHighlightMySessions: (v: boolean) => void;
+  /** Forwarded straight to CalendarFiltersContent's date-range section —
+   *  set by the parent when Daily view is showing a single specific date
+   *  rather than a range (see that prop's doc comment for why). */
+  dateFilterDisabledMessage?: string;
 }
 
 function UpcomingTodayPanel({
@@ -7168,6 +7226,7 @@ function UpcomingTodayPanel({
   density, setDensity,
   keepMyFilters, setKeepMyFilters,
   highlightMySessions, setHighlightMySessions,
+  dateFilterDisabledMessage,
 }: UpcomingTodayPanelProps) {
   const today = new Date();
   const dateLabel = today.toLocaleDateString("en-US", {
@@ -7627,6 +7686,7 @@ function UpcomingTodayPanel({
                 hideResourceFilters
                 hideHeader
                 inlineClearAll={nonResourceFilterCount > 0}
+                dateFilterDisabledMessage={dateFilterDisabledMessage}
               />
             </div>
           )}
@@ -7923,6 +7983,13 @@ interface CalendarFiltersContentProps {
   /** When true, a "Clear all" link is rendered inline with the first
    *  visible section label (matches the Resources tab pattern). */
   inlineClearAll?: boolean;
+  /** When set, the Date range section renders disabled with this message
+   *  instead of its normal start/end inputs — used when the calendar
+   *  (Daily view on desktop, the agenda on mobile) is already locked to a
+   *  single specific date, since a separate date-range filter doesn't mean
+   *  anything in that state. Leave unset for views where date filtering is
+   *  always independent of calendar navigation (Monthly/Weekly/Resources). */
+  dateFilterDisabledMessage?: string;
 }
 
 function CalendarFiltersContent({
@@ -7942,6 +8009,7 @@ function CalendarFiltersContent({
   hideResourceFilters = false,
   hideHeader = false,
   inlineClearAll = false,
+  dateFilterDisabledMessage,
 }: CalendarFiltersContentProps) {
   // Pretty label for a reservation type. HIIT keeps its acronym casing;
   // league reads as "League Game"; the rest get a simple capitalize.
@@ -8006,36 +8074,46 @@ function CalendarFiltersContent({
         </div>
       )}
 
-      {/* Date range — hidden on mobile since the mini calendar already controls the date */}
-      {!mobileLayout && (
-        <div>
-          <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span>Date range</span>
-            {inlineClearAll && (
-              <button
-                onClick={clearAllFilters}
-                style={{ background: "none", border: "none", padding: 0, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", color: sc.brand, cursor: "pointer" }}
-              >
-                Clear all
-              </button>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <input
-              type="date"
-              value={filterStartDate}
-              onChange={(e) => setFilterStartDate(e.target.value)}
-              style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
-            />
-            <input
-              type="date"
-              value={filterEndDate}
-              onChange={(e) => setFilterEndDate(e.target.value)}
-              style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light" }}
-            />
-          </div>
+      {/* Date range — always shown (including on mobile, where it used to
+          be hidden entirely since the mini calendar already controls the
+          date). Disabled with a brief explanation whenever the calendar is
+          locked to a single specific date (Daily view on desktop, the
+          agenda on mobile) rather than an actual date range, since a
+          separate date-range filter has nothing to narrow in that state. */}
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span>Date range</span>
+          {inlineClearAll && (
+            <button
+              onClick={clearAllFilters}
+              style={{ background: "none", border: "none", padding: 0, fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-family)", color: sc.brand, cursor: "pointer" }}
+            >
+              Clear all
+            </button>
+          )}
         </div>
-      )}
+        {dateFilterDisabledMessage && (
+          <div style={{ fontSize: "11px", color: sc.muted, marginBottom: "6px", lineHeight: "15px" }}>
+            {dateFilterDisabledMessage}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: "8px" }}>
+          <input
+            type="date"
+            value={filterStartDate}
+            onChange={(e) => setFilterStartDate(e.target.value)}
+            disabled={!!dateFilterDisabledMessage}
+            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light", opacity: dateFilterDisabledMessage ? 0.5 : 1, cursor: dateFilterDisabledMessage ? "not-allowed" : "text" }}
+          />
+          <input
+            type="date"
+            value={filterEndDate}
+            onChange={(e) => setFilterEndDate(e.target.value)}
+            disabled={!!dateFilterDisabledMessage}
+            style={{ flex: 1, minWidth: 0, padding: "8px 10px", fontSize: "13px", fontFamily: "var(--font-family)", border: `1px solid ${sc.border}`, borderRadius: "6px", background: sc.inputBg, color: sc.heading, colorScheme: isDark ? "dark" : "light", opacity: dateFilterDisabledMessage ? 0.5 : 1, cursor: dateFilterDisabledMessage ? "not-allowed" : "text" }}
+          />
+        </div>
+      </div>
 
       {/* Time range */}
       <div>
@@ -8193,8 +8271,15 @@ function CalendarFiltersContent({
 
 /* ═══════════════════════════════════════════════════════════════════════════
    COMPONENT — ResourcesDayPicker
-   Mini calendar popover for picking a single day in the Resources view.
-   Clicking a day fires onPick(day, month, year) and the parent closes it.
+   Mini calendar popover for picking a single day in the Resources view (and,
+   with the optional range props below, the Daily view too). Clicking a day
+   always just fires onPick(day, month, year) for whatever's showing in the
+   picker grid — the range-building logic (first click = start, second =
+   end, swapping if picked out of order) lives in the caller, same as how
+   MiniCalendar's onSelectDay is a dumb passthrough and MobileScheduleView
+   owns the actual range algorithm. This component only needs to know the
+   range's start/end to paint the highlight and, when range mode is
+   available at all, show the toggle pill.
    ═══════════════════════════════════════════════════════════════════════ */
 
 function ResourcesDayPicker({
@@ -8204,6 +8289,11 @@ function ResourcesDayPicker({
   onPick,
   sc,
   isDark,
+  rangeMode,
+  onToggleRangeMode,
+  rangeEndDay = null,
+  rangeEndMonth = null,
+  rangeEndYear = null,
 }: {
   selectedDay: number;
   selectedMonth: number;
@@ -8211,6 +8301,15 @@ function ResourcesDayPicker({
   onPick: (day: number, month: number, year: number) => void;
   sc: SemanticColors;
   isDark: boolean;
+  /** When provided (along with `onToggleRangeMode`), the picker shows a
+   *  "Date range" toggle pill and highlights the range between the
+   *  selected day and `rangeEndDay`/`rangeEndMonth`/`rangeEndYear`. Omit
+   *  entirely for single-day-only pickers (e.g. Resources view). */
+  rangeMode?: boolean;
+  onToggleRangeMode?: () => void;
+  rangeEndDay?: number | null;
+  rangeEndMonth?: number | null;
+  rangeEndYear?: number | null;
 }) {
   const [pickerMonth, setPickerMonth] = useState(selectedMonth);
   const [pickerYear,  setPickerYear]  = useState(selectedYear);
@@ -8248,6 +8347,17 @@ function ResourcesDayPicker({
     justifyContent: "center",
   };
 
+  // Range highlight helpers — mirror MiniCalendar's cellToTime approach.
+  const supportsRange = onToggleRangeMode !== undefined;
+  const cellToTime = (d: number) => new Date(pickerYear, pickerMonth, d).getTime();
+  const startTime = new Date(selectedYear, selectedMonth, selectedDay).getTime();
+  const endTime = rangeEndDay != null && rangeEndMonth != null && rangeEndYear != null
+    ? new Date(rangeEndYear, rangeEndMonth, rangeEndDay).getTime()
+    : null;
+  const isRangeEnd = (d: number) => endTime !== null && cellToTime(d) === endTime;
+  const isInRange = (d: number) =>
+    endTime !== null && cellToTime(d) > startTime && cellToTime(d) < endTime;
+
   return (
     <div
       style={{
@@ -8266,7 +8376,7 @@ function ResourcesDayPicker({
       }}
     >
       {/* Month / year header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: supportsRange ? "8px" : "10px" }}>
         <button onClick={prevPickerMonth} aria-label="Previous month" style={navBtnStyle}>
           <ChevronLeft size={14} />
         </button>
@@ -8277,6 +8387,37 @@ function ResourcesDayPicker({
           <ChevronRight size={14} />
         </button>
       </div>
+
+      {/* Range-mode toggle. When on, taps build a range (first tap = start,
+          second = end); when off, taps just set a single date. Same
+          behavior as MiniCalendar's toggle, only shown when the caller
+          opted in via onToggleRangeMode (Daily view, not Resources). */}
+      {supportsRange && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
+          <button
+            onClick={onToggleRangeMode}
+            aria-pressed={rangeMode}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "5px 10px",
+              borderRadius: "999px",
+              border: `1px solid ${rangeMode ? sc.brand : sc.border}`,
+              background: rangeMode
+                ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
+                : "transparent",
+              fontSize: "11px",
+              fontWeight: 600,
+              color: rangeMode ? sc.brand : sc.body,
+              cursor: "pointer",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            Date range
+          </button>
+        </div>
+      )}
 
       {/* Day-of-week headers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "4px" }}>
@@ -8291,7 +8432,10 @@ function ResourcesDayPicker({
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px" }}>
         {cells.map((d, i) => {
           if (d === null) return <div key={i} />;
-          const isSelected = d === selectedDay && pickerMonth === selectedMonth && pickerYear === selectedYear;
+          const isStart = d === selectedDay && pickerMonth === selectedMonth && pickerYear === selectedYear;
+          const isEnd = isRangeEnd(d);
+          const cellSelected = isStart || isEnd;
+          const cellInRange = isInRange(d);
           const isToday    = d === today.getDate() && pickerMonth === today.getMonth() && pickerYear === today.getFullYear();
           return (
             <button
@@ -8301,13 +8445,17 @@ function ResourcesDayPicker({
                 width: "100%",
                 aspectRatio: "1",
                 borderRadius: "50%",
-                border: isToday && !isSelected ? `1px solid ${sc.brand}` : "1px solid transparent",
-                background: isSelected ? sc.brand : "transparent",
-                color: isSelected
+                border: isToday && !cellSelected ? `1px solid ${sc.brand}` : "1px solid transparent",
+                background: cellSelected
+                  ? sc.brand
+                  : cellInRange
+                  ? (isDark ? "rgba(0,196,160,0.18)" : "rgba(0,196,160,0.14)")
+                  : "transparent",
+                color: cellSelected
                   ? (isDark ? "#0a0e0f" : "#101828")
                   : isToday ? sc.brand : sc.body,
                 fontSize: "12px",
-                fontWeight: isSelected || isToday ? 700 : 400,
+                fontWeight: cellSelected || isToday ? 700 : 400,
                 cursor: "pointer",
                 fontFamily: "var(--font-family)",
                 display: "flex",
@@ -8562,10 +8710,6 @@ function ResourcesView({
 }: ResourcesViewProps) {
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const clampedDay = Math.min(Math.max(day, 1), daysInMonth);
-  // Named `isDensityCompact` (rather than `isCompact`) because
-  // renderEventBlock below declares its own unrelated local `isCompact`
-  // (short-lane vs. full-height chip) — same word, different meaning, so
-  // this avoids the two silently shadowing each other.
   const isDensityCompact = density === "compact";
   const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
 
@@ -8584,7 +8728,11 @@ function ResourcesView({
   // (assignLanes, renderEventBlock, the row/lane math in the render body)
   // picks these up automatically since they're the same names.
   const RES_ROW_H = isDensityCompact ? 48 : 64;
-  const RES_LANE_H = isDensityCompact ? 22 : 30;
+  // Tall enough to fit the two-line title+time/status layout every chip now
+  // uses (see renderEventBlock) without the lines overlapping — the old
+  // values (22/30) were sized for a since-removed single-line stacked-lane
+  // layout and were too short once every chip switched to two lines.
+  const RES_LANE_H = isDensityCompact ? 34 : 42;
   const RES_LANE_GAP = isDensityCompact ? 2 : 3;
   const RES_ROW_PAD = isDensityCompact ? 8 : 12;
   const RES_HOUR_HDR_H = isDensityCompact ? 30 : 36;
@@ -8621,13 +8769,11 @@ function ResourcesView({
     const width = RES_COL_W - 4;
 
     const timeRangeLabel = getSessionTimeRangeLabel(event);
-    // A full-height (single-lane) chip has room for a title line plus a
-    // second line (time range ± a capacity pill); a stacked lane is too
-    // short for two lines, so it collapses to a single line that always
-    // includes the time range — the whole point of showing a resource's
-    // stacked sessions is to see exactly when each one starts and ends.
-    const isCompact = height < 44;
-    const showSecondLine = !isCompact && width >= 36;
+    // Every chip renders the same title-line + time/status-line layout as
+    // the Weekly view's chip. Typography/padding follow the Density
+    // preference (like WeeklyEventChip does) rather than this particular
+    // chip's allocated pixel height, so a resource's rows read consistently
+    // regardless of how many lanes happen to be stacked at a given hour.
 
     // ── Buffer stripes — fixed 12px, inside the chip (mirrors EventBadge) ──
     const STRIPE_W  = 12;
@@ -8647,15 +8793,13 @@ function ResourcesView({
     const isNearlyFull   = !isFull && hasCapacityData && attendancePct >= 0.8;
     // Preferences tab can turn this indicator off per view AND per status
     // category; when the event's own category is off, `showCapacityIndicator`
-    // gates both the full pill (single-lane) and the compact dot (stacked
-    // lane) below so neither renders.
+    // gates the status pill below so it doesn't render.
     const categoryVisible = hasCapacityData
       ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
           registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
         ]
       : false;
     const showCapacityIndicator = hasCapacityData && categoryVisible;
-    const showStatusPill = showCapacityIndicator && showSecondLine;
     // Same red/yellow/green treatment as the Monthly/Weekly EventBadge time
     // chip: full = solid red, waitlisted = translucent red (red text), so
     // fullness reads identically across every schedule view.
@@ -8715,13 +8859,13 @@ function ResourcesView({
             color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
             fontSize: "11px",
             fontWeight: 600,
-            padding: isCompact ? `2px ${padR}px 2px ${padL}px` : `4px ${padR}px 4px ${padL}px`,
+            padding: isDensityCompact ? `2px ${padR}px 2px ${padL}px` : `4px ${padR}px 4px ${padL}px`,
             overflow: "hidden",
             cursor: "pointer",
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            gap: "2px",
+            gap: isDensityCompact ? "1px" : "2px",
             boxSizing: "border-box",
             transition: "background 0.1s, border-color 0.1s, color 0.1s",
           }}
@@ -8761,121 +8905,43 @@ function ResourcesView({
             />
           )}
 
-          {isCompact ? (
-            // Stacked lane — one line only, but still needs its attendance
-            // status: with several sessions from the same resource packed
-            // into one hour, "which of these is full/nearly full/waitlisted"
-            // is exactly the thing a glance at this row needs to answer, so
-            // it can't be dropped just because the lane is short. Text gets
-            // first claim on the line (title · start–end, or start–end
-            // alone when narrow); the status pill is fixed-width and never
-            // truncates, shrinking to a plain dot only once there's no room
-            // left for its label.
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                overflow: "hidden",
-                width: "100%",
-                lineHeight: `${Math.max(10, height - 4)}px`,
-              }}
-            >
-              <span
-                style={{
-                  flex: "1 1 auto",
-                  minWidth: 0,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  fontSize: "10px",
-                }}
-              >
-                {width >= 70 ? `${event.title} · ${timeRangeLabel}` : timeRangeLabel}
+          {/* Title line, then a time + status line — same two-part layout
+              the Weekly view's chip uses, for every lane (stacked or not),
+              so a resource's sessions always read the same way regardless
+              of attendance status. */}
+          <span style={{ fontWeight: 700, fontSize: isDensityCompact ? "10px" : "11px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: isDensityCompact ? "13px" : "14px" }}>
+            {event.title}
+          </span>
+          {event.time && (
+            <div style={{ display: "flex", alignItems: "center", gap: "4px", overflow: "hidden" }}>
+              <span style={{ opacity: 0.7, fontWeight: 400, fontSize: isDensityCompact ? "9px" : "10px", lineHeight: isDensityCompact ? "11px" : "13px", whiteSpace: "nowrap", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                {timeRangeLabel}
               </span>
               {showCapacityIndicator && (
-                width >= 100 ? (
-                  <span
-                    style={{
-                      display: "inline-block",
-                      flexShrink: 0,
-                      background: isHovered
-                        ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
-                        : statusBg,
-                      color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
-                      fontSize: "9px",
-                      fontWeight: 700,
-                      lineHeight: "12px",
-                      padding: "0px 4px",
-                      borderRadius: "3px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {statusLabel}
-                  </span>
-                ) : (
-                  <span
-                    aria-hidden
-                    style={{
-                      display: "inline-block",
-                      flexShrink: 0,
-                      width: "6px",
-                      height: "6px",
-                      borderRadius: "50%",
-                      background: isHovered
-                        ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
-                        : statusBg,
-                    }}
-                  />
-                )
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    display: "inline-block",
+                    flexShrink: 0,
+                    background: isHovered
+                      ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
+                      : statusBg,
+                    color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                    fontSize: isDensityCompact ? "9px" : "10px",
+                    fontWeight: 700,
+                    lineHeight: isDensityCompact ? "11px" : "13px",
+                    padding: "0px 4px",
+                    borderRadius: "3px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "60%",
+                  }}
+                >
+                  {statusLabel}
+                </span>
               )}
             </div>
-          ) : (
-            <>
-              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "14px" }}>
-                {event.title}
-              </span>
-              {showSecondLine && (
-                showStatusPill ? (
-                  // Time range always shown as plain text, with the status
-                  // pill (Available / Nearly full / Full / Waitlist) next to
-                  // it — same "text + separate pill" layout a stacked/compact
-                  // lane uses, so a resource's single-lane and stacked hours
-                  // read the same way.
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px", overflow: "hidden" }}>
-                    <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {timeRangeLabel}
-                    </span>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        flexShrink: 0,
-                        background: isHovered
-                          ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
-                          : statusBg,
-                        color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        lineHeight: "13px",
-                        padding: "0px 4px",
-                        borderRadius: "3px",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        maxWidth: "100%",
-                      }}
-                    >
-                      {statusLabel}
-                    </span>
-                  </div>
-                ) : (
-                  // No capacity data: plain time range
-                  <span style={{ opacity: 0.65, fontWeight: 400, fontSize: "10px", lineHeight: "13px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {timeRangeLabel}
-                  </span>
-                )
-              )}
-            </>
           )}
         </div>
       </div>
@@ -8902,14 +8968,29 @@ function ResourcesView({
       .filter((e): e is { event: CalendarEvent; start: number; hour: number } => e !== null)
       .sort((a, b) => a.start - b.start);
 
+    // Final per-hour tally — how many events that specific hour ultimately
+    // holds. Kept separate from the running `hourCounts` used for lane
+    // assignment below, since an event assigned lane 0 still needs to know
+    // its hour ends up with (say) 3 events total, not just the 1 seen so
+    // far during the pass. Each event carries its own hour's tally so a
+    // lone session's chip always gets the roomy single-lane height even
+    // when a busier hour elsewhere in the same resource's row needs the
+    // tighter stacked-lane height — sizing a chip off the row's overall
+    // (busiest-hour) lane count, instead of its own hour's, was shrinking
+    // solo sessions any time that resource had a crowded hour elsewhere.
+    const hourTotals = new Map<number, number>();
+    for (const { hour } of withHour) {
+      hourTotals.set(hour, (hourTotals.get(hour) ?? 0) + 1);
+    }
+
     const hourCounts = new Map<number, number>();
-    const laned: Array<{ event: CalendarEvent; lane: number }> = [];
+    const laned: Array<{ event: CalendarEvent; lane: number; hourCount: number }> = [];
     for (const { event, hour } of withHour) {
       const lane = hourCounts.get(hour) ?? 0;
       hourCounts.set(hour, lane + 1);
-      laned.push({ event, lane });
+      laned.push({ event, lane, hourCount: hourTotals.get(hour)! });
     }
-    const laneCount = hourCounts.size > 0 ? Math.max(...Array.from(hourCounts.values())) : 1;
+    const laneCount = hourTotals.size > 0 ? Math.max(...Array.from(hourTotals.values())) : 1;
     return { laned, laneCount: Math.max(1, laneCount) };
   };
 
@@ -9081,7 +9162,6 @@ function ResourcesView({
           {visibleInstructors.map((name, i) => {
             const { laned, laneCount } = assignLanes(events.filter((e) => e.instructor === name));
             const rowHeight = computeRowHeight(laneCount);
-            const chipHeight = laneCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
             return (
               <div
                 key={name}
@@ -9101,9 +9181,14 @@ function ResourcesView({
                 </div>
                 <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
                   {renderGridLines()}
-                  {laned.map(({ event, lane }) =>
-                    renderEventBlock(event, RES_ROW_PAD / 2 + lane * (chipHeight + RES_LANE_GAP), chipHeight)
-                  )}
+                  {laned.map(({ event, lane, hourCount }) => {
+                    // Sized off this event's own hour, not the row's
+                    // overall busiest hour — a lone session stays at the
+                    // roomy single-lane height even if this resource has a
+                    // crowded hour elsewhere in the same row.
+                    const chipHeight = hourCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
+                    return renderEventBlock(event, RES_ROW_PAD / 2 + lane * (chipHeight + RES_LANE_GAP), chipHeight);
+                  })}
                 </div>
               </div>
             );
@@ -9153,7 +9238,6 @@ function ResourcesView({
           {visibleVenues.map((name, i) => {
             const { laned, laneCount } = assignLanes(events.filter((e) => e.venue === name));
             const rowHeight = computeRowHeight(laneCount);
-            const chipHeight = laneCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
             return (
               <div
                 key={name}
@@ -9173,9 +9257,10 @@ function ResourcesView({
                 </div>
                 <div style={{ position: "relative", minWidth: `${totalW}px`, flex: "1 0 auto" }}>
                   {renderGridLines()}
-                  {laned.map(({ event, lane }) =>
-                    renderEventBlock(event, RES_ROW_PAD / 2 + lane * (chipHeight + RES_LANE_GAP), chipHeight)
-                  )}
+                  {laned.map(({ event, lane, hourCount }) => {
+                    const chipHeight = hourCount <= 1 ? RES_ROW_H - RES_ROW_PAD : RES_LANE_H;
+                    return renderEventBlock(event, RES_ROW_PAD / 2 + lane * (chipHeight + RES_LANE_GAP), chipHeight);
+                  })}
                 </div>
               </div>
             );
@@ -9400,6 +9485,7 @@ function WeeklyEventChip({
           {showStatusPill && (
             <span
               style={{
+                marginLeft: "auto",
                 flexShrink: 0,
                 background: isSelected
                   ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
@@ -9848,10 +9934,21 @@ function WeeklyView({
 /** How many client names to preview inline before collapsing to "+N more". */
 const DAILY_NAME_PREVIEW_COUNT = 4;
 
+/** A single event tagged with the specific calendar date it's being shown
+ *  on — used to render a multi-day range as one merged, date-labeled list. */
+interface DailyRangeItem {
+  event: CalendarEvent;
+  day: number;
+  month: number;
+  year: number;
+}
+
 interface DailyViewProps {
-  /** Every event for the single displayed day (closed markers included). */
+  /** Every event for the single displayed day (closed markers included).
+   *  Ignored when `rangeEvents` is provided. */
   events: CalendarEvent[];
-  /** Day-of-month the list is showing, forwarded to onClickEvent. */
+  /** Day-of-month the list is showing, forwarded to onClickEvent. When a
+   *  range is active, this is the range's start day. */
   day: number;
   /** Month/year the displayed `day` belongs to — needed alongside `day`
    *  to tell whether a session on it has already passed (see
@@ -9861,8 +9958,17 @@ interface DailyViewProps {
   sc: SemanticColors;
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
-  onClickEvent: (event: CalendarEvent, day: number, e: React.MouseEvent) => void;
+  onClickEvent: (event: CalendarEvent, day: number, e: React.MouseEvent, dateOverride?: { month: number; year: number }) => void;
   deleteMode?: boolean;
+  /** When set, the view shows one merged chronological list spanning every
+   *  day in a selected date range (inclusive) instead of the single day
+   *  named by `day`/`month`/`year` — each row is tagged with its own date
+   *  and shows that date to the left of the time, since sessions from
+   *  different days now share one list. Provided by the parent (mirrors
+   *  how WeeklyView is handed pre-resolved per-day data) rather than
+   *  computed in here, since only the parent knows the mock data's
+   *  day-of-month keying. */
+  rangeEvents?: DailyRangeItem[];
   /** Preferences tab display setting, per status category — when a
    *  session's category is false, hides the colored capacity meter for it
    *  (booked/capacity text and everything else stays either way). */
@@ -9896,14 +10002,33 @@ function DailyView({
   viewByResource = false,
   filterInstructors = [],
   filterVenues = [],
+  rangeEvents,
 }: DailyViewProps) {
+  // Whether a multi-day range is active. When it's not, every item is just
+  // the single `day`/`month`/`year` wrapped around each event so the rest
+  // of this component can treat both cases identically.
+  const isRange = rangeEvents !== undefined;
+  const allItems: DailyRangeItem[] = isRange
+    ? rangeEvents
+    : events.map((event) => ({ event, day, month, year }));
+
   // Closed/all-day markers render as a banner up top rather than a normal
   // session row — they have no time to sort by and no registrations.
-  const closedEvents = events.filter((e) => e.type === "closed");
-  const sessionEvents = events
-    .filter((e) => e.type !== "closed")
+  const closedItems = allItems.filter((it) => it.event.type === "closed");
+  const sessionItems = allItems
+    .filter((it) => it.event.type !== "closed")
     .slice()
-    .sort((a, b) => parseEventTimeToMinutes(a.time) - parseEventTimeToMinutes(b.time));
+    .sort((a, b) => {
+      const aTime = new Date(a.year, a.month, a.day).getTime();
+      const bTime = new Date(b.year, b.month, b.day).getTime();
+      if (aTime !== bTime) return aTime - bTime;
+      return parseEventTimeToMinutes(a.event.time) - parseEventTimeToMinutes(b.event.time);
+    });
+  // Short date label shown to the left of the time whenever a range is
+  // active — e.g. "Tue, Apr 28" — since rows can now come from different
+  // days and the time alone no longer identifies which one.
+  const formatItemDate = (it: DailyRangeItem) =>
+    new Date(it.year, it.month, it.day).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   const statusPillColors = getStatusPillColors(isDark);
   const deletableColor = isDark ? "#e05a5a" : "#d41840";
@@ -9938,9 +10063,9 @@ function DailyView({
 
   return (
     <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
-      {closedEvents.map((event) => (
+      {closedItems.map((it) => (
         <div
-          key={event.id}
+          key={it.event.id}
           style={{
             display: "flex",
             alignItems: "center",
@@ -9955,20 +10080,25 @@ function DailyView({
               width: "10px",
               height: "10px",
               borderRadius: "50%",
-              background: (colors[event.type] || colors.closed).text,
+              background: (colors[it.event.type] || colors.closed).text,
               flexShrink: 0,
             }}
           />
+          {isRange && (
+            <span style={{ fontSize: "13px", fontWeight: 600, color: sc.muted, flexShrink: 0 }}>
+              {formatItemDate(it)}
+            </span>
+          )}
           <span style={{ fontSize: "15px", fontWeight: 600, color: sc.heading }}>
-            {event.title || "Closed"}
+            {it.event.title || "Closed"}
           </span>
           <span style={{ fontSize: "13px", color: sc.muted }}>All day</span>
         </div>
       ))}
 
-      {sessionEvents.length === 0 && closedEvents.length === 0 && (
+      {sessionItems.length === 0 && closedItems.length === 0 && (
         <div style={{ padding: "48px 24px", textAlign: "center", fontSize: "14px", color: sc.muted }}>
-          No sessions scheduled for this day.
+          {isRange ? "No sessions scheduled in this date range." : "No sessions scheduled for this day."}
         </div>
       )}
 
@@ -9984,9 +10114,10 @@ function DailyView({
        *  *other* resource (e.g. just "Studio A" instead of
        *  "Sarah Chen · Studio A"). The flat chronological list passes
        *  nothing and always shows both. */
-      const renderSessionRow = (event: CalendarEvent, omitResourceKind?: "instructor" | "venue") => {
+      const renderSessionRow = (item: DailyRangeItem, omitResourceKind?: "instructor" | "venue") => {
+        const { event, day: itemDay, month: itemMonth, year: itemYear } = item;
         const style = colors[event.type] || colors.yoga;
-        const isPast = isSessionPast(event, day, month, year);
+        const isPast = isSessionPast(event, itemDay, itemMonth, itemYear);
         const hasCapacity = event.capacity > 0;
         const available = Math.max(0, event.capacity - event.booked);
         const isFull = hasCapacity && available === 0;
@@ -10061,7 +10192,7 @@ function DailyView({
         return (
           <div
             key={event.id}
-            onClick={(e) => onClickEvent(event, day, e)}
+            onClick={(e) => onClickEvent(event, itemDay, e, isRange ? { month: itemMonth, year: itemYear } : undefined)}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -10078,9 +10209,14 @@ function DailyView({
               cursor: "pointer",
             }}
           >
-            {/* Top line — dot, time, title, instructor/venue, status button */}
+            {/* Top line — dot, (date), time, title, instructor/venue, status button */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: style.text, flexShrink: 0 }} />
+              {isRange && (
+                <span style={{ fontSize: "13px", fontWeight: 600, color: sc.muted, flexShrink: 0, whiteSpace: "nowrap" }}>
+                  {formatItemDate(item)}
+                </span>
+              )}
               <span style={{ fontSize: "15px", fontWeight: 700, color: sc.heading, flexShrink: 0 }}>{event.time}</span>
               <span
                 style={{
@@ -10209,7 +10345,7 @@ function DailyView({
       };
 
       if (!viewByResource) {
-        return <>{sessionEvents.map((event) => renderSessionRow(event))}</>;
+        return <>{sessionItems.map((item) => renderSessionRow(item))}</>;
       }
 
       // ── By-resource grouping — Instructors, then Venues, same order as
@@ -10244,8 +10380,8 @@ function DailyView({
                 </div>
 
                 {names.map((name) => {
-                  const resourceSessions = sessionEvents.filter((e) =>
-                    kind === "instructor" ? e.instructor === name : e.venue === name
+                  const resourceSessions = sessionItems.filter((it) =>
+                    kind === "instructor" ? it.event.instructor === name : it.event.venue === name
                   );
                   return (
                     <div key={name} style={{ display: "flex", borderBottom: `1px solid ${sc.border}` }}>
@@ -10263,7 +10399,7 @@ function DailyView({
                             No sessions
                           </div>
                         ) : (
-                          resourceSessions.map((event) => renderSessionRow(event, kind))
+                          resourceSessions.map((item) => renderSessionRow(item, kind))
                         )}
                       </div>
                     </div>
@@ -10329,6 +10465,66 @@ export function SchedulePage() {
   const [dailyDay, setDailyDay] = useState(() => new Date().getDate());
   const [showDailyDayPicker, setShowDailyDayPicker] = useState(false);
   const dailyDayPickerRef = useRef<HTMLDivElement>(null);
+  // Daily view — optional date range, mirroring the mobile agenda's range
+  // picker. `dailyRangeMode` just controls how taps in the popover behave
+  // (building a range vs. picking a single day); `dailyRangeEnd` being
+  // non-null is what actually puts Daily into "range" display mode — a
+  // full Date (not just a day number) since the end can land in a
+  // different month/year than dailyDay/currentMonth/currentYear.
+  const [dailyRangeMode, setDailyRangeMode] = useState(false);
+  const [dailyRangeEnd, setDailyRangeEnd] = useState<Date | null>(null);
+
+  // Toggle between single-date and range selection for the Daily view's
+  // popover — same convention as the mobile agenda's toggle: switching
+  // range mode off collapses the selection back to the existing start.
+  const handleToggleDailyRangeMode = useCallback(() => {
+    setDailyRangeMode((prev) => {
+      if (prev) setDailyRangeEnd(null);
+      return !prev;
+    });
+  }, []);
+
+  // Day-tap handler for the Daily view's popover. In single mode, just
+  // moves the start date and clears any prior end. In range mode, the
+  // first tap (re)sets the start; the second tap fills in the end
+  // (auto-swapping if the user picked a date earlier than start); a third
+  // tap restarts the range. Mirrors MobileScheduleView's handleSelectDay.
+  const handlePickDailyDay = useCallback(
+    (pickedDay: number, pickedMonth: number, pickedYear: number) => {
+      const picked = new Date(pickedYear, pickedMonth, pickedDay);
+      if (!dailyRangeMode) {
+        setDailyDay(pickedDay);
+        setCurrentMonth(pickedMonth);
+        setCurrentYear(pickedYear);
+        setDailyRangeEnd(null);
+        return;
+      }
+      const start = new Date(currentYear, currentMonth, dailyDay);
+      if (!dailyRangeEnd) {
+        if (picked.getTime() === start.getTime()) {
+          // Re-tapped the same day — leave as single until a different
+          // day is tapped.
+          return;
+        }
+        if (picked < start) {
+          // Picked an earlier day than the current start — swap.
+          setDailyRangeEnd(start);
+          setDailyDay(pickedDay);
+          setCurrentMonth(pickedMonth);
+          setCurrentYear(pickedYear);
+        } else {
+          setDailyRangeEnd(picked);
+        }
+      } else {
+        // Range already complete — restart with this tap as the new start.
+        setDailyDay(pickedDay);
+        setCurrentMonth(pickedMonth);
+        setCurrentYear(pickedYear);
+        setDailyRangeEnd(null);
+      }
+    },
+    [dailyRangeMode, dailyRangeEnd, dailyDay, currentMonth, currentYear]
+  );
 
   // ── Registration-status display preference (Preferences sidebar tab) ──
   // Purely cosmetic — whether the full/waitlisted/nearly-full/available
@@ -11078,7 +11274,39 @@ export function SchedulePage() {
   // plain chronological list with no hour-range clipping, so it doesn't
   // need the isVisibleInHourGrid filter those two use.
   const clampedDailyDay = Math.min(Math.max(dailyDay, 1), getDaysInMonth(currentYear, currentMonth));
-  const dailyDayCount = (filteredEvents[clampedDailyDay] ?? []).filter((e: CalendarEvent) => e.type !== "closed").length;
+
+  // When a date range is active, gather every day's events into one
+  // tagged list for DailyView — the mock data is keyed by day-of-month
+  // only (recurring every month), so each date in the range is looked up
+  // independently. Undefined when no range is active, which keeps
+  // DailyView on its existing single-day behavior.
+  const dailyRangeEvents = useMemo(() => {
+    if (!dailyRangeEnd) return undefined;
+    const start = new Date(currentYear, currentMonth, clampedDailyDay);
+    const items: DailyRangeItem[] = [];
+    const cursor = new Date(start);
+    while (cursor.getTime() <= dailyRangeEnd.getTime()) {
+      const dayEvents = filteredEvents[cursor.getDate()] ?? [];
+      for (const event of dayEvents) {
+        items.push({ event, day: cursor.getDate(), month: cursor.getMonth(), year: cursor.getFullYear() });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return items;
+  }, [dailyRangeEnd, currentYear, currentMonth, clampedDailyDay, filteredEvents]);
+
+  const dailyDayCount = dailyRangeEvents
+    ? dailyRangeEvents.filter((it) => it.event.type !== "closed").length
+    : (filteredEvents[clampedDailyDay] ?? []).filter((e: CalendarEvent) => e.type !== "closed").length;
+
+  // The sidebar's Date range filter is only meaningfully independent of
+  // calendar navigation when Daily isn't locked to one specific day — when
+  // it is, show the filter disabled with a short explanation instead of
+  // hiding it, so its presence stays predictable across views.
+  const dailyDateFilterMessage: string | undefined =
+    desktopView === "Daily" && !dailyRangeEnd
+      ? "You're viewing a single date in Daily view. Turn on Date range in the date picker above to filter by a range of dates."
+      : undefined;
 
   const displayedCount =
     desktopView === "Resources" ? resourcesDayCount :
@@ -11471,10 +11699,15 @@ export function SchedulePage() {
                   change first. Mirrors the Weekly view's cross-month nav. */}
               <button
                 onClick={() => {
+                  // Prev/next always operate on the start day and collapse
+                  // any active range back to a single date — moving "one
+                  // day back" from a multi-day range is ambiguous, so this
+                  // is the least-surprising behavior.
                   const d = new Date(currentYear, currentMonth, clampedDailyDay - 1);
                   setDailyDay(d.getDate());
                   setCurrentMonth(d.getMonth());
                   setCurrentYear(d.getFullYear());
+                  setDailyRangeEnd(null);
                 }}
                 aria-label="Previous day"
                 style={{
@@ -11487,7 +11720,9 @@ export function SchedulePage() {
                 <ChevronLeft size={16} />
               </button>
 
-              {/* Clickable date label — opens day picker popover */}
+              {/* Clickable date label — opens day picker popover. Shows a
+                  range ("Apr 25 – May 2") once dailyRangeEnd is set, same
+                  format as the mobile agenda's date button. */}
               <button
                 onClick={() => setShowDailyDayPicker((v) => !v)}
                 aria-expanded={showDailyDayPicker}
@@ -11510,9 +11745,16 @@ export function SchedulePage() {
                 }}
               >
                 {(() => {
-                  const d = new Date(currentYear, currentMonth, clampedDailyDay);
+                  const start = new Date(currentYear, currentMonth, clampedDailyDay);
                   const DAY_NAMES_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-                  return `${DAY_NAMES_SHORT[d.getDay()]}, ${MONTH_NAMES[currentMonth].slice(0,3)} ${clampedDailyDay}, ${currentYear}`;
+                  if (!dailyRangeEnd) {
+                    return `${DAY_NAMES_SHORT[start.getDay()]}, ${MONTH_NAMES[currentMonth].slice(0,3)} ${clampedDailyDay}, ${currentYear}`;
+                  }
+                  const fmtShort = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                  const fmtFull = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                  return start.getFullYear() === dailyRangeEnd.getFullYear()
+                    ? `${fmtShort(start)} – ${fmtShort(dailyRangeEnd)}`
+                    : `${fmtFull(start)} – ${fmtFull(dailyRangeEnd)}`;
                 })()}
                 <ChevronDown
                   size={14}
@@ -11530,13 +11772,18 @@ export function SchedulePage() {
                   selectedMonth={currentMonth}
                   selectedYear={currentYear}
                   onPick={(d, m, y) => {
-                    setDailyDay(d);
-                    setCurrentMonth(m);
-                    setCurrentYear(y);
-                    setShowDailyDayPicker(false);
+                    handlePickDailyDay(d, m, y);
+                    // Only auto-close on a single-date pick — range mode
+                    // needs the popover to stay open for the second tap.
+                    if (!dailyRangeMode) setShowDailyDayPicker(false);
                   }}
                   sc={sc}
                   isDark={isDark}
+                  rangeMode={dailyRangeMode}
+                  onToggleRangeMode={handleToggleDailyRangeMode}
+                  rangeEndDay={dailyRangeEnd?.getDate() ?? null}
+                  rangeEndMonth={dailyRangeEnd?.getMonth() ?? null}
+                  rangeEndYear={dailyRangeEnd?.getFullYear() ?? null}
                 />
               )}
 
@@ -11548,6 +11795,7 @@ export function SchedulePage() {
                   setDailyDay(d.getDate());
                   setCurrentMonth(d.getMonth());
                   setCurrentYear(d.getFullYear());
+                  setDailyRangeEnd(null);
                 }}
                 aria-label="Next day"
                 style={{
@@ -11949,6 +12197,7 @@ export function SchedulePage() {
             viewByResource={viewByResource}
             filterInstructors={filterInstructors}
             filterVenues={filterVenues}
+            rangeEvents={dailyRangeEvents}
           />
         ) : (
           /* Monthly grid — headers + weeks share one grid so all column
@@ -12103,6 +12352,7 @@ export function SchedulePage() {
           setKeepMyFilters={setKeepMyFilters}
           highlightMySessions={highlightMySessions}
           setHighlightMySessions={setHighlightMySessions}
+          dateFilterDisabledMessage={dailyDateFilterMessage}
         />
       </div>
       </div>
