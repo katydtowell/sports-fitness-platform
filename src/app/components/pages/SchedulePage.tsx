@@ -490,12 +490,41 @@ function generateMockEvents(): DayEvents {
     makeEvent("8c", "Power Yoga", "1pm", "yoga"),
     makeEvent("8d", "HIIT", "2pm", "hiit"),
     makeEvent("8e", "Pilates", "3pm", "pilates"),
+    // Evening lineup — runs the day out to a 10pm close (last session
+    // starts at 9pm, default 60min duration).
+    makeEvent("8f", "HIIT", "4pm", "hiit"),
+    makeEvent("8g", "Yoga", "5pm", "yoga"),
+    makeEvent("8h", "Pilates", "6pm", "pilates"),
+    makeEvent("8i", "Meditation", "7pm", "meditation"),
+    makeEvent("8j", "HIIT", "8pm", "hiit"),
+    makeEvent("8k", "Power Yoga", "9pm", "yoga"),
+    // Extra late-window sessions — several more start times between
+    // 8pm and 10pm, spread across different resources so they run in
+    // parallel with 8j/8k instead of conflicting.
+    makeEvent("8l", "Pilates", "8pm", "pilates"),
+    makeEvent("8m", "Meditation", "8:30pm", "meditation"),
+    makeEvent("8n", "Yoga", "9pm", "yoga"),
+    makeEvent("8o", "HIIT", "9:30pm", "hiit"),
   ];
   events[9] = [
     makeEvent("9a", "Yoga", "11am", "yoga"),
     makeEvent("9b", "Stretch & Restore", "12pm", "meditation"),
     makeEvent("9c", "Meditation", "1pm", "meditation"),
     makeEvent("9d", "Pilates", "3pm", "pilates"),
+    // Extra sessions spread across the rest of the day — mix of
+    // waitlisted, full (no waitlist), and available states, plus a mix
+    // of overdue/no-overdue balance scenarios (bucket 0 vs 1/2 of
+    // getEventClients — see ids 9f/9i/9l which land on bucket 0).
+    makeEvent("9e", "HIIT", "9am", "hiit", "Alan Alda", "Studio B", 30, 30, false, true),          // waitlisted, overdue
+    makeEvent("9f", "Yoga", "10am", "yoga", "Alan Alda", "Studio B", 20, 36, false, false),         // available, no overdue
+    makeEvent("9g", "Pilates", "2pm", "pilates", "Alan Alda", "Studio B", 24, 24, false, false),    // full (no waitlist), overdue
+    makeEvent("9h", "Meditation", "4pm", "meditation", "Alan Alda", "Studio B", 15, 20, false, false), // available, overdue
+    makeEvent("9i", "Yoga", "5pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, false),          // full (no waitlist), no overdue
+    makeEvent("9j", "HIIT", "6pm", "hiit", "Alan Alda", "Studio B", 30, 30, false, true),           // waitlisted, overdue
+    makeEvent("9k", "Pilates", "7pm", "pilates", "Alan Alda", "Studio B", 10, 24, false, false),    // available, overdue
+    makeEvent("9l", "Meditation", "8pm", "meditation", "Alan Alda", "Studio B", 20, 20, false, false), // full (no waitlist), no overdue
+    makeEvent("9m", "Yoga", "8:30pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true),        // waitlisted, overdue
+    makeEvent("9n", "HIIT", "9pm", "hiit", "Alan Alda", "Studio B", 18, 30, false, false),          // available, overdue
   ];
   events[10] = [
     makeEvent("10a", "Yoga", "11am", "yoga"),
@@ -11644,6 +11673,32 @@ export function SchedulePage() {
     [openPanel]
   );
 
+  // Daily view's date-range event list — a Hook, so it must be called on
+  // every render regardless of the isMobile branch below. This used to
+  // live further down near its only consumer (desktop's Daily view), but
+  // that was AFTER the mobile early-return: on the render where isMobile
+  // flips from false to true, React would bail out before ever calling
+  // this useMemo, producing a "Rendered fewer hooks than expected" crash
+  // (the mobile schedule loading, then immediately going blank). Hooks
+  // must always run in the same order on every render, so it's computed
+  // here — before any conditional return — even though its value is only
+  // consumed by desktop's Daily view further down.
+  const clampedDailyDay = Math.min(Math.max(dailyDay, 1), getDaysInMonth(currentYear, currentMonth));
+  const dailyRangeEvents = useMemo(() => {
+    if (!dailyRangeEnd) return undefined;
+    const start = new Date(currentYear, currentMonth, clampedDailyDay);
+    const items: DailyRangeItem[] = [];
+    const cursor = new Date(start);
+    while (cursor.getTime() <= dailyRangeEnd.getTime()) {
+      const dayEvents = filteredEvents[cursor.getDate()] ?? [];
+      for (const event of dayEvents) {
+        items.push({ event, day: cursor.getDate(), month: cursor.getMonth(), year: cursor.getFullYear() });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return items;
+  }, [dailyRangeEnd, currentYear, currentMonth, clampedDailyDay, filteredEvents]);
+
   // If mobile, render mobile layout (after all hooks)
   if (isMobile) {
     return (
@@ -11745,28 +11800,6 @@ export function SchedulePage() {
   // every non-closed session on it. Unlike Resources/Weekly, Daily is a
   // plain chronological list with no hour-range clipping, so it doesn't
   // need the isVisibleInHourGrid filter those two use.
-  const clampedDailyDay = Math.min(Math.max(dailyDay, 1), getDaysInMonth(currentYear, currentMonth));
-
-  // When a date range is active, gather every day's events into one
-  // tagged list for DailyView — the mock data is keyed by day-of-month
-  // only (recurring every month), so each date in the range is looked up
-  // independently. Undefined when no range is active, which keeps
-  // DailyView on its existing single-day behavior.
-  const dailyRangeEvents = useMemo(() => {
-    if (!dailyRangeEnd) return undefined;
-    const start = new Date(currentYear, currentMonth, clampedDailyDay);
-    const items: DailyRangeItem[] = [];
-    const cursor = new Date(start);
-    while (cursor.getTime() <= dailyRangeEnd.getTime()) {
-      const dayEvents = filteredEvents[cursor.getDate()] ?? [];
-      for (const event of dayEvents) {
-        items.push({ event, day: cursor.getDate(), month: cursor.getMonth(), year: cursor.getFullYear() });
-      }
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    return items;
-  }, [dailyRangeEnd, currentYear, currentMonth, clampedDailyDay, filteredEvents]);
-
   const dailyDayCount = dailyRangeEvents
     ? dailyRangeEvents.filter((it) => it.event.type !== "closed").length
     : (filteredEvents[clampedDailyDay] ?? []).filter((e: CalendarEvent) => e.type !== "closed").length;
