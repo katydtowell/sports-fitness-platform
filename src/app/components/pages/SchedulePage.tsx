@@ -2311,6 +2311,13 @@ interface MobileToolbarProps {
   setShowSortMenu: (show: boolean) => void;
 }
 
+// Height of a single MobileToolbar row (the main date/sort/search/filter
+// row, or the search-input row that appears below it). Both rows use the
+// same "12px vertical padding + ~40px of content" shape, so one constant
+// covers either — used by MobileScheduleView to reserve flow space below
+// the fixed toolbar without needing to measure it at runtime.
+const MOBILE_TOOLBAR_ROW_H = 68;
+
 function MobileToolbar({
   sc,
   isDark,
@@ -3337,6 +3344,14 @@ interface MobileEventListProps {
   setShowLegend: (show: boolean) => void;
   /** How to sort/group the events list. */
   sortBy: "time" | "name" | "type" | "resource";
+  /** When true, this list gives up its own internal scroll region and
+   *  just flows as normal page content — used when the mini calendar is
+   *  open, so the whole page scrolls as one instead of nesting a
+   *  separate scrollable area inside it (which users tended not to
+   *  notice was independently scrollable, and which was clipping the
+   *  last session behind the fixed bottom nav bar). Defaults to false
+   *  (the original self-contained scrolling list). */
+  disableInternalScroll?: boolean;
 }
 
 // Stable display order for "sort by reservation type" — alphabetical
@@ -3363,6 +3378,7 @@ function MobileEventList({
   showLegend,
   setShowLegend,
   sortBy,
+  disableInternalScroll = false,
 }: MobileEventListProps) {
   const legendRef = useRef<HTMLDivElement>(null);
 
@@ -3401,9 +3417,6 @@ function MobileEventList({
   const closedItems = datedEvents.filter((d) => d.event.type === "closed");
   const nonClosedItems = datedEvents.filter((d) => d.event.type !== "closed");
 
-  // Disable Add Reservation when ANY day in the range has a closure
-  // (mock data is currently all-day closures only).
-  const isClosed = closedItems.length > 0;
   const isFiltering = !!(searchQuery && searchQuery.trim());
 
   // Apply sort. "resource" is special — it returns a grouped layout
@@ -3482,8 +3495,15 @@ function MobileEventList({
       style={{
         display: "flex",
         flexDirection: "column",
-        flex: 1,
-        overflow: "hidden",
+        // Normally this list claims the remaining flex space and scrolls
+        // internally (flex:1 + overflow:hidden, with the actual scrolling
+        // happening in the child below). When the mini calendar is open,
+        // that nested scroll region becomes an easy-to-miss "scrollable
+        // window within the page" and was clipping the last session
+        // behind the fixed bottom nav bar — so in that state this just
+        // sizes to its content and lets the whole page scroll instead.
+        flex: disableInternalScroll ? "0 0 auto" : 1,
+        overflow: disableInternalScroll ? "visible" : "hidden",
         background: sc.cellBg,
       }}
     >
@@ -3601,11 +3621,12 @@ function MobileEventList({
           </span>
         </div>
         {/* Add Reservation — back in its original spot on the right of
-            the count row. Disabled when the selected day is closed. */}
+            the count row. Always enabled, even on a closed day — the
+            user may be adding a reservation for a different date than
+            whatever's currently selected, so a closure here shouldn't
+            block the entry point. */}
         <button
-          onClick={isClosed ? undefined : onAddReservation}
-          disabled={isClosed}
-          title={isClosed ? "Facility is closed — reservations can't be added on this day" : undefined}
+          onClick={onAddReservation}
           style={{
             display: "flex",
             alignItems: "center",
@@ -3613,24 +3634,30 @@ function MobileEventList({
             padding: "6px 12px",
             borderRadius: "6px",
             border: "none",
-            background: isClosed ? sc.muted : sc.brand,
+            background: sc.brand,
             fontSize: "12px",
             fontWeight: 500,
             color: isDark ? "#0a0e0f" : "#101828",
-            cursor: isClosed ? "not-allowed" : "pointer",
-            opacity: isClosed ? 0.5 : 1,
+            cursor: "pointer",
           }}
         >
           <Plus size={14} /> Add Reservation
         </button>
       </div>
 
-      {/* Event list - scrollable */}
+      {/* Event list — internally scrollable by default (flex:1 +
+          overflow:auto); becomes plain flowing content when
+          disableInternalScroll is set, so the page itself scrolls
+          instead. Either way, bottom padding clears the fixed
+          MobileUtilityBar (52px) so the last session in the list can
+          actually be scrolled into view instead of ending up hidden
+          behind it. */}
       <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-        }}
+        style={
+          disableInternalScroll
+            ? { paddingBottom: "64px" }
+            : { flex: 1, overflow: "auto", paddingBottom: "64px" }
+        }
       >
         {/* Closures rendered first as a minimal row. In range mode
             each closure shows the date it falls on so the user can
@@ -4015,6 +4042,19 @@ function MobileScheduleView({
     setSelectedEvent(null);
   }, []);
 
+  // Toolbar height — a fixed constant, not a measured value. `position:
+  // sticky` was tried first, but its "stuck" range is bounded by its
+  // containing block, and something about this view's layout was making
+  // that boundary land right around where the mini calendar ends on real
+  // devices — the toolbar would unstick and scroll away exactly when the
+  // calendar scrolled out of view. `position: fixed` sidesteps that, but
+  // a ResizeObserver-measured spacer below it turned out to be
+  // unreliable in practice (content ended up rendering underneath the
+  // toolbar instead of below it). A plain constant is simpler and can't
+  // race against layout: MOBILE_TOOLBAR_ROW_H covers the main toolbar
+  // row, plus a second row's worth when the search input is open.
+  const toolbarSpacerH = MOBILE_TOOLBAR_ROW_H + (showSearch ? MOBILE_TOOLBAR_ROW_H : 0);
+
   return (
     <div
       style={{
@@ -4026,34 +4066,46 @@ function MobileScheduleView({
         /* Reclaim Layout's mobile padding (0 12px 80px) so the schedule
          * content runs edge-to-edge — the calendar grid + event list
          * already have their own internal padding, so the page-level
-         * 12px gutter just wastes valuable horizontal space on phones. */
+         * 12px gutter just wastes valuable horizontal space on phones.
+         * Bottom is restored to 64px (rather than the original 80px)
+         * — just enough to clear the 52px fixed MobileUtilityBar with a
+         * bit of breathing room, so the page can't scroll to a resting
+         * point that leaves the last session hidden behind it. */
         marginLeft: "-12px",
         marginRight: "-12px",
         marginBottom: "-80px",
-        paddingBottom: "12px",
+        paddingBottom: "64px",
       }}
     >
-      {/* Toolbar */}
-      <MobileToolbar
-        sc={sc}
-        isDark={isDark}
-        showCalendar={showCalendar}
-        onToggleCalendar={handleToggleCalendar}
-        dateButtonLabel={formatDateButton()}
-        showSearch={showSearch}
-        setShowSearch={setShowSearch}
-        showFilter={showFilter}
-        setShowFilter={setShowFilter}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        showTodayButton={!isViewingToday}
-        onGoToToday={handleGoToToday}
-        activeFilterCount={activeFilterCount}
-        sortBy={sortBy}
-        setSortBy={setSortBy}
-        showSortMenu={showSortMenu}
-        setShowSortMenu={setShowSortMenu}
-      />
+      {/* Toolbar — fixed so the date/today/sort/search/filter row stays
+          reachable while the page scrolls (now that the event list can
+          flow as normal page content instead of always scrolling in its
+          own clipped-off region). Pinned to 44px, just below the app's
+          fixed TopNav strip. A measured spacer directly below reserves
+          its flow space so content doesn't render underneath it. */}
+      <div style={{ position: "fixed", top: 44, left: 0, right: 0, zIndex: 85 }}>
+        <MobileToolbar
+          sc={sc}
+          isDark={isDark}
+          showCalendar={showCalendar}
+          onToggleCalendar={handleToggleCalendar}
+          dateButtonLabel={formatDateButton()}
+          showSearch={showSearch}
+          setShowSearch={setShowSearch}
+          showFilter={showFilter}
+          setShowFilter={setShowFilter}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          showTodayButton={!isViewingToday}
+          onGoToToday={handleGoToToday}
+          activeFilterCount={activeFilterCount}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          showSortMenu={showSortMenu}
+          setShowSortMenu={setShowSortMenu}
+        />
+      </div>
+      <div style={{ height: toolbarSpacerH, flexShrink: 0 }} />
 
       {/* Filters drawer — same content as the desktop popover. The
           colored Reservation Types chips inside double as the legend
@@ -4188,6 +4240,10 @@ function MobileScheduleView({
         showLegend={showLegend}
         setShowLegend={setShowLegend}
         sortBy={sortBy}
+        // With the mini calendar open, the page is already taller than
+        // one screen — let it scroll as a single page instead of also
+        // nesting an independently-scrolling list inside it.
+        disableInternalScroll={showCalendar}
       />
 
       {/* Full-page reservation detail */}
