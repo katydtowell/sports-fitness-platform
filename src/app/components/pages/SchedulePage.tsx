@@ -11322,7 +11322,9 @@ function DailyView({
                   {formatItemDate(item)}
                 </span>
               )}
-              <span style={{ fontSize: "15px", fontWeight: 700, color: sc.heading, flexShrink: 0 }}>{event.time}</span>
+              <span style={{ fontSize: "15px", fontWeight: 700, color: sc.heading, flexShrink: 0 }}>
+                {event.time ? getSessionTimeRangeLabel(event) : "—"}
+              </span>
               <span
                 style={{
                   fontSize: "15px",
