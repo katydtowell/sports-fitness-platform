@@ -41,6 +41,8 @@ import {
   Send,
   Copy,
   Settings,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { useTheme, type ThemePalette, EZ_GREEN, EZ_GREEN_ON_COLOR, EZ_RED, EZ_RED_ON_COLOR } from "../layout/ThemeContext";
 import { useSidePanel } from "../layout/SidePanelContext";
@@ -336,6 +338,15 @@ const DEFAULT_VIEW_PREF_KEY = "ezf_schedule_default_view";
 const DENSITY_PREF_KEY = "ezf_schedule_density";
 const KEEP_FILTERS_PREF_KEY = "ezf_schedule_keep_filters";
 const HIGHLIGHT_MINE_PREF_KEY = "ezf_schedule_highlight_my_sessions";
+// Whether the "Upcoming Today" card shows at all. Off by choice only —
+// there's no icon/quick-toggle to bring it back once hidden; the user has
+// to flip this back on from the Preferences tab (see UpcomingTodayPanel).
+const SHOW_UPCOMING_TODAY_PREF_KEY = "ezf_schedule_show_upcoming_today";
+
+// Width of the Upcoming Today rail once minimized to its icon strip. Also
+// used as the minimize/maximize button's own width so the button reads as
+// occupying the same horizontal slot the rail collapses into.
+const MINIMIZED_RAIL_WIDTH = "52px";
 
 function loadStringPref<T extends string>(key: string, fallback: T, validValues: readonly T[]): T {
   try {
@@ -7755,6 +7766,15 @@ interface UpcomingTodayPanelProps {
    *  set by the parent when Daily view is showing a single specific date
    *  rather than a range (see that prop's doc comment for why). */
   dateFilterDisabledMessage?: string;
+  // Preferences tab — whether the Upcoming Today card shows at all.
+  showUpcomingToday: boolean;
+  setShowUpcomingToday: (v: boolean) => void;
+  // Rail minimize/maximize — collapses both panels below into a narrow
+  // icon strip; each icon opens its panel's content in a popover. The
+  // toggle control itself lives in SchedulePage (one fixed spot above the
+  // whole column), so this component only needs to know the current
+  // state, not a setter.
+  isMinimized: boolean;
 }
 
 function UpcomingTodayPanel({
@@ -7775,6 +7795,8 @@ function UpcomingTodayPanel({
   keepMyFilters, setKeepMyFilters,
   highlightMySessions, setHighlightMySessions,
   dateFilterDisabledMessage,
+  showUpcomingToday, setShowUpcomingToday,
+  isMinimized,
 }: UpcomingTodayPanelProps) {
   const today = new Date();
   const dateLabel = today.toLocaleDateString("en-US", {
@@ -7784,6 +7806,45 @@ function UpcomingTodayPanel({
   });
 
   const [sidebarTab, setSidebarTab] = useState<"Resources" | "Filters" | "Preferences">("Resources");
+
+  // Live search over the Resources tab's Instructors/Venues lists — purely
+  // a display filter on the checkbox list, separate from which
+  // instructors/venues are actually selected (filterInstructors/Venues).
+  const [resourceSearch, setResourceSearch] = useState("");
+
+  // Category filter — narrows the Resources tab to just Instructors or
+  // just Venues (saves space vs. always showing both long lists stacked).
+  // "all" shows both, same as before this filter existed.
+  const [resourceCategoryFilter, setResourceCategoryFilter] = useState<"all" | "instructors" | "venues">("all");
+
+  // Which panel's content is showing in a popover while the rail is
+  // minimized. Independent of `sidebarTab` above so re-maximizing always
+  // lands back on whichever tab was open before minimizing.
+  const [railPopover, setRailPopover] = useState<"upcoming" | "resources" | "filters" | "preferences" | null>(null);
+  const toggleRailPopover = (which: "upcoming" | "resources" | "filters" | "preferences") => {
+    setRailPopover((current) => (current === which ? null : which));
+  };
+  // If "Show Upcoming Today" gets switched off while its popover happens
+  // to be open, don't leave an orphaned popover with no icon behind it.
+  useEffect(() => {
+    if (!showUpcomingToday && railPopover === "upcoming") setRailPopover(null);
+  }, [showUpcomingToday, railPopover]);
+
+  // Close an open rail popover on any click outside the rail itself.
+  // Clicks on the icon buttons are inside railRef too, so this only
+  // triggers for genuine "click elsewhere" (calendar, other panels, etc.)
+  // rather than fighting with each icon's own open/close toggle.
+  const railRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!railPopover) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (railRef.current && !railRef.current.contains(e.target as Node)) {
+        setRailPopover(null);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [railPopover]);
 
   // Registration-status preference helpers ────────────────────────────
   // Three levels of bulk-setter, none of them a separately stored value —
@@ -7844,6 +7905,18 @@ function UpcomingTodayPanel({
     }
   };
 
+  // Search-filtered Instructors/Venues lists — the checkbox rows below
+  // render from these instead of the raw option lists so the search field
+  // actually narrows what's visible.
+  const resourceSearchQuery = resourceSearch.trim().toLowerCase();
+  const filteredInstructorOptions = resourceSearchQuery
+    ? INSTRUCTOR_OPTIONS.filter((name) => name.toLowerCase().includes(resourceSearchQuery))
+    : INSTRUCTOR_OPTIONS;
+  const filteredVenueOptions = resourceSearchQuery
+    ? VENUE_OPTIONS.filter((name) => name.toLowerCase().includes(resourceSearchQuery))
+    : VENUE_OPTIONS;
+
+
   // Non-resource filter count (used for the Filters tab badge)
   const nonResourceFilterCount =
     (filterStartDate ? 1 : 0) +
@@ -7893,494 +7966,970 @@ function UpcomingTodayPanel({
     flexDirection: "column",
   };
 
-  return (
-    <>
-      {/* ── Panel 1: Upcoming Today event list ─────────────────────── */}
-      <aside style={{ ...panelStyle, flex: "3 1 0" }}>
-        {/* Header */}
+  // ── Reusable content blocks ───────────────────────────────────────────
+  // The same markup renders in up to three places — the normal tabbed
+  // panel, the stacked (no-tabs) panel shown when Upcoming Today is
+  // hidden, and a popover opened from its icon when the rail is
+  // minimized — so each block is built once here as a variable rather
+  // than duplicated at every call site.
+  const upcomingEventListContent = (
+    <div
+      className="always-show-scrollbar"
+      style={{
+        flex: "1 1 0",
+        minHeight: 0,
+        overflowY: "auto",
+        padding: "8px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "6px",
+      }}
+    >
+      {events.length === 0 ? (
         <div
           style={{
-            padding: "16px 20px",
-            background: sc.headerBg,
-            borderBottom: `1px solid ${sc.border}`,
-            flexShrink: 0,
+            padding: "32px 16px",
+            textAlign: "center",
+            color: sc.muted,
+            fontSize: "13px",
+            lineHeight: "18px",
           }}
         >
-          <span style={{ fontSize: "15px", fontWeight: 600, color: sc.heading, lineHeight: "20px" }}>
-            Upcoming Today
-          </span>
-          <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", marginTop: "2px" }}>
-            {dateLabel} · {events.length} reservation{events.length === 1 ? "" : "s"}
-          </div>
+          Nothing left on today's schedule.
         </div>
-
-      {/* Event list */}
-      <div
-        className="always-show-scrollbar"
-        style={{
-          flex: "1 1 0",
-          minHeight: 0,
-          overflowY: "auto",
-          padding: "8px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "6px",
-        }}
-      >
-        {events.length === 0 ? (
-          <div
-            style={{
-              padding: "32px 16px",
-              textAlign: "center",
-              color: sc.muted,
-              fontSize: "13px",
-              lineHeight: "18px",
-            }}
-          >
-            Nothing left on today's schedule.
-          </div>
-        ) : (
-          events.map((event) => {
-            const ec = colors[event.type];
-            const remaining = Math.max(0, event.capacity - event.booked);
-            const hasCapacity  = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
-            const attendPct    = hasCapacity ? event.booked / event.capacity : 0;
-            const isFull       = hasCapacity && event.booked >= event.capacity;
-            const isNearlyFull = !isFull && hasCapacity && attendPct >= 0.8;
-            const isEmpty      = hasCapacity && event.booked === 0;
-            const statusLabel  = isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null;
-            const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
-            const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-            return (
-              <button
-                key={event.id}
-                onClick={() => onSelectEvent(event)}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "10px",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: `1px solid ${sc.border}`,
-                  background: "transparent",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  width: "100%",
-                  fontFamily: "var(--font-family)",
-                  color: sc.body,
-                  transition: "background 0.15s ease, border-color 0.15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
-                  e.currentTarget.style.borderColor = sc.brand;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.borderColor = sc.border;
-                }}
-              >
-                <span
-                  style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: ec.text, flexShrink: 0 }}
-                />
-                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
-                    <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 0", minWidth: 0 }}>
-                      {event.title}
+      ) : (
+        events.map((event) => {
+          const ec = colors[event.type];
+          const remaining = Math.max(0, event.capacity - event.booked);
+          const hasCapacity  = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
+          const attendPct    = hasCapacity ? event.booked / event.capacity : 0;
+          const isFull       = hasCapacity && event.booked >= event.capacity;
+          const isNearlyFull = !isFull && hasCapacity && attendPct >= 0.8;
+          const isEmpty      = hasCapacity && event.booked === 0;
+          const statusLabel  = isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null;
+          const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
+          const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+          return (
+            <button
+              key={event.id}
+              onClick={() => onSelectEvent(event)}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                padding: "12px",
+                borderRadius: "8px",
+                border: `1px solid ${sc.border}`,
+                background: "transparent",
+                cursor: "pointer",
+                textAlign: "left",
+                width: "100%",
+                fontFamily: "var(--font-family)",
+                color: sc.body,
+                transition: "background 0.15s ease, border-color 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
+                e.currentTarget.style.borderColor = sc.brand;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.borderColor = sc.border;
+              }}
+            >
+              <span
+                style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: ec.text, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
+                  <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 0", minWidth: 0 }}>
+                    {event.title}
+                  </span>
+                  {statusLabel && (
+                    <span style={{ flexShrink: 0, fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText }}>
+                      {statusLabel}
                     </span>
-                    {statusLabel && (
-                      <span style={{ flexShrink: 0, fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText }}>
-                        {statusLabel}
-                      </span>
-                    )}
-                    <span style={{ fontSize: "12px", fontWeight: 500, color: sc.body, lineHeight: "16px", flexShrink: 0 }}>
-                      {event.time}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><User size={12} /> {event.instructor}</span>
-                    <span style={{ opacity: 0.5 }}>·</span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><MapPin size={12} /> {event.venue}</span>
-                  </div>
-                  <div style={{ fontSize: "12px", lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", color: sc.body }}>
-                    <Users size={12} style={{ color: sc.muted }} />
-                    <span style={{ fontWeight: 600 }}>{event.booked}/{event.capacity}</span>
-                    <span style={{ color: sc.muted }}>
-                      {isFull ? (event.waitlistEnabled ? "(Waitlist open)" : "(Full)") : `(${remaining} available)`}
-                    </span>
-                  </div>
+                  )}
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: sc.body, lineHeight: "16px", flexShrink: 0 }}>
+                    {event.time}
+                  </span>
                 </div>
-              </button>
-            );
-          })
-        )}
+                <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><User size={12} /> {event.instructor}</span>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><MapPin size={12} /> {event.venue}</span>
+                </div>
+                <div style={{ fontSize: "12px", lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", color: sc.body }}>
+                  <Users size={12} style={{ color: sc.muted }} />
+                  <span style={{ fontWeight: 600 }}>{event.booked}/{event.capacity}</span>
+                  <span style={{ color: sc.muted }}>
+                    {isFull ? (event.waitlistEnabled ? "(Waitlist open)" : "(Full)") : `(${remaining} available)`}
+                  </span>
+                </div>
+              </div>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+
+  const resourcesTabContent = (
+    <div style={{ paddingBottom: "12px" }}>
+      {/* Search — narrows both lists below by name. Purely a display
+          filter; it doesn't touch what's actually selected. */}
+      <div style={{ padding: "10px 16px 8px" }}>
+        <div style={{ position: "relative" }}>
+          <Search
+            size={14}
+            style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: sc.muted, pointerEvents: "none" }}
+          />
+          <input
+            type="text"
+            value={resourceSearch}
+            onChange={(e) => setResourceSearch(e.target.value)}
+            placeholder="Search instructors & venues"
+            style={{
+              width: "100%",
+              padding: "7px 28px 7px 30px",
+              borderRadius: "6px",
+              border: `1px solid ${sc.border}`,
+              background: sc.inputBg,
+              color: sc.body,
+              fontSize: "13px",
+              fontFamily: "var(--font-family)",
+              outline: "none",
+            }}
+          />
+          {resourceSearch && (
+            <button
+              type="button"
+              onClick={() => setResourceSearch("")}
+              aria-label="Clear search"
+              style={{
+                position: "absolute",
+                right: "6px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "20px",
+                height: "20px",
+                border: "none",
+                background: "transparent",
+                color: sc.muted,
+                cursor: "pointer",
+                borderRadius: "50%",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = sc.brand; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = sc.muted; }}
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
       </div>
 
-      </aside>
-
-      {/* ── Panel 2: Resources & Filters tabs ──────────────────────── */}
-      <aside style={{ ...panelStyle, flex: "2 1 0" }}>
-        {/* Tab row */}
-        <div
-          style={{
-            display: "flex",
-            borderBottom: `1px solid ${sc.border}`,
-            flexShrink: 0,
-            background: sc.headerBg,
-          }}
-        >
-          {(["Resources", "Filters"] as const).map((tab) => {
-            const isActive = sidebarTab === tab;
-            const badge = tab === "Resources" ? resourceFilterCount : nonResourceFilterCount;
+      {/* Category filter (left) — narrows the list below to just
+          Instructors or just Venues so both long lists don't always have
+          to be stacked together. Clicking the already-active pill returns
+          to "all". "Clear all" (right) lives in this same row rather than
+          its own, and independent of the category filter, so it's always
+          reachable even when the list is narrowed to just Instructors or
+          just Venues. */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", padding: "0 16px 10px" }}>
+        <div style={{ display: "flex", gap: "6px" }}>
+          {(["instructors", "venues"] as const).map((cat) => {
+            const isActive = resourceCategoryFilter === cat;
             return (
               <button
-                key={tab}
-                onClick={() => setSidebarTab(tab)}
+                key={cat}
+                type="button"
+                onClick={() => setResourceCategoryFilter((prev) => (prev === cat ? "all" : cat))}
+                aria-pressed={isActive}
                 style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  border: "none",
-                  borderBottom: isActive ? `2px solid ${sc.brand}` : "2px solid transparent",
-                  background: "transparent",
-                  fontSize: "13px",
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? sc.brand : sc.muted,
-                  fontFamily: "var(--font-family)",
+                  padding: "5px 12px",
+                  borderRadius: "999px",
+                  border: `1px solid ${isActive ? sc.brand : sc.border}`,
+                  background: isActive ? sc.brand : "transparent",
+                  color: isActive ? (isDark ? "#0a0e0f" : "#101828") : sc.body,
+                  fontSize: "12px",
+                  fontWeight: 600,
                   cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
-                  transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+                  fontFamily: "var(--font-family)",
+                  transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
                 }}
               >
-                {tab}
-                {badge > 0 && (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minWidth: "16px",
-                      height: "16px",
-                      padding: "0 4px",
-                      borderRadius: "8px",
-                      background: sc.brand,
-                      color: isDark ? "#0a0e0f" : "#101828",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {badge}
-                  </span>
-                )}
+                {cat === "instructors" ? "Instructors" : "Venues"}
               </button>
             );
           })}
-          {/* Preferences tab — icon-only (gear), no badge. Unlike Resources/
-              Filters, there's no "N active" concept here worth surfacing —
-              the setting is a persistent display preference, not a filter
-              currently narrowing what's shown. */}
+        </div>
+        {(filterInstructors.length > 0 || filterVenues.length > 0 || resourceCategoryFilter !== "all" || resourceSearch) && (
           <button
-            onClick={() => setSidebarTab("Preferences")}
-            aria-label="Schedule display preferences"
-            aria-pressed={sidebarTab === "Preferences"}
+            onClick={() => {
+              setFilterInstructors([]);
+              setFilterVenues([]);
+              setResourceCategoryFilter("all");
+              setResourceSearch("");
+            }}
+            style={{ background: "none", border: "none", fontSize: "11px", fontWeight: 600, color: sc.brand, cursor: "pointer", padding: 0, fontFamily: "var(--font-family)", flexShrink: 0 }}
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* Instructors group — Hidden when the category filter above is
+          narrowed to Venues only. */}
+      {resourceCategoryFilter !== "venues" && (
+        <>
+          <div style={groupLabelStyle}>
+            <span>Instructors</span>
+          </div>
+          {filteredInstructorOptions.length === 0 ? (
+            <div style={{ padding: "6px 16px 10px", fontSize: "12px", color: sc.muted }}>No instructors match "{resourceSearch.trim()}".</div>
+          ) : (
+            filteredInstructorOptions.map((name) => {
+              const isChecked = filterInstructors.includes(name);
+              return (
+                <label
+                  key={name}
+                  style={checkRowStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleInstructor(name)}
+                    style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
+                  />
+                  <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
+                    {name}
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </>
+      )}
+
+      {/* Divider — only when both groups are showing. */}
+      {resourceCategoryFilter === "all" && (
+        <div style={{ height: "1px", background: sc.border, margin: "8px 16px" }} />
+      )}
+
+      {/* Venues group — no separate Clear link here. Resource
+          filters (instructors + venues) are treated as one filter
+          group with a single "or" query behind it, so there's one
+          Clear affordance for the pair, not one per axis; it lives
+          on the Instructors header above. Hidden when the category
+          filter above is narrowed to Instructors only. */}
+      {resourceCategoryFilter !== "instructors" && (
+        <>
+          <div style={groupLabelStyle}>
+            <span>Venues</span>
+          </div>
+          {filteredVenueOptions.length === 0 ? (
+            <div style={{ padding: "6px 16px 10px", fontSize: "12px", color: sc.muted }}>No venues match "{resourceSearch.trim()}".</div>
+          ) : (
+            filteredVenueOptions.map((name) => {
+              const isChecked = filterVenues.includes(name);
+              return (
+                <label
+                  key={name}
+                  style={checkRowStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleVenue(name)}
+                    style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
+                  />
+                  <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
+                    {name}
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  const filtersTabContent = (
+    <>
+      {/* "Keep my filters" lives here (rather than the Preferences
+          tab) since a user looking to change filter-persistence
+          behavior is most likely to look for it right where the
+          filters themselves live. */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <div>
+          <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
+            Keep my filters
+          </div>
+          <div style={{ fontSize: "11px", color: sc.muted, marginTop: "1px", lineHeight: "15px" }}>
+            Remember these selections the next time you visit.
+          </div>
+        </div>
+        <SchedulePrefToggle
+          enabled={keepMyFilters}
+          onChange={setKeepMyFilters}
+          sc={sc}
+          ariaLabel="Keep my filters across visits"
+        />
+      </div>
+      <div style={{ height: "1px", background: sc.border }} />
+
+      <CalendarFiltersContent
+        filterStartDate={filterStartDate}
+        setFilterStartDate={setFilterStartDate}
+        filterEndDate={filterEndDate}
+        setFilterEndDate={setFilterEndDate}
+        filterStartTime={filterStartTime}
+        setFilterStartTime={setFilterStartTime}
+        filterEndTime={filterEndTime}
+        setFilterEndTime={setFilterEndTime}
+        filterVenues={filterVenues}
+        setFilterVenues={setFilterVenues}
+        filterInstructors={filterInstructors}
+        setFilterInstructors={setFilterInstructors}
+        filterTypes={filterTypes}
+        setFilterTypes={setFilterTypes}
+        filterPaymentStatus={filterPaymentStatus}
+        setFilterPaymentStatus={setFilterPaymentStatus}
+        filterRegistrations={filterRegistrations}
+        setFilterRegistrations={setFilterRegistrations}
+        activeFilterCount={nonResourceFilterCount}
+        clearAllFilters={clearAllFilters}
+        palette={palette}
+        isDark={isDark}
+        sc={sc}
+        colors={colors}
+        hideResourceFilters
+        hideHeader
+        inlineClearAll={nonResourceFilterCount > 0}
+        dateFilterDisabledMessage={dateFilterDisabledMessage}
+      />
+    </>
+  );
+
+  const preferencesTabContent = (
+    <>
+      {/* ── General ──────────────────────────────────────────
+          Default view only takes effect next page load (see the
+          comment on `desktopView`'s init in SchedulePage); density,
+          keep-my-filters, and highlight-my-sessions all apply
+          immediately. */}
+      <div style={{ padding: "8px 4px" }}>
+        <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading, marginBottom: "6px" }}>
+          Default view
+        </div>
+        <ScheduleSegmentedControl
+          options={SCHEDULE_VIEW_IDS}
+          value={defaultView}
+          onChange={setDefaultView}
+          sc={sc}
+          isDark={isDark}
+        />
+      </div>
+
+      <div style={{ padding: "8px 4px" }}>
+        <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading, marginBottom: "6px" }}>
+          Density
+        </div>
+        <ScheduleSegmentedControl
+          options={SCHEDULE_DENSITIES}
+          value={density}
+          onChange={setDensity}
+          sc={sc}
+          isDark={isDark}
+          getLabel={(d) => (d === "comfortable" ? "Comfortable" : "Compact")}
+        />
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", gap: "12px" }}>
+        <div>
+          <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
+            Highlight my sessions
+          </div>
+          <div style={{ fontSize: "11px", color: sc.muted, marginTop: "1px", lineHeight: "15px" }}>
+            Rings sessions taught by {CURRENT_USER_INSTRUCTOR} and dims
+            everything else. (Demo stand-in for a signed-in instructor.)
+          </div>
+        </div>
+        <SchedulePrefToggle
+          enabled={highlightMySessions}
+          onChange={setHighlightMySessions}
+          sc={sc}
+          ariaLabel={`Highlight sessions taught by ${CURRENT_USER_INSTRUCTOR}`}
+        />
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", gap: "12px" }}>
+        <div>
+          <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
+            Show Upcoming Today
+          </div>
+          <div style={{ fontSize: "11px", color: sc.muted, marginTop: "1px", lineHeight: "15px" }}>
+            Removes the Upcoming Today card entirely, including its icon
+            when the panel is minimized. Switch it back on here to bring
+            it back — there's no other way to restore it.
+          </div>
+        </div>
+        <SchedulePrefToggle
+          enabled={showUpcomingToday}
+          onChange={setShowUpcomingToday}
+          sc={sc}
+          ariaLabel="Show the Upcoming Today card"
+        />
+      </div>
+
+      <div style={{ height: "1px", background: sc.border, margin: "6px 0 8px" }} />
+
+      {/* ── Registration status ──────────────────────────────── */}
+      <div style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
+        Registration status
+      </div>
+      <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "17px", marginBottom: "4px" }}>
+        Choose which statuses show up on the calendar, and on which
+        views — e.g. show only "Available" on the Monthly view and
+        hide the rest. This only changes how the calendar looks;
+        reservation details always show full registration info.
+      </div>
+
+      {/* Bulk "everything" toggle — reads "on" only when every
+          status on every view below is already on. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 4px",
+        }}
+      >
+        <span style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
+          Show everywhere
+        </span>
+        <SchedulePrefToggle
+          enabled={isEverythingOn}
+          onChange={toggleEverything}
+          sc={sc}
+          ariaLabel="Show registration status for every status and every schedule view"
+        />
+      </div>
+
+      <div style={{ height: "1px", background: sc.border, margin: "4px 0 4px" }} />
+
+      {SCHEDULE_VIEW_IDS.map((view) => (
+        <div key={view}>
+          {/* Per-view header — its own bulk toggle for all 4
+              categories, reusing the same "Instructors"-style
+              group-label row (uppercase label + right-aligned
+              control) already used elsewhere in this panel. */}
+          <div style={{ ...groupLabelStyle, padding: "10px 4px 6px" }}>
+            <span>{view}</span>
+            <SchedulePrefToggle
+              enabled={isViewAllOn(view)}
+              onChange={() => toggleViewAll(view)}
+              sc={sc}
+              ariaLabel={`Show registration status for every status on the ${view} view`}
+            />
+          </div>
+          {REGISTRATION_STATUS_CATEGORIES.map((category) => {
+            const meta = REGISTRATION_STATUS_CATEGORY_META[category];
+            const isChecked = registrationStatusPrefs[view][category];
+            return (
+              <label
+                key={category}
+                style={checkRowStyle}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggleViewCategory(view, category)}
+                  style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
+                />
+                <span
+                  aria-hidden
+                  style={{
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    background: isDark ? meta.dotDark : meta.dotLight,
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
+                  {meta.label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ))}
+    </>
+  );
+
+  /* ── Minimized rail — both panels collapse into this narrow icon strip.
+     Each icon toggles a popover with that panel's full content. The
+     maximize control lives outside this component (see SchedulePage's
+     standalone minimize/maximize button, same spot the minimize button
+     was in before collapsing). ── */
+  if (isMinimized) {
+    const popoverTitle =
+      railPopover === "upcoming" ? "Upcoming Today" :
+      railPopover === "resources" ? "Resources" :
+      railPopover === "filters" ? "Filters" :
+      railPopover === "preferences" ? "Display preferences" : "";
+
+    const railIconBtn: CSSProperties = {
+      width: "36px",
+      height: "36px",
+      borderRadius: "8px",
+      border: "none",
+      background: "transparent",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+      transition: "background 0.15s ease, color 0.15s ease",
+    };
+
+    return (
+      <aside
+        ref={railRef}
+        style={{
+          ...panelStyle,
+          flex: "1 1 0",
+          alignItems: "center",
+          padding: "8px 0",
+          gap: "6px",
+          position: "relative",
+          overflow: "visible",
+        }}
+      >
+        {/* No maximize button here — it lives in one fixed spot above the
+            whole column (the standalone control in SchedulePage) so users
+            aren't hunting for it in two different places depending on
+            state. This rail is icons-only. */}
+        {showUpcomingToday && (
+          <button
+            onClick={() => toggleRailPopover("upcoming")}
+            aria-label="Upcoming Today"
+            title="Upcoming Today"
+            aria-pressed={railPopover === "upcoming"}
             style={{
-              flex: 1,
-              padding: "10px 12px",
-              border: "none",
-              borderBottom: sidebarTab === "Preferences" ? `2px solid ${sc.brand}` : "2px solid transparent",
-              background: "transparent",
-              color: sidebarTab === "Preferences" ? sc.brand : sc.muted,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+              ...railIconBtn,
+              background: railPopover === "upcoming" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)") : "transparent",
+              color: railPopover === "upcoming" ? sc.brand : sc.muted,
             }}
           >
-            <Settings size={16} />
+            <Clock size={17} />
           </button>
-        </div>
+        )}
 
-        {/* Tab content — scrolls independently */}
-        <div
-          className="always-show-scrollbar"
-          style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}
+        <button
+          onClick={() => toggleRailPopover("resources")}
+          aria-label="Resources"
+          title="Resources"
+          aria-pressed={railPopover === "resources"}
+          style={{
+            ...railIconBtn,
+            position: "relative",
+            background: railPopover === "resources" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)") : "transparent",
+            color: railPopover === "resources" ? sc.brand : sc.muted,
+          }}
         >
-          {/* ── Resources tab ───────────────────────────────────────── */}
-          {sidebarTab === "Resources" && (
-            <div style={{ paddingBottom: "12px" }}>
-              {/* Instructors group — carries the single "Clear" link for
-                  both resource axes (see note above Venues group below). */}
-              <div style={groupLabelStyle}>
-                <span>Instructors</span>
-                {(filterInstructors.length > 0 || filterVenues.length > 0) && (
-                  <button
-                    onClick={() => { setFilterInstructors([]); setFilterVenues([]); }}
-                    style={{ background: "none", border: "none", fontSize: "11px", fontWeight: 600, color: sc.brand, cursor: "pointer", padding: 0, fontFamily: "var(--font-family)" }}
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              {INSTRUCTOR_OPTIONS.map((name) => {
-                const isChecked = filterInstructors.includes(name);
-                return (
-                  <label
-                    key={name}
-                    style={checkRowStyle}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggleInstructor(name)}
-                      style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
-                    />
-                    <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
-                      {name}
-                    </span>
-                  </label>
-                );
-              })}
-
-              {/* Divider */}
-              <div style={{ height: "1px", background: sc.border, margin: "8px 16px" }} />
-
-              {/* Venues group — no separate Clear link here. Resource
-                  filters (instructors + venues) are treated as one filter
-                  group with a single "or" query behind it, so there's one
-                  Clear affordance for the pair, not one per axis; it lives
-                  on the Instructors header above. */}
-              <div style={groupLabelStyle}>
-                <span>Venues</span>
-              </div>
-              {VENUE_OPTIONS.map((name) => {
-                const isChecked = filterVenues.includes(name);
-                return (
-                  <label
-                    key={name}
-                    style={checkRowStyle}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggleVenue(name)}
-                      style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
-                    />
-                    <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
-                      {name}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+          <Users size={17} />
+          {resourceFilterCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: "-4px",
+                right: "-4px",
+                minWidth: "16px",
+                height: "16px",
+                padding: "0 4px",
+                borderRadius: "8px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: sc.brand,
+                color: isDark ? "#0a0e0f" : "#101828",
+                fontSize: "10px",
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              {resourceFilterCount}
+            </span>
           )}
+        </button>
 
-          {/* ── Filters tab ─────────────────────────────────────────── */}
-          {sidebarTab === "Filters" && (
-            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
-              {/* "Keep my filters" lives here (rather than the Preferences
-                  tab) since a user looking to change filter-persistence
-                  behavior is most likely to look for it right where the
-                  filters themselves live. */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-                <div>
-                  <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
-                    Keep my filters
-                  </div>
-                  <div style={{ fontSize: "11px", color: sc.muted, marginTop: "1px", lineHeight: "15px" }}>
-                    Remember these selections the next time you visit.
-                  </div>
-                </div>
-                <SchedulePrefToggle
-                  enabled={keepMyFilters}
-                  onChange={setKeepMyFilters}
-                  sc={sc}
-                  ariaLabel="Keep my filters across visits"
-                />
-              </div>
-              <div style={{ height: "1px", background: sc.border }} />
-
-              <CalendarFiltersContent
-                filterStartDate={filterStartDate}
-                setFilterStartDate={setFilterStartDate}
-                filterEndDate={filterEndDate}
-                setFilterEndDate={setFilterEndDate}
-                filterStartTime={filterStartTime}
-                setFilterStartTime={setFilterStartTime}
-                filterEndTime={filterEndTime}
-                setFilterEndTime={setFilterEndTime}
-                filterVenues={filterVenues}
-                setFilterVenues={setFilterVenues}
-                filterInstructors={filterInstructors}
-                setFilterInstructors={setFilterInstructors}
-                filterTypes={filterTypes}
-                setFilterTypes={setFilterTypes}
-                filterPaymentStatus={filterPaymentStatus}
-                setFilterPaymentStatus={setFilterPaymentStatus}
-                filterRegistrations={filterRegistrations}
-                setFilterRegistrations={setFilterRegistrations}
-                activeFilterCount={nonResourceFilterCount}
-                clearAllFilters={clearAllFilters}
-                palette={palette}
-                isDark={isDark}
-                sc={sc}
-                colors={colors}
-                hideResourceFilters
-                hideHeader
-                inlineClearAll={nonResourceFilterCount > 0}
-                dateFilterDisabledMessage={dateFilterDisabledMessage}
-              />
-            </div>
+        <button
+          onClick={() => toggleRailPopover("filters")}
+          aria-label="Filters"
+          title="Filters"
+          aria-pressed={railPopover === "filters"}
+          style={{
+            ...railIconBtn,
+            position: "relative",
+            background: railPopover === "filters" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)") : "transparent",
+            color: railPopover === "filters" ? sc.brand : sc.muted,
+          }}
+        >
+          <SlidersHorizontal size={16} />
+          {nonResourceFilterCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: "-4px",
+                right: "-4px",
+                minWidth: "16px",
+                height: "16px",
+                padding: "0 4px",
+                borderRadius: "8px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: sc.brand,
+                color: isDark ? "#0a0e0f" : "#101828",
+                fontSize: "10px",
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              {nonResourceFilterCount}
+            </span>
           )}
+        </button>
 
-          {/* ── Preferences tab ─────────────────────────────────────── */}
-          {sidebarTab === "Preferences" && (
-            <div style={{ padding: "12px 16px 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
-              {/* ── General ──────────────────────────────────────────
-                  Default view only takes effect next page load (see the
-                  comment on `desktopView`'s init in SchedulePage); density,
-                  keep-my-filters, and highlight-my-sessions all apply
-                  immediately. */}
-              <div style={{ padding: "8px 4px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading, marginBottom: "6px" }}>
-                  Default view
-                </div>
-                <ScheduleSegmentedControl
-                  options={SCHEDULE_VIEW_IDS}
-                  value={defaultView}
-                  onChange={setDefaultView}
-                  sc={sc}
-                  isDark={isDark}
-                />
-              </div>
+        <button
+          onClick={() => toggleRailPopover("preferences")}
+          aria-label="Display preferences"
+          title="Display preferences"
+          aria-pressed={railPopover === "preferences"}
+          style={{
+            ...railIconBtn,
+            background: railPopover === "preferences" ? (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)") : "transparent",
+            color: railPopover === "preferences" ? sc.brand : sc.muted,
+          }}
+        >
+          <Settings size={16} />
+        </button>
 
-              <div style={{ padding: "8px 4px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading, marginBottom: "6px" }}>
-                  Density
-                </div>
-                <ScheduleSegmentedControl
-                  options={SCHEDULE_DENSITIES}
-                  value={density}
-                  onChange={setDensity}
-                  sc={sc}
-                  isDark={isDark}
-                  getLabel={(d) => (d === "comfortable" ? "Comfortable" : "Compact")}
-                />
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", gap: "12px" }}>
-                <div>
-                  <div style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
-                    Highlight my sessions
-                  </div>
-                  <div style={{ fontSize: "11px", color: sc.muted, marginTop: "1px", lineHeight: "15px" }}>
-                    Rings sessions taught by {CURRENT_USER_INSTRUCTOR} and dims
-                    everything else. (Demo stand-in for a signed-in instructor.)
-                  </div>
-                </div>
-                <SchedulePrefToggle
-                  enabled={highlightMySessions}
-                  onChange={setHighlightMySessions}
-                  sc={sc}
-                  ariaLabel={`Highlight sessions taught by ${CURRENT_USER_INSTRUCTOR}`}
-                />
-              </div>
-
-              <div style={{ height: "1px", background: sc.border, margin: "6px 0 8px" }} />
-
-              {/* ── Registration status ──────────────────────────────── */}
-              <div style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
-                Registration status
-              </div>
-              <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "17px", marginBottom: "4px" }}>
-                Choose which statuses show up on the calendar, and on which
-                views — e.g. show only "Available" on the Monthly view and
-                hide the rest. This only changes how the calendar looks;
-                reservation details always show full registration info.
-              </div>
-
-              {/* Bulk "everything" toggle — reads "on" only when every
-                  status on every view below is already on. */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "10px 4px",
-                }}
+        {railPopover && (
+          // Deliberately NOT a flex column relying on max-height + flex-shrink
+          // to cap the scrollable area — that combination is unreliable when
+          // the container's own height is otherwise indefinite (as it is
+          // here, absolutely positioned with no explicit height). Instead
+          // the header is a plain block and the body gets its own explicit
+          // max-height (cap minus the header's fixed height) with its own
+          // overflow-y — a plain scrolling box that can't fail to show the
+          // rest of the content, however tall it gets.
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              right: "calc(100% + 10px)",
+              width: "320px",
+              background: sc.cellBg,
+              border: `1px solid ${sc.border}`,
+              borderRadius: "12px",
+              boxShadow: `0px 8px 16px -4px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
+              zIndex: 200,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 16px",
+                background: sc.headerBg,
+                borderBottom: `1px solid ${sc.border}`,
+              }}
+            >
+              <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading }}>
+                {popoverTitle}
+              </span>
+              <button
+                onClick={() => setRailPopover(null)}
+                aria-label="Close"
+                style={{ border: "none", background: "transparent", color: sc.muted, cursor: "pointer", padding: "2px", display: "flex" }}
               >
-                <span style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
-                  Show everywhere
-                </span>
-                <SchedulePrefToggle
-                  enabled={isEverythingOn}
-                  onChange={toggleEverything}
-                  sc={sc}
-                  ariaLabel="Show registration status for every status and every schedule view"
-                />
-              </div>
-
-              <div style={{ height: "1px", background: sc.border, margin: "4px 0 4px" }} />
-
-              {SCHEDULE_VIEW_IDS.map((view) => (
-                <div key={view}>
-                  {/* Per-view header — its own bulk toggle for all 4
-                      categories, reusing the same "Instructors"-style
-                      group-label row (uppercase label + right-aligned
-                      control) already used elsewhere in this panel. */}
-                  <div style={{ ...groupLabelStyle, padding: "10px 4px 6px" }}>
-                    <span>{view}</span>
-                    <SchedulePrefToggle
-                      enabled={isViewAllOn(view)}
-                      onChange={() => toggleViewAll(view)}
-                      sc={sc}
-                      ariaLabel={`Show registration status for every status on the ${view} view`}
-                    />
-                  </div>
-                  {REGISTRATION_STATUS_CATEGORIES.map((category) => {
-                    const meta = REGISTRATION_STATUS_CATEGORY_META[category];
-                    const isChecked = registrationStatusPrefs[view][category];
-                    return (
-                      <label
-                        key={category}
-                        style={checkRowStyle}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleViewCategory(view, category)}
-                          style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
-                        />
-                        <span
-                          aria-hidden
-                          style={{
-                            width: "8px",
-                            height: "8px",
-                            borderRadius: "50%",
-                            background: isDark ? meta.dotDark : meta.dotLight,
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
-                          {meta.label}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              ))}
+                <X size={16} />
+              </button>
             </div>
-          )}
-        </div>
+            <div
+              className="always-show-scrollbar"
+              style={{
+                // 49px ≈ the header's own rendered height (14px padding top
+                // + bottom + ~20px line for the 14px title). Slightly off is
+                // harmless — worst case a few px of extra scroll room —
+                // unlike relying on flex-shrink against an indefinite parent
+                // height, which can collapse the whole body to 0.
+                maxHeight: "calc(min(560px, 80vh) - 49px)",
+                overflowY: "auto",
+              }}
+            >
+              {railPopover === "upcoming" && (
+                <>
+                  <div style={{ fontSize: "12px", color: sc.muted, padding: "10px 16px 0" }}>
+                    {dateLabel} · {events.length} reservation{events.length === 1 ? "" : "s"}
+                  </div>
+                  {upcomingEventListContent}
+                </>
+              )}
+              {railPopover === "resources" && resourcesTabContent}
+              {railPopover === "filters" && (
+                <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {filtersTabContent}
+                </div>
+              )}
+              {railPopover === "preferences" && (
+                <div style={{ padding: "12px 16px 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {preferencesTabContent}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </aside>
+    );
+  }
+
+  // Shared header chrome for every top-level card in the maximized layout —
+  // used both by Upcoming Today's header and, when Upcoming Today is
+  // hidden, by the now-separate Resources/Filters/Preferences card headers.
+  // The minimize control is NOT part of this — it's a standalone control
+  // rendered by SchedulePage above the whole column (see the grid layout
+  // there), not tucked into any one panel's header, so it's clear it
+  // collapses the entire rail rather than just that panel.
+  const cardHeaderStyle: CSSProperties = {
+    padding: "16px 20px",
+    background: sc.headerBg,
+    borderBottom: `1px solid ${sc.border}`,
+    flexShrink: 0,
+  };
+  const cardTitleStyle: CSSProperties = {
+    fontSize: "15px",
+    fontWeight: 600,
+    color: sc.heading,
+    lineHeight: "20px",
+  };
+  // Header variant for cards that pair a title with a count badge
+  // (Resources, Filters) — a flex row instead of cardHeaderStyle's plain
+  // block, which Upcoming Today's stacked title+subtitle still needs.
+  const cardHeaderRowStyle: CSSProperties = {
+    ...cardHeaderStyle,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+  };
+  // Same visual badge used on the Resources/Filters tabs, reused in the
+  // maximized card headers and (smaller, absolutely-positioned) on the
+  // minimized rail's icons — one indicator, three places it can surface.
+  const renderCountBadge = (count: number) =>
+    count > 0 ? (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: "16px",
+          height: "16px",
+          padding: "0 4px",
+          borderRadius: "8px",
+          background: sc.brand,
+          color: isDark ? "#0a0e0f" : "#101828",
+          fontSize: "10px",
+          fontWeight: 700,
+          lineHeight: 1,
+          flexShrink: 0,
+        }}
+      >
+        {count}
+      </span>
+    ) : null;
+
+  return (
+    <>
+      {/* ── Panel 1: Upcoming Today event list ─────────────────────── */}
+      {showUpcomingToday && (
+        <aside style={{ ...panelStyle, flex: "3 1 0" }}>
+          {/* Header */}
+          <div style={cardHeaderStyle}>
+            <span style={cardTitleStyle}>
+              Upcoming Today
+            </span>
+            <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", marginTop: "2px" }}>
+              {dateLabel} · {events.length} reservation{events.length === 1 ? "" : "s"}
+            </div>
+          </div>
+
+          {upcomingEventListContent}
+        </aside>
+      )}
+
+      {showUpcomingToday ? (
+        /* ── Panel 2: Resources & Filters — tabbed ──────────────────── */
+        <aside style={{ ...panelStyle, flex: "2 1 0" }}>
+          {/* Tab row */}
+          <div
+            style={{
+              display: "flex",
+              borderBottom: `1px solid ${sc.border}`,
+              flexShrink: 0,
+              background: sc.headerBg,
+            }}
+          >
+            {(["Resources", "Filters"] as const).map((tab) => {
+              const isActive = sidebarTab === tab;
+              const badge = tab === "Resources" ? resourceFilterCount : nonResourceFilterCount;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setSidebarTab(tab)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 12px",
+                    border: "none",
+                    borderBottom: isActive ? `2px solid ${sc.brand}` : "2px solid transparent",
+                    background: "transparent",
+                    fontSize: "13px",
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? sc.brand : sc.muted,
+                    fontFamily: "var(--font-family)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+                  }}
+                >
+                  {tab}
+                  {badge > 0 && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minWidth: "16px",
+                        height: "16px",
+                        padding: "0 4px",
+                        borderRadius: "8px",
+                        background: sc.brand,
+                        color: isDark ? "#0a0e0f" : "#101828",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {/* Preferences tab — icon-only (gear), no badge. Unlike Resources/
+                Filters, there's no "N active" concept here worth surfacing —
+                the setting is a persistent display preference, not a filter
+                currently narrowing what's shown. */}
+            <button
+              onClick={() => setSidebarTab("Preferences")}
+              aria-label="Schedule display preferences"
+              aria-pressed={sidebarTab === "Preferences"}
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                border: "none",
+                borderBottom: sidebarTab === "Preferences" ? `2px solid ${sc.brand}` : "2px solid transparent",
+                background: "transparent",
+                color: sidebarTab === "Preferences" ? sc.brand : sc.muted,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+              }}
+            >
+              <Settings size={16} />
+            </button>
+          </div>
+
+          {/* Tab content — scrolls independently */}
+          <div
+            className="always-show-scrollbar"
+            style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}
+          >
+            {sidebarTab === "Resources" && resourcesTabContent}
+
+            {sidebarTab === "Filters" && (
+              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                {filtersTabContent}
+              </div>
+            )}
+
+            {sidebarTab === "Preferences" && (
+              <div style={{ padding: "12px 16px 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                {preferencesTabContent}
+              </div>
+            )}
+          </div>
+        </aside>
+      ) : (
+        /* ── Resources / Filters / Display preferences — three separate
+           cards, vertically stacked (each its own bordered panel, not one
+           long scrolling surface), filling the 50%-narrower column left
+           behind once Upcoming Today is hidden. ─────────────────────────── */
+        <>
+          <aside style={{ ...panelStyle, flex: "1 1 0" }}>
+            <div style={cardHeaderRowStyle}>
+              <span style={cardTitleStyle}>Resources</span>
+              {renderCountBadge(resourceFilterCount)}
+            </div>
+            <div className="always-show-scrollbar" style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
+              {resourcesTabContent}
+            </div>
+          </aside>
+
+          <aside style={{ ...panelStyle, flex: "1 1 0" }}>
+            <div style={cardHeaderRowStyle}>
+              <span style={cardTitleStyle}>Filters</span>
+              {renderCountBadge(nonResourceFilterCount)}
+            </div>
+            <div className="always-show-scrollbar" style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
+              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                {filtersTabContent}
+              </div>
+            </div>
+          </aside>
+
+          <aside style={{ ...panelStyle, flex: "1 1 0" }}>
+            <div style={cardHeaderStyle}>
+              <span style={cardTitleStyle}>Display preferences</span>
+            </div>
+            <div className="always-show-scrollbar" style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
+              <div style={{ padding: "12px 16px 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                {preferencesTabContent}
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
     </>
   );
 }
@@ -11140,6 +11689,65 @@ export function SchedulePage() {
     persistPref(KEEP_FILTERS_PREF_KEY, String(next));
   }, []);
 
+  // ── "Show Upcoming Today" — see SHOW_UPCOMING_TODAY_PREF_KEY above.
+  // Turning this off removes the card entirely, including its icon in the
+  // minimized rail; the only way back is flipping this switch again. ──
+  const [showUpcomingToday, setShowUpcomingTodayState] = useState<boolean>(() =>
+    loadBoolPref(SHOW_UPCOMING_TODAY_PREF_KEY, true)
+  );
+  const setShowUpcomingToday = useCallback((next: boolean) => {
+    setShowUpcomingTodayState(next);
+    persistPref(SHOW_UPCOMING_TODAY_PREF_KEY, String(next));
+  }, []);
+
+  // ── Rail minimize/maximize — collapses the Upcoming Today +
+  // Resources/Filters/Preferences column into a narrow icon strip.
+  // Session-only (not persisted): a fresh visit always starts maximized. ──
+  const [isRailMinimized, setIsRailMinimized] = useState(false);
+
+  // ── Add Reservation button height measurement — the minimize/maximize
+  // control's own box is sized to match this exactly. Its clearance above
+  // and below is NOT hardcoded to the toolbar's nominal 12px padding —
+  // it's derived from the *actual* measured toolbar row height minus Add
+  // Reservation's own measured height, split evenly above/below. That
+  // way, even if some other control in the toolbar (e.g. the date picker)
+  // ends up taller than Add Reservation and stretches the row via
+  // alignItems:center, the reserved space above the panels still exactly
+  // matches the toolbar's true rendered height — so the top panel's edge
+  // lines up with the calendar grid — while the button itself still
+  // matches Add Reservation's height with equal space above and below.
+  // Measured at runtime (not guessed) so it stays correct regardless of
+  // font metrics, zoom, or future toolbar edits; re-measures on resize
+  // and on every render since Add Reservation moves in/out of the toolbar
+  // when the reservation-details side panel opens. ──
+  const toolbarRowRef = useRef<HTMLDivElement>(null);
+  const addReservationBtnRef = useRef<HTMLButtonElement>(null);
+  const [toolbarRowHeight, setToolbarRowHeight] = useState(0);
+  const [addReservationBtnHeight, setAddReservationBtnHeight] = useState(0);
+  useEffect(() => {
+    const measure = () => {
+      if (toolbarRowRef.current) {
+        const next = toolbarRowRef.current.offsetHeight;
+        setToolbarRowHeight((prev) => (prev === next ? prev : next));
+      }
+      if (addReservationBtnRef.current) {
+        const next = addReservationBtnRef.current.offsetHeight;
+        setAddReservationBtnHeight((prev) => (prev === next ? prev : next));
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  });
+  // Space above (and below) the minimize/maximize button: half of whatever
+  // headroom exists between the full toolbar row and Add Reservation's own
+  // height. When Add Reservation is the row's tallest control (the normal
+  // case) this comes out to exactly the toolbar's own 12px padding; it
+  // only grows if some other toolbar control ends up taller.
+  const railControlClearance = toolbarRowHeight
+    ? Math.max(12, (toolbarRowHeight - addReservationBtnHeight) / 2)
+    : 12;
+
   // ── Calendar Filters popover state ──
   // Mirrors the criteria available in reservation details: date range,
   // time range, venues, instructors, reservation types, and a balances-owed
@@ -11894,6 +12502,7 @@ export function SchedulePage() {
   // rail is visible. Extracted so the JSX stays in sync.
   const addReservationBtn = (
     <button
+      ref={addReservationBtnRef}
       onClick={handleOpenAddReservation}
       style={{
         display: "flex",
@@ -11967,6 +12576,7 @@ export function SchedulePage() {
         >
         {/* ── Top toolbar ──────────────────────────────────────────── */}
         <div
+          ref={toolbarRowRef}
           style={{
             display: "flex",
             alignItems: "center",
@@ -12855,7 +13465,11 @@ export function SchedulePage() {
       <div
         style={{
           flex: "0 0 auto",
-          width: isSidePanelOpen ? "0%" : "25%",
+          // Side-panel width rule: 1/4 of the working area, same as every
+          // other side panel — regardless of whether Upcoming Today is
+          // shown or hidden. Only the minimized icon rail and the fully
+          // collapsed (reservation-details open) state get a narrower slot.
+          width: isSidePanelOpen ? "0%" : isRailMinimized ? MINIMIZED_RAIL_WIDTH : "25%",
           // marginLeft is the calendar↔rail gap. It collapses with the
           // rail so the calendar doesn't leave a 20px dead zone on its
           // right when the panel opens.
@@ -12864,11 +13478,17 @@ export function SchedulePage() {
           display: "flex",
           flexDirection: "column",
           gap: "12px",
-          // Match the toolbar's 12px top padding so the panel's top edge
-          // aligns with the calendar zone (View/DatePicker/AddReservation),
-          // not the very top of the main row.
-          paddingTop: "12px",
-          overflow: "hidden",
+          // The toolbar's own measured height — not a guess — so the top
+          // panel's top edge lands exactly at the calendar grid's top edge,
+          // whatever the toolbar's true rendered height turns out to be.
+          // (Fallback below is only used for the one frame before the
+          // measurement effect's first run.)
+          paddingTop: `${toolbarRowHeight || (12 + (addReservationBtnHeight || 32) + 12)}px`,
+          position: "relative",
+          // Minimized-rail popovers escape this box's bounds, so overflow
+          // has to open up once minimized; otherwise keep it clipped so
+          // the width/opacity transition above doesn't spill content.
+          overflow: isRailMinimized && !isSidePanelOpen ? "visible" : "hidden",
           // Fade the contents out faster than the slot collapses so the
           // rail's text/cards don't visibly clip mid-animation.
           opacity: isSidePanelOpen ? 0 : 1,
@@ -12876,6 +13496,43 @@ export function SchedulePage() {
             "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease",
         }}
       >
+        {/* Standalone minimize/maximize control — a single button in one
+            fixed spot (same location whichever state it's in), so it's
+            never buried inside a specific panel's header or inside the
+            icon rail itself where it'd be easy to miss. Its box matches
+            Add Reservation's own height, with equal clearance above and
+            below it (see railControlClearance above). Hidden only while
+            the reservation-details side panel has pushed the rail to 0
+            width. */}
+        {!isSidePanelOpen && (
+          <button
+            onClick={() => setIsRailMinimized((v) => !v)}
+            aria-label={isRailMinimized ? "Maximize Upcoming Today and schedule panels" : "Minimize Upcoming Today and schedule panels"}
+            title={isRailMinimized ? "Maximize panels" : "Minimize panels"}
+            style={{
+              position: "absolute",
+              top: `${railControlClearance}px`,
+              right: 0,
+              height: `${addReservationBtnHeight || 32}px`,
+              width: MINIMIZED_RAIL_WIDTH,
+              border: `1px solid ${sc.border}`,
+              borderRadius: "6px",
+              background: sc.cellBg,
+              color: sc.muted,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 5,
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = sc.brand; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = sc.muted; }}
+          >
+            {isRailMinimized ? <PanelRightOpen size={15} /> : <PanelRightClose size={15} />}
+          </button>
+        )}
+
         <UpcomingTodayPanel
           events={upcomingToday}
           sc={sc}
@@ -12914,6 +13571,9 @@ export function SchedulePage() {
           highlightMySessions={highlightMySessions}
           setHighlightMySessions={setHighlightMySessions}
           dateFilterDisabledMessage={dailyDateFilterMessage}
+          showUpcomingToday={showUpcomingToday}
+          setShowUpcomingToday={setShowUpcomingToday}
+          isMinimized={isRailMinimized}
         />
       </div>
       </div>
