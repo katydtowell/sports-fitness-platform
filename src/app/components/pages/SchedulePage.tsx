@@ -1417,9 +1417,12 @@ function EventBadge({
     transition: "all 0.15s ease",
   };
 
-  // Diagonal-stripe pattern for buffer indicators, tinted to match
-  // whichever text color the badge landed on.
-  const stripeColor = isDeletable ? deletableColor : textColor;
+  // Diagonal-stripe pattern for buffer indicators, tinted with the
+  // reservation type's own full-opacity accent color (same hex as the
+  // left border / dot) rather than the badge's text color, so the stripe
+  // reads as "this type's buffer" regardless of the low-opacity fill or
+  // theme text color underneath.
+  const stripeColor = isDeletable ? deletableColor : accentBg;
   const bufferStripeStyle: CSSProperties = {
     position: "absolute",
     top: 0,
