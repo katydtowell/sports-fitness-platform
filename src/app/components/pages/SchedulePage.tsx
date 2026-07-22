@@ -11377,16 +11377,37 @@ function DailyView({
     if (mins === -1 || mins >= nowMinutes) break; // first upcoming (or unparsable) session wins
   }
   useEffect(() => {
-    const container = listContainerRef.current;
-    const target = currentRowRef.current;
-    if (!container || !target) return;
-    // Set scrollTop directly on the known list container instead of
-    // scrollIntoView — scrollIntoView walks up and can scroll whichever
-    // ancestor it decides is the "right" scroll context, which landed the
-    // target row near the bottom instead of the top. Computing the offset
-    // ourselves guarantees only this container moves and the row's top
-    // edge lands flush with the container's top edge.
-    container.scrollTo({ top: target.offsetTop - container.offsetTop, behavior: "smooth" });
+    // Double rAF: wait two frames so layout has actually settled (fonts,
+    // row heights, etc.) before measuring — measuring on the same tick as
+    // the commit can read stale/incomplete geometry.
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        const container = listContainerRef.current;
+        const target = currentRowRef.current;
+        // eslint-disable-next-line no-console
+        console.debug("[DailyView autoscroll]", {
+          now: now.toString(),
+          currentRowItem: currentRowItem
+            ? { title: currentRowItem.event.title, time: currentRowItem.event.time, day: currentRowItem.day, month: currentRowItem.month, year: currentRowItem.year }
+            : null,
+          containerFound: !!container,
+          targetFound: !!target,
+          targetOffsetTop: target?.offsetTop,
+          containerScrollHeight: container?.scrollHeight,
+        });
+        if (!container || !target) return;
+        // `container` is given `position: relative` below specifically so
+        // it's guaranteed to be `target`'s offsetParent — otherwise
+        // offsetTop resolves against whatever OTHER positioned ancestor
+        // happens to sit further up the tree (this codebase has plenty of
+        // `position: relative` wrappers), which silently breaks the "just
+        // subtract the two offsetTops" math depending on where in the page
+        // this particular row happens to render.
+        container.scrollTop = target.offsetTop;
+      });
+      return () => cancelAnimationFrame(raf2);
+    });
+    return () => cancelAnimationFrame(raf1);
     // Re-run if the visible day(s) change — e.g. navigating back to today
     // should still land on the current session, not wherever the list
     // happened to be scrolled to for the previously-viewed day.
@@ -11419,7 +11440,7 @@ function DailyView({
   };
 
   return (
-    <div ref={listContainerRef} style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
+    <div ref={listContainerRef} style={{ flex: "1 1 0", minHeight: 0, overflow: "auto", position: "relative" }}>
       {closedItems.map((it) => (
         <div
           key={it.event.id}
