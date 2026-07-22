@@ -1492,7 +1492,7 @@ function EventBadge({
             whiteSpace: "nowrap",
           }}
         >
-          {event.time}
+          {getSessionTimeRangeLabel(event)}
         </span>
       )}
 
@@ -9114,7 +9114,7 @@ function DayEventsPanelContent({
                     {event.title}
                   </span>
                   <span style={{ fontSize: "12px", fontWeight: 500, color: sc.body, lineHeight: "16px", flexShrink: 0 }}>
-                    {event.time}
+                    {event.time ? getSessionTimeRangeLabel(event) : event.time}
                   </span>
                 </div>
                 <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
