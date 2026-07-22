@@ -2184,7 +2184,12 @@ function MobileReservationDetail({
   colors: Record<ReservationType, BadgeColors>;
   isDark: boolean;
 }) {
-  const dotColor = (colors[event.type] || colors.yoga).text;
+  // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
+  // kept as a prop for signature compatibility, but this dot now sources
+  // from the same MONTHLY_ACCENT_BG-backed map every desktop view uses,
+  // so mobile reads as the same color as desktop for the same type.
+  void colors;
+  const dotColor = getAccentBg(event.type, isDark);
   const dateStr = formatEventDate(day, month, year);
   const bookedPct = event.capacity > 0 ? (event.booked / event.capacity) * 100 : 0;
   const available = event.capacity - event.booked;
@@ -3161,7 +3166,12 @@ function MobileEventRow({
   onClick,
   hideMiddleColumn = false,
 }: MobileEventRowProps) {
-  const style = colors[event.type] || colors.yoga;
+  // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
+  // kept as a prop for signature compatibility, but this row's dot now
+  // sources from the same MONTHLY_ACCENT_BG-backed map every desktop view
+  // uses, so mobile reads as the same color as desktop for the same type.
+  void colors;
+  const dotColor = getAccentBg(event.type, isDark);
   const available = Math.max(0, event.capacity - event.booked);
   const isFull = event.capacity > 0 && available === 0;
 
@@ -3235,7 +3245,7 @@ function MobileEventRow({
             width: "8px",
             height: "8px",
             borderRadius: "50%",
-            background: style.text,
+            background: dotColor,
             flexShrink: 0,
             marginTop: "6px",
           }}
@@ -3729,7 +3739,13 @@ function MobileEventList({
                   { type: "pilates" as ReservationType, label: "Pilates" },
                   { type: "yoga" as ReservationType, label: "Yoga" },
                 ].map((row) => {
-                  const c = colors[row.type];
+                  // Same accent-color system every desktop view uses,
+                  // instead of the old LIGHT_EVENT_STYLES/DARK_EVENT_STYLES
+                  // palette — same tint+border treatment as an actual
+                  // Monthly badge, so the legend swatch reads as the same
+                  // color as the real reservation chips on both platforms.
+                  const isNeutral = isNeutralAccentType(row.type);
+                  const accentBg = getAccentBg(row.type, isDark);
                   return (
                     <div
                       key={row.label}
@@ -3742,8 +3758,8 @@ function MobileEventList({
                           width: "18px",
                           height: "18px",
                           borderRadius: "4px",
-                          background: c.bg,
-                          border: `1px solid ${c.border}`,
+                          background: isNeutral ? accentBg : hexToRgba(accentBg, isDark ? 0.22 : 0.14),
+                          border: `1px solid ${accentBg}`,
                           flexShrink: 0,
                         }}
                       />
@@ -9313,6 +9329,11 @@ function CalendarFiltersContent({
   inlineClearAll = false,
   dateFilterDisabledMessage,
 }: CalendarFiltersContentProps) {
+  // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
+  // kept as a prop for signature compatibility, but the type dot below now
+  // sources from the same MONTHLY_ACCENT_BG-backed map every desktop view
+  // uses instead of this retired palette.
+  void colors;
   // Pretty label for a reservation type. HIIT keeps its acronym casing;
   // league reads as "League Game"; personalTraining reads as "Personal
   // Training"; the rest get a simple capitalize.
@@ -9328,8 +9349,10 @@ function CalendarFiltersContent({
   // the mobile multiselect — same color tokens as the desktop chips so
   // both layouts read as the same legend.
   const renderTypeDot = (t: string): ReactNode => {
-    const c = colors[t as ReservationType];
-    if (!c) return null;
+    // Same accent-color system every desktop view uses, instead of the
+    // old LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette — this component
+    // backs both the mobile Filters drawer and the desktop Filters tab,
+    // so fixing it here brings both in line with the real badge colors.
     return (
       <span
         aria-hidden
@@ -9338,7 +9361,7 @@ function CalendarFiltersContent({
           width: "10px",
           height: "10px",
           borderRadius: "50%",
-          background: c.text,
+          background: getAccentBg(t as ReservationType, isDark),
           flexShrink: 0,
         }}
       />
@@ -13528,7 +13551,12 @@ export function SchedulePage() {
                     { types: ["pilates"] as const, label: "Pilates" },
                     { types: ["yoga"] as const, label: "Yoga" },
                   ].map((row) => {
-                    const c = colors[row.types[0]];
+                    // Same accent-color system every desktop badge/chip
+                    // uses, instead of the old LIGHT_EVENT_STYLES/
+                    // DARK_EVENT_STYLES palette — matches the mobile
+                    // legend's swatch treatment too.
+                    const isNeutral = isNeutralAccentType(row.types[0]);
+                    const accentBg = getAccentBg(row.types[0], isDark);
                     return (
                       <div
                         key={row.label}
@@ -13541,8 +13569,8 @@ export function SchedulePage() {
                             width: "18px",
                             height: "18px",
                             borderRadius: "4px",
-                            background: c.bg,
-                            border: `1px solid ${c.border}`,
+                            background: isNeutral ? accentBg : hexToRgba(accentBg, isDark ? 0.22 : 0.14),
+                            border: `1px solid ${accentBg}`,
                             flexShrink: 0,
                           }}
                         />
