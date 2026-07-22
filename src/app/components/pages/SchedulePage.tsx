@@ -1475,10 +1475,15 @@ function EventBadge({
         </span>
       )}
       {showAttendanceIcon && (
-        <Users
+        <span
           aria-hidden
-          size={isCompact ? 10 : 12}
-          style={{ flexShrink: 0, color: attendanceIconColor }}
+          style={{
+            flexShrink: 0,
+            width: isCompact ? "6px" : "7px",
+            height: isCompact ? "6px" : "7px",
+            borderRadius: "50%",
+            background: attendanceIconColor,
+          }}
         />
       )}
 
