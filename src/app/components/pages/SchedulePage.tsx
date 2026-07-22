@@ -1382,11 +1382,14 @@ function EventBadge({
     display: "flex",
     alignItems: "center",
     gap: isCompact ? "3px" : "4px",
-    height: isCompact ? "20px" : "24px",
+    // Comfortable is taller (28px vs. compact's 20px) with more vertical
+    // padding (6px vs. 4px) — "comfortable" should actually feel roomier,
+    // not just the same box with slightly bigger text.
+    height: isCompact ? "20px" : "28px",
     boxSizing: "border-box",
     padding: isCompact
       ? `2px ${padR}px 2px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`
-      : `4px ${padR}px 4px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`,
+      : `6px ${padR}px 6px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`,
     borderRadius: "4px",
     fontSize: isCompact ? "9px" : "10px",
     fontWeight: 700,
@@ -1594,7 +1597,9 @@ function DateCell({
   // Compact fits one extra row of sessions (see MAX_VISIBLE_EVENTS), so its
   // floor is taller than a naive 4-row proportion would suggest — tuned to
   // comfortably hold 5 rows of the shorter compact badge height.
-  const cellMinHeight = density === "compact" ? "120px" : "130px";
+  // Comfortable's floor is raised further still to match its taller
+  // (28px) badges and wider inter-row gap below.
+  const cellMinHeight = density === "compact" ? "120px" : "150px";
   if (day === null) {
     return (
       <div
@@ -1647,8 +1652,10 @@ function DateCell({
         borderLeft: `1px solid ${sc.border}`,
         padding: "2px",
         // Nudged closer to the 3px gap Weekly uses between stacked chips —
-        // still tight enough to keep a packed day cell readable.
-        gap: "2px",
+        // still tight enough to keep a packed day cell readable. Comfortable
+        // gets a bit more still, since its whole point is extra breathing
+        // room between rows.
+        gap: density === "compact" ? "2px" : "4px",
         overflow: "hidden",
       }}
     >
