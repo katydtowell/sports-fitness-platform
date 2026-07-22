@@ -3273,7 +3273,7 @@ function MobileEventRow({
               <span
                 style={{
                   fontSize: "11px",
-                  fontWeight: 600,
+                  fontWeight: 400,
                   color: sc.muted,
                   textTransform: "uppercase",
                   letterSpacing: "0.04em",
@@ -3286,7 +3286,7 @@ function MobileEventRow({
             <span
               style={{
                 fontSize: "11px",
-                fontWeight: 600,
+                fontWeight: 400,
                 color: sc.heading,
               }}
             >
