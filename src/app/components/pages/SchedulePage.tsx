@@ -1263,9 +1263,9 @@ function EventBadge({
   deleteMode?: boolean;
   /** Display preference (Preferences tab) — per-category visibility for
    *  this view. When a category is false, a session in that category
-   *  skips the attendance pie icon entirely (just the plain time label).
-   *  Defaults to "show everything" when omitted. Purely cosmetic; never
-   *  affects Reservation Details. */
+   *  skips the attendance status icon entirely (just the plain time
+   *  label). Defaults to "show everything" when omitted. Purely
+   *  cosmetic; never affects Reservation Details. */
   statusVisibility?: ViewStatusVisibility;
   /** Display preference — "compact" shrinks the badge's height/padding/
    *  font so more rows fit on screen. */
@@ -1308,15 +1308,16 @@ function EventBadge({
   const dimNotMine = highlightMySessions && !isMine && event.type !== "closed";
   const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
 
-  // Attendance status — surfaced as a small pie-chart icon just before the
-  // time label instead of a colored pill wrapped around the time itself.
-  // Closed / league events are excluded — no per-session capacity.
-  //   available   (<80% booked, including 0) → green wedge
-  //   nearly full (≥80%, <100%)              → yellow wedge
-  //   full, no waitlist (≥100%)              → solid red wedge
-  //   full, waitlist open (≥100%)            → translucent red wedge
-  //     (same red hue/opacity pairing as the Delete-Mode "deletable" tint
-  //     below, so "red = full/blocked" reads consistently across the badge)
+  // Attendance status — surfaced as a small "people" icon aligned to the
+  // far right of the badge, colored for status, instead of a colored pill
+  // wrapped around the time itself. Closed / league events are excluded —
+  // no per-session capacity.
+  //   available   (<80% booked, including 0) → green icon
+  //   nearly full (≥80%, <100%)              → yellow icon
+  //   full, no waitlist (≥100%)              → solid red icon
+  //   full, waitlist open (≥100%)            → darker/muted red icon
+  //     (distinct solid shade rather than a translucent one — a small
+  //     icon glyph reads better as a solid color than a faded tint would)
   const hasCapacityData = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
   const attendancePct   = hasCapacityData ? event.booked / event.capacity : 0;
   const isFull          = hasCapacityData && event.booked >= event.capacity;
@@ -1327,15 +1328,12 @@ function EventBadge({
         registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
       ]
     : false;
-  const showAttendancePie = hasCapacityData && categoryVisible;
-  const attendancePieColor = isWaitlisted
-    ? (isDark ? "rgba(224,90,90,0.18)" : "rgba(212,24,64,0.12)")
+  const showAttendanceIcon = hasCapacityData && categoryVisible;
+  const attendanceIconColor = isWaitlisted
+    ? (isDark ? "#e05a5a" : "#d41840")
     : isFull
     ? EZ_RED
     : isNearlyFull ? "#FFE109" : EZ_GREEN;
-  // Clamped 0-100 fill for the pie's colored wedge; the remainder renders
-  // in a track tint that matches whichever text color the badge landed on.
-  const pieFillPct = Math.min(1, Math.max(0, attendancePct)) * 100;
 
   // Narrow stripe area so the buffer indicator reads as a slim accent
   // rather than crowding the badge; padding on the affected side is
@@ -1372,12 +1370,6 @@ function EventBadge({
   const normalTextColor = isDark ? "#dfe9ec" : "#182023";
   const textColor = isNeutralFillType ? accentTextColor : normalTextColor;
   const tintBg = hexToRgba(accentBg, isDark ? 0.22 : 0.14);
-  // Pie's empty wedge — light tint on dark/bold badges, dark tint on light
-  // ones, based on theme rather than the (no longer contrast-derived)
-  // text color.
-  const pieTrackColor = isNeutralFillType
-    ? (accentTextColor === "#ffffff" ? "rgba(255,255,255,0.28)" : "rgba(16,24,40,0.18)")
-    : (isDark ? "rgba(255,255,255,0.28)" : "rgba(16,24,40,0.18)");
   const selectionRingColor = isDark ? "rgba(255,255,255,0.65)" : "rgba(16,24,40,0.55)";
   const ringShadows: string[] = [];
   if (isMine) ringShadows.push(`0 0 0 2px ${mineRingColor}`);
@@ -1468,19 +1460,6 @@ function EventBadge({
       >
         {event.title}
       </span>
-      {showAttendancePie && (
-        <div
-          aria-hidden
-          title={`${Math.round(pieFillPct)}% booked`}
-          style={{
-            flexShrink: 0,
-            width: isCompact ? "8px" : "10px",
-            height: isCompact ? "8px" : "10px",
-            borderRadius: "50%",
-            background: `conic-gradient(${attendancePieColor} 0% ${pieFillPct}%, ${pieTrackColor} ${pieFillPct}% 100%)`,
-          }}
-        />
-      )}
       {event.time && (
         <span
           style={{
@@ -1494,6 +1473,13 @@ function EventBadge({
         >
           {getSessionTimeRangeLabel(event)}
         </span>
+      )}
+      {showAttendanceIcon && (
+        <Users
+          aria-hidden
+          size={isCompact ? 10 : 12}
+          style={{ flexShrink: 0, color: attendanceIconColor }}
+        />
       )}
 
     </div>
