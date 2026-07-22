@@ -1059,6 +1059,19 @@ function isSessionPast(event: CalendarEvent, day: number, month: number, year: n
   return start.getTime() <= Date.now();
 }
 
+/** Whether an entire calendar day (not a specific session) has already
+ *  ended — i.e. it's strictly before today, with both sides compared at
+ *  midnight so today itself is never "past" (today keeps its own
+ *  isToday ring/fill treatment; this is only for days before it). Used
+ *  to dim day-number cells the same way isSessionPast dims individual
+ *  past reservations. */
+function isDayInPast(day: number, month: number, year: number): boolean {
+  const date = new Date(year, month, day, 0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date.getTime() < today.getTime();
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1479,53 +1492,14 @@ function DateCell({
     );
   }
 
-  // Sessions are packed up to 3-per-row, but ONLY sessions that start
-  // within the same clock hour are allowed to share a row — three
-  // half-hour sessions starting between 11am and noon can split a row,
-  // but an 11am session can never share a row with a 2pm one, even if
-  // there'd be room left. Sorting chronologically first makes the
-  // hour-boundary check below correct regardless of the order events
-  // happen to be stored in (generated "busy day" sessions can otherwise
-  // land out of order in the array).
+  // Sessions render one-per-row (sorted chronologically) rather than
+  // packing up to 3 same-hour sessions into a shared row — every
+  // reservation gets its own full-width row in the day cell.
   const sortedEvents = events
     .slice()
     .sort((a, b) => parseEventTimeToMinutes(a.time) - parseEventTimeToMinutes(b.time));
 
-  const rows: CalendarEvent[][] = [];
-  let currentRow: CalendarEvent[] = [];
-  // Hour (0-23) of whatever's currently in `currentRow`; null once flushed
-  // or for an unparseable time (shouldn't happen for a non-fullWidth
-  // event, but treated as its own always-flushed bucket just in case).
-  let currentHour: number | null = null;
-  const flushRow = () => {
-    if (currentRow.length > 0) {
-      rows.push(currentRow);
-      currentRow = [];
-    }
-  };
-
-  for (const ev of sortedEvents) {
-    if (ev.fullWidth) {
-      flushRow();
-      rows.push([ev]);
-      currentHour = null;
-      continue;
-    }
-    const mins = parseEventTimeToMinutes(ev.time);
-    const hour = mins === -1 ? null : Math.floor(mins / 60);
-    // Hour changed since the last session in this row — start a fresh
-    // row even though the current one isn't at the 3-session cap yet.
-    if (currentRow.length > 0 && hour !== currentHour) {
-      flushRow();
-    }
-    currentRow.push(ev);
-    currentHour = hour;
-    if (currentRow.length >= 3) {
-      flushRow();
-      currentHour = null;
-    }
-  }
-  flushRow();
+  const rows: CalendarEvent[][] = sortedEvents.map((ev) => [ev]);
 
   // Compact rows are shorter, so one extra row of sessions fits in the
   // same cell before the rest collapse into "+N more".
@@ -1535,6 +1509,10 @@ function DateCell({
 
   // `day` is guaranteed non-null past the early return above.
   const isEventPast = (ev: CalendarEvent) => isSessionPast(ev, day, month, year);
+  // Same "already happened" dimming as past reservations, applied to the
+  // day-number itself. Never true for today — isToday keeps its own
+  // ring/fill treatment untouched.
+  const isPastDay = isDayInPast(day, month, year);
 
   return (
     <div
@@ -1565,6 +1543,7 @@ function DateCell({
             fontWeight: 700,
             color: isToday ? (isDark ? "#0a0e0f" : "#ffffff") : sc.heading,
             background: isToday ? sc.brand : "transparent",
+            opacity: isPastDay ? 0.5 : 1,
           }}
         >
           {day}
@@ -10826,6 +10805,9 @@ function WeeklyView({
             />
             {weekDates.map((date, i) => {
               const isToday = isSameDate(date, today);
+              // Same "already happened" dimming as past reservations,
+              // applied to the day-number itself — never true for today.
+              const isPastDay = isDayInPast(date.getDate(), date.getMonth(), date.getFullYear());
               return (
                 <div
                   key={i}
@@ -10865,6 +10847,7 @@ function WeeklyView({
                       fontWeight: 700,
                       color: isToday ? (isDark ? "#0a0e0f" : "#ffffff") : sc.heading,
                       background: isToday ? sc.brand : "transparent",
+                      opacity: isPastDay ? 0.5 : 1,
                     }}
                   >
                     {date.getDate()}
