@@ -11363,6 +11363,7 @@ function DailyView({
   // today's date is actually part of what's showing (a past/future day,
   // or a range that doesn't include today, has no "now" row to jump to
   // and just keeps the default top-of-list scroll position).
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
   const currentRowRef = useRef<HTMLDivElement | null>(null);
   const now = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -11376,7 +11377,16 @@ function DailyView({
     if (mins === -1 || mins >= nowMinutes) break; // first upcoming (or unparsable) session wins
   }
   useEffect(() => {
-    currentRowRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const container = listContainerRef.current;
+    const target = currentRowRef.current;
+    if (!container || !target) return;
+    // Set scrollTop directly on the known list container instead of
+    // scrollIntoView — scrollIntoView walks up and can scroll whichever
+    // ancestor it decides is the "right" scroll context, which landed the
+    // target row near the bottom instead of the top. Computing the offset
+    // ourselves guarantees only this container moves and the row's top
+    // edge lands flush with the container's top edge.
+    container.scrollTo({ top: target.offsetTop - container.offsetTop, behavior: "smooth" });
     // Re-run if the visible day(s) change — e.g. navigating back to today
     // should still land on the current session, not wherever the list
     // happened to be scrolled to for the previously-viewed day.
@@ -11409,7 +11419,7 @@ function DailyView({
   };
 
   return (
-    <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
+    <div ref={listContainerRef} style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
       {closedItems.map((it) => (
         <div
           key={it.event.id}
