@@ -107,22 +107,27 @@ interface BadgeColors {
   text: string;
 }
 
+// Backgrounds are tuned to sit a shade darker/more saturated than a bare
+// tint (previously ~0% effective fill in light mode, low alpha in dark) —
+// bumped slightly so each category's fill still reads clearly now that
+// EventBadge/WeeklyEventChip/resource chips no longer carry an outer
+// border. Text colors are unchanged, so contrast against the label holds.
 const LIGHT_EVENT_STYLES: Record<ReservationType, BadgeColors> = {
-  yoga:          { bg: "#fef0f2", border: "#ffccd3", text: "#8b0836" },
-  meditation:    { bg: "#f0fdff", border: "#a2f4fd", text: "#0092b8" },
-  pilates:       { bg: "#f7f0ff", border: "#e9d4ff", text: "#9810fa" },
-  hiit:          { bg: "#fff8f1", border: "#fcd9bd", text: "#771d1d" },
-  league:        { bg: "#ffffff", border: "#e5e7eb", text: "#101828" },
-  closed:        { bg: "#f3f4f6", border: "#e5e7eb", text: "#6b7280" },
+  yoga:          { bg: "#fee5e9", border: "#ffccd3", text: "#8b0836" },
+  meditation:    { bg: "#d9fafe", border: "#a2f4fd", text: "#0092b8" },
+  pilates:       { bg: "#f3e8ff", border: "#e9d4ff", text: "#9810fa" },
+  hiit:          { bg: "#feefe1", border: "#fcd9bd", text: "#771d1d" },
+  league:        { bg: "#f7f8f9", border: "#e5e7eb", text: "#101828" },
+  closed:        { bg: "#eff0f3", border: "#e5e7eb", text: "#6b7280" },
 };
 
 const DARK_EVENT_STYLES: Record<ReservationType, BadgeColors> = {
-  yoga:          { bg: "rgba(139,8,54,0.20)",  border: "rgba(139,8,54,0.40)",  text: "#f5a0b8" },
-  meditation:    { bg: "rgba(0,146,184,0.15)",  border: "rgba(0,146,184,0.35)", text: "#5dd8f0" },
-  pilates:       { bg: "rgba(152,16,250,0.15)", border: "rgba(152,16,250,0.30)",text: "#d4a0ff" },
-  hiit:          { bg: "rgba(119,29,29,0.20)",  border: "rgba(252,217,189,0.30)",text: "#fcd9bd" },
-  league:        { bg: "rgba(161,189,198,0.08)",border: "rgba(161,189,198,0.20)",text: "#dfe9ec" },
-  closed:        { bg: "rgba(161,189,198,0.06)",border: "rgba(161,189,198,0.15)",text: "#6e8b94" },
+  yoga:          { bg: "rgba(139,8,54,0.25)",  border: "rgba(139,8,54,0.40)",  text: "#f5a0b8" },
+  meditation:    { bg: "rgba(0,146,184,0.20)",  border: "rgba(0,146,184,0.35)", text: "#5dd8f0" },
+  pilates:       { bg: "rgba(152,16,250,0.20)", border: "rgba(152,16,250,0.30)",text: "#d4a0ff" },
+  hiit:          { bg: "rgba(119,29,29,0.25)",  border: "rgba(252,217,189,0.30)",text: "#fcd9bd" },
+  league:        { bg: "rgba(161,189,198,0.13)",border: "rgba(161,189,198,0.20)",text: "#dfe9ec" },
+  closed:        { bg: "rgba(161,189,198,0.11)",border: "rgba(161,189,198,0.15)",text: "#6e8b94" },
 };
 
 function getEventStyles(isDark: boolean): Record<ReservationType, BadgeColors> {
@@ -496,209 +501,209 @@ function generateMockEvents(): DayEvents {
 
   // Week 2: days 8-14
   events[8] = [
-    makeEvent("8a", "Yoga", "11am", "yoga"),
-    makeEvent("8b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20),
-    makeEvent("8c", "Power Yoga", "1pm", "yoga"),
-    makeEvent("8d", "HIIT", "2pm", "hiit"),
-    makeEvent("8e", "Pilates", "3pm", "pilates"),
+    makeEvent("8a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),      // pre only
+    makeEvent("8b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20, false, false, 0, 15), // post only
+    makeEvent("8c", "Power Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("8d", "HIIT", "2pm", "hiit"),                                                              // none
     // Evening lineup — runs the day out to a 10pm close (last session
     // starts at 9pm, default 60min duration).
-    makeEvent("8f", "HIIT", "4pm", "hiit"),
-    makeEvent("8g", "Yoga", "5pm", "yoga"),
-    makeEvent("8h", "Pilates", "6pm", "pilates"),
-    makeEvent("8i", "Meditation", "7pm", "meditation"),
-    makeEvent("8j", "HIIT", "8pm", "hiit"),
-    makeEvent("8k", "Power Yoga", "9pm", "yoga"),
+    makeEvent("8e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),  // pre only
+    makeEvent("8f", "HIIT", "4pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),        // post only
+    makeEvent("8g", "Yoga", "5pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),       // both
+    makeEvent("8h", "Pilates", "6pm", "pilates"),                                                         // none
+    makeEvent("8i", "Meditation", "7pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
+    makeEvent("8j", "HIIT", "8pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),        // post only
+    makeEvent("8k", "Power Yoga", "9pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     // Extra late-window sessions — several more start times between
     // 8pm and 10pm, spread across different resources so they run in
     // parallel with 8j/8k instead of conflicting.
-    makeEvent("8l", "Pilates", "8pm", "pilates"),
-    makeEvent("8m", "Meditation", "8:30pm", "meditation"),
-    makeEvent("8n", "Yoga", "9pm", "yoga"),
-    makeEvent("8o", "HIIT", "9:30pm", "hiit"),
+    makeEvent("8l", "Pilates", "8pm", "pilates"),                                                         // none
+    makeEvent("8m", "Meditation", "8:30pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
+    makeEvent("8n", "Yoga", "9pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),        // post only
+    makeEvent("8o", "HIIT", "9:30pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),    // both
   ];
   events[9] = [
-    makeEvent("9a", "Yoga", "11am", "yoga"),
-    makeEvent("9b", "Stretch & Restore", "12pm", "meditation"),
-    makeEvent("9c", "Meditation", "1pm", "meditation"),
-    makeEvent("9d", "Pilates", "3pm", "pilates"),
+    makeEvent("9a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),   // pre only
+    makeEvent("9b", "Stretch & Restore", "12pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
+    makeEvent("9c", "Meditation", "1pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("9d", "Pilates", "3pm", "pilates"),                                                     // none
     // Extra sessions spread across the rest of the day — mix of
     // waitlisted, full (no waitlist), and available states, plus a mix
     // of overdue/no-overdue balance scenarios (bucket 0 vs 1/2 of
     // getEventClients — see ids 9f/9i/9l which land on bucket 0).
-    makeEvent("9e", "HIIT", "9am", "hiit", "Alan Alda", "Studio B", 30, 30, false, true),          // waitlisted, overdue
-    makeEvent("9f", "Yoga", "10am", "yoga", "Alan Alda", "Studio B", 20, 36, false, false),         // available, no overdue
-    makeEvent("9g", "Pilates", "2pm", "pilates", "Alan Alda", "Studio B", 24, 24, false, false),    // full (no waitlist), overdue
-    makeEvent("9h", "Meditation", "4pm", "meditation", "Alan Alda", "Studio B", 15, 20, false, false), // available, overdue
-    makeEvent("9i", "Yoga", "5pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, false),          // full (no waitlist), no overdue
-    makeEvent("9j", "HIIT", "6pm", "hiit", "Alan Alda", "Studio B", 30, 30, false, true),           // waitlisted, overdue
-    makeEvent("9k", "Pilates", "7pm", "pilates", "Alan Alda", "Studio B", 10, 24, false, false),    // available, overdue
-    makeEvent("9l", "Meditation", "8pm", "meditation", "Alan Alda", "Studio B", 20, 20, false, false), // full (no waitlist), no overdue
-    makeEvent("9m", "Yoga", "8:30pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true),        // waitlisted, overdue
-    makeEvent("9n", "HIIT", "9pm", "hiit", "Alan Alda", "Studio B", 18, 30, false, false),          // available, overdue
+    makeEvent("9e", "HIIT", "9am", "hiit", "Alan Alda", "Studio B", 30, 30, false, true, 15, 0),          // waitlisted, overdue, pre only
+    makeEvent("9f", "Yoga", "10am", "yoga", "Alan Alda", "Studio B", 20, 36, false, false, 0, 15),         // available, no overdue, post only
+    makeEvent("9g", "Pilates", "2pm", "pilates", "Alan Alda", "Studio B", 24, 24, false, false, 15, 15),    // full (no waitlist), overdue, both
+    makeEvent("9h", "Meditation", "4pm", "meditation", "Alan Alda", "Studio B", 15, 20, false, false), // available, overdue, none
+    makeEvent("9i", "Yoga", "5pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, false, 15, 0),          // full (no waitlist), no overdue, pre only
+    makeEvent("9j", "HIIT", "6pm", "hiit", "Alan Alda", "Studio B", 30, 30, false, true, 0, 15),           // waitlisted, overdue, post only
+    makeEvent("9k", "Pilates", "7pm", "pilates", "Alan Alda", "Studio B", 10, 24, false, false, 15, 15),    // available, overdue, both
+    makeEvent("9l", "Meditation", "8pm", "meditation", "Alan Alda", "Studio B", 20, 20, false, false), // full (no waitlist), no overdue, none
+    makeEvent("9m", "Yoga", "8:30pm", "yoga", "Alan Alda", "Studio B", 36, 36, false, true, 15, 0),        // waitlisted, overdue, pre only
+    makeEvent("9n", "HIIT", "9pm", "hiit", "Alan Alda", "Studio B", 18, 30, false, false, 0, 15),          // available, overdue, post only
   ];
   events[10] = [
-    makeEvent("10a", "Yoga", "11am", "yoga"),
-    makeEvent("10b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("10c", "Pilates", "3pm", "pilates"),
-    makeEvent("10d", "Yoga", "2pm", "yoga", "Sara Chen", "Studio A"),
+    makeEvent("10a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),  // pre only
+    makeEvent("10b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
+    makeEvent("10c", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
+    makeEvent("10d", "Yoga", "2pm", "yoga", "Sara Chen", "Studio A", -1, -1, false, false, 15, 15), // both
   ];
   events[11] = [
     makeEvent("11a", "CLOSED", "", "closed", "", "", 0, 0, true),
   ];
   events[12] = [
-    makeEvent("12a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 32, 36),
-    makeEvent("12b", "Meditation", "12am", "meditation"),
-    makeEvent("12c", "Yoga", "1pm", "yoga"),
-    makeEvent("12d", "HIIT", "2pm", "hiit"),
-    makeEvent("12e", "Pilates", "3pm", "pilates"),
+    makeEvent("12a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 32, 36, false, false, 15, 0), // pre only
+    makeEvent("12b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),  // post only
+    makeEvent("12c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("12d", "HIIT", "2pm", "hiit"),                                                        // none
+    makeEvent("12e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
   ];
   events[13] = [
-    makeEvent("13a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 0, 36),
-    makeEvent("13b", "Meditation", "12am", "meditation"),
-    makeEvent("13c", "Yoga", "1pm", "yoga"),
-    makeEvent("13d", "HIIT", "2pm", "hiit"),
-    makeEvent("13e", "Pilates", "3pm", "pilates"),
+    makeEvent("13a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 0, 36, false, false, 0, 15), // post only
+    makeEvent("13b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("13c", "Yoga", "1pm", "yoga"),                                                          // none
+    makeEvent("13d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
+    makeEvent("13e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[14] = [
-    makeEvent("14a", "Yoga", "11am", "yoga"),
-    makeEvent("14b", "Meditation", "12am", "meditation"),
-    makeEvent("14c", "Yoga", "1pm", "yoga"),
-    makeEvent("14d", "HIIT", "2pm", "hiit"),
-    makeEvent("14e", "Pilates", "3pm", "pilates"),
+    makeEvent("14a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("14b", "Meditation", "12am", "meditation"),                                            // none
+    makeEvent("14c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),    // pre only
+    makeEvent("14d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),    // post only
+    makeEvent("14e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
   ];
 
   // Week 3: days 15-21
   events[15] = [
-    makeEvent("15a", "Yoga", "11am", "yoga"),
-    makeEvent("15b", "Meditation", "12am", "meditation"),
-    makeEvent("15c", "Power Yoga", "1pm", "yoga"),
-    makeEvent("15d", "Tigers v. Capybaras", "1:30pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("15e", "HIIT", "2pm", "hiit"),
-    makeEvent("15f", "Pilates", "3pm", "pilates"),
-    makeEvent("15g", "Stretch & Restore", "4pm", "meditation"),
-    makeEvent("15h", "HIIT", "5pm", "hiit"),
-    makeEvent("15i", "Power Yoga", "6pm", "yoga"),
-    makeEvent("15j", "Meditation", "7pm", "meditation"),
-    makeEvent("15k", "Yoga", "8pm", "yoga"),
-    makeEvent("15l", "Pilates", "9pm", "pilates"),
-    makeEvent("15m", "HIIT", "10pm", "hiit"),
+    makeEvent("15a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),  // pre only
+    makeEvent("15b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
+    makeEvent("15c", "Power Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("15d", "Tigers v. Capybaras", "1:30pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
+    makeEvent("15e", "HIIT", "2pm", "hiit"),                                                          // none
+    makeEvent("15f", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
+    makeEvent("15g", "Stretch & Restore", "4pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
+    makeEvent("15h", "HIIT", "5pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),    // both
+    makeEvent("15i", "Power Yoga", "6pm", "yoga"),                                                     // none
+    makeEvent("15j", "Meditation", "7pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
+    makeEvent("15k", "Yoga", "8pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),     // post only
+    makeEvent("15l", "Pilates", "9pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("15m", "HIIT", "10pm", "hiit"),                                                          // none
   ];
   events[16] = [
-    makeEvent("16a", "Yoga", "11am", "yoga"),
-    makeEvent("16b", "Meditation", "12am", "meditation"),
-    makeEvent("16c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 0, 36),
-    makeEvent("16d", "HIIT", "2pm", "hiit"),
-    makeEvent("16e", "Pilates", "3pm", "pilates"),
+    makeEvent("16a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),   // post only
+    makeEvent("16b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("16c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 0, 36),                            // none
+    makeEvent("16d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
+    makeEvent("16e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[17] = [
-    makeEvent("17a", "Yoga", "11am", "yoga"),
-    makeEvent("17b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("17c", "Power Yoga", "1pm", "yoga"),
-    makeEvent("17d", "HIIT", "2pm", "hiit"),
-    makeEvent("17e", "Meditation", "3pm", "meditation"),
+    makeEvent("17a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("17b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
+    makeEvent("17c", "Power Yoga", "1pm", "yoga"),                                                     // none
+    makeEvent("17d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
+    makeEvent("17e", "Meditation", "3pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[18] = [
-    makeEvent("18a", "Morning Yoga Reset", "11am", "yoga"),
-    makeEvent("18b", "Meditation", "12am", "meditation"),
-    makeEvent("18c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("18d", "Power Yoga", "2pm", "yoga"),
-    makeEvent("18e", "HIIT", "3pm", "hiit"),
+    makeEvent("18a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
+    makeEvent("18b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),  // post only
+    makeEvent("18c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
+    makeEvent("18d", "Power Yoga", "2pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("18e", "HIIT", "3pm", "hiit"),                                                            // none
   ];
   events[19] = [
-    makeEvent("19a", "Yoga", "11am", "yoga"),
-    makeEvent("19b", "Stretch & Restore", "12pm", "meditation"),
-    makeEvent("19c", "Meditation", "1pm", "meditation", "Sara Chen", "Studio A", 0, 20),
-    makeEvent("19d", "HIIT", "2pm", "hiit"),
-    makeEvent("19e", "Pilates", "3pm", "pilates"),
+    makeEvent("19a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),   // post only
+    makeEvent("19b", "Stretch & Restore", "12pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("19c", "Meditation", "1pm", "meditation", "Sara Chen", "Studio A", 0, 20),               // none
+    makeEvent("19d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
+    makeEvent("19e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[20] = [
-    makeEvent("20a", "Yoga", "11am", "yoga"),
-    makeEvent("20b", "Meditation", "12am", "meditation"),
-    makeEvent("20c", "Yoga", "1pm", "yoga"),
-    makeEvent("20d", "HIIT", "2pm", "hiit"),
-    makeEvent("20e", "Pilates", "3pm", "pilates"),
+    makeEvent("20a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("20b", "Meditation", "12am", "meditation"),                                             // none
+    makeEvent("20c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),    // pre only
+    makeEvent("20d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),    // post only
+    makeEvent("20e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
   ];
   events[21] = [
-    makeEvent("21a", "Yoga", "11am", "yoga"),
-    makeEvent("21b", "Pilates", "12am", "pilates", "Lisa Park", "Studio A", 0, 24),
-    makeEvent("21c", "Yoga", "1pm", "yoga"),
-    makeEvent("21d", "HIIT", "2pm", "hiit"),
-    makeEvent("21e", "Pilates", "3pm", "pilates"),
+    makeEvent("21a", "Yoga", "11am", "yoga"),                                                          // none
+    makeEvent("21b", "Pilates", "12am", "pilates", "Lisa Park", "Studio A", 0, 24, false, false, 15, 0), // pre only
+    makeEvent("21c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),     // post only
+    makeEvent("21d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),    // both
+    makeEvent("21e", "Pilates", "3pm", "pilates"),                                                     // none
   ];
 
   // Week 4: days 22-28
   events[22] = [
-    makeEvent("22a", "Tigers v. Capybaras", "11am", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("22b", "Yoga", "12pm", "yoga"),
-    makeEvent("22c", "HIIT", "2pm", "hiit"),
-    makeEvent("22d", "Meditation", "3pm", "meditation"),
+    makeEvent("22a", "Tigers v. Capybaras", "11am", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
+    makeEvent("22b", "Yoga", "12pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
+    makeEvent("22c", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),      // post only
+    makeEvent("22d", "Meditation", "3pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
   ];
   events[23] = [
-    makeEvent("23a", "Yoga", "11am", "yoga"),
-    makeEvent("23b", "Meditation", "12am", "meditation"),
-    makeEvent("23c", "Yoga", "1pm", "yoga"),
-    makeEvent("23d", "HIIT", "2pm", "hiit"),
-    makeEvent("23e", "Pilates", "3pm", "pilates"),
+    makeEvent("23a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),    // post only
+    makeEvent("23b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("23c", "Yoga", "1pm", "yoga"),                                                            // none
+    makeEvent("23d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),      // pre only
+    makeEvent("23e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[24] = [
-    makeEvent("24a", "Morning Yoga Reset", "11am", "yoga"),
-    makeEvent("24b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("24c", "Yoga", "1pm", "yoga"),
-    makeEvent("24d", "HIIT", "2pm", "hiit"),
-    makeEvent("24e", "Pilates", "3pm", "pilates"),
+    makeEvent("24a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("24b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
+    makeEvent("24c", "Yoga", "1pm", "yoga"),                                                             // none
+    makeEvent("24d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),       // pre only
+    makeEvent("24e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[25] = [
-    makeEvent("25a", "Yoga", "11am", "yoga"),
-    makeEvent("25b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20),
-    makeEvent("25c", "Yoga", "1pm", "yoga"),
-    makeEvent("25d", "HIIT", "2pm", "hiit"),
+    makeEvent("25a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),   // pre only
+    makeEvent("25b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20, false, false, 0, 15), // post only
+    makeEvent("25c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),   // both
+    makeEvent("25d", "HIIT", "2pm", "hiit"),                                                          // none
   ];
   events[26] = [
-    makeEvent("26a", "Yoga", "11am", "yoga"),
-    makeEvent("26b", "Meditation", "12am", "meditation"),
-    makeEvent("26c", "Yoga", "1pm", "yoga"),
-    makeEvent("26d", "HIIT", "2pm", "hiit"),
-    makeEvent("26e", "Pilates", "3pm", "pilates"),
+    makeEvent("26a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),   // post only
+    makeEvent("26b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("26c", "Yoga", "1pm", "yoga"),                                                           // none
+    makeEvent("26d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
+    makeEvent("26e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[27] = [
-    makeEvent("27a", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 0, 20),
-    makeEvent("27b", "Yoga", "1pm", "yoga"),
-    makeEvent("27c", "Meditation", "2pm", "meditation"),
-    makeEvent("27d", "HIIT", "3pm", "hiit"),
-    makeEvent("27e", "Pilates", "4pm", "pilates"),
+    makeEvent("27a", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 0, 20, false, false, 15, 15), // both
+    makeEvent("27b", "Yoga", "1pm", "yoga"),                                                            // none
+    makeEvent("27c", "Meditation", "2pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
+    makeEvent("27d", "HIIT", "3pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),      // post only
+    makeEvent("27e", "Pilates", "4pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
   ];
   events[28] = [
-    makeEvent("28a", "Yoga", "11am", "yoga"),
-    makeEvent("28b", "Meditation", "12am", "meditation"),
-    makeEvent("28c", "Power Yoga", "2pm", "yoga"),
-    makeEvent("28d", "HIIT", "3pm", "hiit"),
-    makeEvent("28e", "Yoga", "4pm", "yoga"),
-    makeEvent("28f", "Pilates", "5pm", "pilates"),
-    makeEvent("28g", "HIIT", "6pm", "hiit"),
+    makeEvent("28a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),    // pre only
+    makeEvent("28b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
+    makeEvent("28c", "Power Yoga", "2pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("28d", "HIIT", "3pm", "hiit"),                                                             // none
+    makeEvent("28e", "Yoga", "4pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),      // pre only
+    makeEvent("28f", "Pilates", "5pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
+    makeEvent("28g", "HIIT", "6pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),     // both
   ];
 
   // Week 5: days 29-31 (only render in months with 29+ days)
   events[29] = [
-    makeEvent("29a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 18, 36, false, false),
-    makeEvent("29b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 14, 20, false, false),
-    makeEvent("29c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 26, 36, false, false),
-    makeEvent("29d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 22, 30, false, false),
-    makeEvent("29e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 16, 24, false, false),
+    makeEvent("29a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 18, 36, false, false, 15, 0), // pre only
+    makeEvent("29b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 14, 20, false, false, 0, 15),   // post only
+    makeEvent("29c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 26, 36, false, false, 15, 15),   // both
+    makeEvent("29d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 22, 30, false, false),        // none
+    makeEvent("29e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 16, 24, false, false, 15, 0), // pre only
   ];
   events[30] = [
-    makeEvent("30a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 30, 36, false, false),
-    makeEvent("30b", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 8, 20, false, false),
-    makeEvent("30c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),
-    makeEvent("30d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true),
-    makeEvent("30e", "Meditation", "3pm", "meditation", "Sara Chen", "Studio A", 12, 20, false, false),
+    makeEvent("30a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 30, 36, false, false, 0, 15), // post only
+    makeEvent("30b", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 8, 20, false, false, 15, 15), // both
+    makeEvent("30c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
+    makeEvent("30d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true),          // none
+    makeEvent("30e", "Meditation", "3pm", "meditation", "Sara Chen", "Studio A", 12, 20, false, false, 15, 0), // pre only
   ];
   events[31] = [
-    makeEvent("31a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 24, 36, false, false),
-    makeEvent("31b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),
-    makeEvent("31c", "Power Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 18, 36, false, false),
-    makeEvent("31d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 26, 30, false, false),
-    makeEvent("31e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 20, 24, false, false),
+    makeEvent("31a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 24, 36, false, false, 15, 15),   // both
+    makeEvent("31b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true), // none
+    makeEvent("31c", "Power Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 18, 36, false, false, 15, 0), // pre only
+    makeEvent("31d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 26, 30, false, false, 0, 15),  // post only
+    makeEvent("31e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 20, 24, false, false, 15, 15), // both
   ];
 
   // ── Post-process: distribute instructors and venues across realistic
@@ -1238,10 +1243,10 @@ function EventBadge({
     ? EZ_RED_ON_COLOR
     : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
 
-  // Stripe area is 12px wide; bump padding to 14px on the affected side so
-  // text starts just past the stripes (mirrors the "diagonal lines next to
-  // the title" pattern from the source design).
-  const STRIPE_W = 12;
+  // Narrow stripe area so the buffer indicator reads as a slim accent
+  // rather than crowding the badge; padding on the affected side is
+  // derived from this so text still starts just past the stripe.
+  const STRIPE_W = 7;
   const padL = hasPre ? STRIPE_W + 2 : 6;
   const padR = hasPost ? STRIPE_W + 2 : 6;
 
@@ -9858,8 +9863,8 @@ function ResourcesView({
     // chip's allocated pixel height, so a resource's rows read consistently
     // regardless of how many lanes happen to be stacked at a given hour.
 
-    // ── Buffer stripes — fixed 12px, inside the chip (mirrors EventBadge) ──
-    const STRIPE_W  = 12;
+    // ── Buffer stripes — narrow, inside the chip (mirrors EventBadge) ──
+    const STRIPE_W  = 7;
     const hasPre    = (event.preBuffer  ?? 0) > 0;
     const hasPost   = (event.postBuffer ?? 0) > 0;
     const padL      = hasPre  ? STRIPE_W + 2 : 6;
@@ -10464,7 +10469,7 @@ function WeeklyEventChip({
 
   const timeRangeLabel = getSessionTimeRangeLabel(event);
 
-  const STRIPE_W = 12;
+  const STRIPE_W = 7;
   const basePad = isCompact ? 6 : 8;
   const padL = hasPre ? STRIPE_W + 2 : basePad;
   const padR = hasPost ? STRIPE_W + 2 : basePad;
