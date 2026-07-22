@@ -63,7 +63,7 @@ type ReservationType =
   | "meditation"
   | "pilates"
   | "hiit"
-  | "spin"
+  | "personalTraining"
   | "league"
   | "closed";
 
@@ -118,7 +118,7 @@ const LIGHT_EVENT_STYLES: Record<ReservationType, BadgeColors> = {
   meditation:    { bg: "#d9fafe", border: "#a2f4fd", text: "#0092b8" },
   pilates:       { bg: "#f3e8ff", border: "#e9d4ff", text: "#9810fa" },
   hiit:          { bg: "#feefe1", border: "#fcd9bd", text: "#771d1d" },
-  spin:          { bg: "#ffe8d1", border: "#ffcda6", text: "#9a3412" },
+  personalTraining: { bg: "#ffe8d1", border: "#ffcda6", text: "#9a3412" },
   league:        { bg: "#f7f8f9", border: "#e5e7eb", text: "#101828" },
   closed:        { bg: "#eff0f3", border: "#e5e7eb", text: "#6b7280" },
 };
@@ -128,7 +128,7 @@ const DARK_EVENT_STYLES: Record<ReservationType, BadgeColors> = {
   meditation:    { bg: "rgba(0,146,184,0.20)",  border: "rgba(0,146,184,0.35)", text: "#5dd8f0" },
   pilates:       { bg: "rgba(152,16,250,0.20)", border: "rgba(152,16,250,0.30)",text: "#d4a0ff" },
   hiit:          { bg: "rgba(119,29,29,0.25)",  border: "rgba(252,217,189,0.30)",text: "#fcd9bd" },
-  spin:          { bg: "rgba(255,127,0,0.22)",  border: "rgba(255,127,0,0.38)", text: "#ffb37a" },
+  personalTraining: { bg: "rgba(255,127,0,0.22)",  border: "rgba(255,127,0,0.38)", text: "#ffb37a" },
   league:        { bg: "rgba(161,189,198,0.13)",border: "rgba(161,189,198,0.20)",text: "#dfe9ec" },
   closed:        { bg: "rgba(161,189,198,0.11)",border: "rgba(161,189,198,0.15)",text: "#6e8b94" },
 };
@@ -148,9 +148,9 @@ function getEventStyles(isDark: boolean): Record<ReservationType, BadgeColors> {
    opacity, rather than invented "gemstone" approximations — pink/purple
    are the brand's own pink/violet accents, turquoise is the app's
    existing containerInfo teal (#00bcc2), and HIIT's yellow is the brand
-   warning yellow (#ffce00, containerWarning). Spin uses #ff7f00 — its own
-   distinct orange, not one of the "brand" hues above, since Spin is a new
-   category rather than a re-theme of an existing one.
+   warning yellow (#ffce00, containerWarning). Personal Training uses
+   #ff7f00 — its own distinct orange, not one of the "brand" hues above,
+   since it's a new category rather than a re-theme of an existing one.
    League deliberately stays a neutral onyx gray rather than taking one of
    the brand hues: league games aren't scheduled the same way as the other
    categories, so a neutral reads better than a "class color" would. Both
@@ -159,15 +159,15 @@ function getEventStyles(isDark: boolean): Record<ReservationType, BadgeColors> {
    `accentBg` in EventBadge) — matching how it looked before this trial,
    rather than adopting a single "jewel tone" hex like the real classes.
    Text color is picked per-color by contrastTextColor below, not assumed
-   — turquoise, HIIT's yellow, and Spin's orange are all light/bright
-   enough that they need dark text, not white (see that function's
-   comment). */
+   — turquoise, HIIT's yellow, and Personal Training's orange are all
+   light/bright enough that they need dark text, not white (see that
+   function's comment). */
 const MONTHLY_ACCENT_BG: Record<ReservationType, string> = {
   yoga:       "#fb0ff7", // Brand pink
   meditation: "#7d0ffb", // Brand purple
   pilates:    "#00bcc2", // Brand turquoise (containerInfo)
   hiit:       "#ffce00", // Brand yellow (containerWarning)
-  spin:       "#ff7f00", // Spin — its own orange, not a "brand" hue
+  personalTraining: "#ff7f00", // Personal Training — its own orange, not a "brand" hue
   league:     "#2b2b2e", // Onyx — neutral; leagues aren't scheduled like other reservations
   // Placeholder — EventBadge overrides this with a theme-aware value
   // (see `accentBg` there) rather than reading it from this map.
@@ -550,18 +550,18 @@ function generateMockEvents(): DayEvents {
   // Week 1: days 1-7
   // Day 1 — mix of all states + buffer variants (pre-only, post-only, both, none)
   events[1] = [
-    makeEvent("1a", "Power Spin", "11am", "spin", "Alan Alda", "Studio B", 12, 36, false, false, 15, 0),     // pre-buffer only
+    makeEvent("1a", "Personal Training: Emma Rodriguez", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0),     // pre-buffer only
     makeEvent("1b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true, 0, 15),       // post-buffer only
     makeEvent("1c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 28, 36, false, false, 15, 15),                  // both buffers
     makeEvent("1d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),                      // no buffer
     makeEvent("1e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 8, 24, false, false, 30, 0),              // pre-buffer only (longer)
     makeEvent("1f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 24, 24, false, true),               // no buffer
-    makeEvent("1g", "Power Spin", "5pm", "spin", "Alan Alda", "Studio B", 18, 18, false, false, 15, 30),      // both, asymmetric
+    makeEvent("1g", "Personal Training: James Wilson", "5pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 30),      // both, asymmetric
   ];
   events[2] = [
     makeEvent("2a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 10, 36, false, false, 15, 15),     // both
     makeEvent("2b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
-    makeEvent("2c", "Spin", "11am", "spin", "Alan Alda", "Studio B", 36, 36, false, false, 30, 0),                  // pre only
+    makeEvent("2c", "Personal Training: Sophia Lee", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 30, 0),                  // pre only
     makeEvent("2d", "Stretch & Restore", "2pm", "meditation", "Lisa Park", "Studio A", 5, 20, false, false, 0, 15),    // post only
     makeEvent("2e", "HIIT", "3pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true, 15, 15),               // both
     makeEvent("2f", "Pilates", "4pm", "pilates", "Lisa Park", "Studio A", 15, 24, false, false),                    // none
@@ -569,7 +569,7 @@ function generateMockEvents(): DayEvents {
   events[3] = [
     makeEvent("3a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 22, 36, false, false, 15, 0),                  // pre only
     makeEvent("3b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30),            // both (league: longer)
-    makeEvent("3c", "Spin", "1pm", "spin", "Alan Alda", "Studio B", 36, 36, false, true, 0, 15),                    // post only
+    makeEvent("3c", "Personal Training: Liam Martinez", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),                    // post only
     makeEvent("3d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 14, 30, false, false, 15, 30),              // both
     makeEvent("3e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 24, 24, false, false),                    // none
     makeEvent("3f", "Meditation", "4pm", "meditation", "Sara Chen", "Studio A", 6, 20, false, false, 0, 30),        // post only
@@ -577,28 +577,28 @@ function generateMockEvents(): DayEvents {
   events[4] = [
     makeEvent("4a", "Power Yoga", "11am", "yoga", "Alan Alda", "Studio B", 0, 36, false, false, 15, 0),       // pre only
     makeEvent("4b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
-    makeEvent("4c", "Spin", "1pm", "spin", "Alan Alda", "Studio B", 30, 36, false, false, 30, 30),                  // both
+    makeEvent("4c", "Personal Training: Olivia Chen", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 30, 30),                  // both
     makeEvent("4d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false),                      // none
     makeEvent("4e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 10, 24, false, false, 0, 15),             // post only
   ];
   events[5] = [
     makeEvent("5a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 15, 36, false, false, 15, 0),  // pre only
     makeEvent("5b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 18, 20, false, false),             // none
-    makeEvent("5c", "Spin", "1pm", "spin", "Alan Alda", "Studio B", 36, 36, false, true, 0, 15),                    // post only
+    makeEvent("5c", "Personal Training: Noah Thompson", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),                    // post only
     makeEvent("5d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 25, 30, false, false, 15, 15),              // both
     makeEvent("5e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 24, 24, false, false),                    // none
   ];
   events[6] = [
     makeEvent("6a", "Morning Yoga Reset", "11am", "yoga", "Alan Alda", "Studio B", 20, 36, false, false),   // none
     makeEvent("6b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true, 15, 0),       // pre only
-    makeEvent("6c", "Spin", "1pm", "spin", "Alan Alda", "Studio B", 36, 36, false, false, 0, 30),                   // post only
+    makeEvent("6c", "Personal Training: Ava Patel", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 30),                   // post only
     makeEvent("6d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 8, 30, false, false, 15, 15),               // both
     makeEvent("6e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 12, 24, false, false),                    // none
   ];
   events[7] = [
     makeEvent("7a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 30, 36, false, false, 30, 0),                  // pre only
     makeEvent("7b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true),              // none
-    makeEvent("7c", "Spin", "1pm", "spin", "Alan Alda", "Studio B", 10, 36, false, false, 0, 15),                   // post only
+    makeEvent("7c", "Personal Training: Mason Brown", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),                   // post only
     makeEvent("7d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, false, 15, 15),              // both
   ];
 
@@ -606,7 +606,7 @@ function generateMockEvents(): DayEvents {
   events[8] = [
     makeEvent("8a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),      // pre only
     makeEvent("8b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20, false, false, 0, 15), // post only
-    makeEvent("8c", "Power Spin", "1pm", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("8c", "Personal Training: Isabella Garcia", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 15), // both
     makeEvent("8d", "HIIT", "2pm", "hiit"),                                                              // none
     // Evening lineup — runs the day out to a 10pm close (last session
     // starts at 9pm, default 60min duration).
@@ -616,7 +616,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("8h", "Pilates", "6pm", "pilates"),                                                         // none
     makeEvent("8i", "Meditation", "7pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
     makeEvent("8j", "HIIT", "8pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),        // post only
-    makeEvent("8k", "Power Spin", "9pm", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("8k", "Personal Training: Ethan Davis", "9pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 15), // both
     // Extra late-window sessions — several more start times between
     // 8pm and 10pm, spread across different resources so they run in
     // parallel with 8j/8k instead of conflicting.
@@ -626,7 +626,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("8o", "HIIT", "9:30pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),    // both
   ];
   events[9] = [
-    makeEvent("9a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),   // pre only
+    makeEvent("9a", "Personal Training: Mia Johnson", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0),   // pre only
     makeEvent("9b", "Stretch & Restore", "12pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
     makeEvent("9c", "Meditation", "1pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("9d", "Pilates", "3pm", "pilates"),                                                     // none
@@ -638,7 +638,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("9f", "Yoga", "10am", "yoga", "Alan Alda", "Studio B", 20, 36, false, false, 0, 15),         // available, no overdue, post only
     makeEvent("9g", "Pilates", "2pm", "pilates", "Alan Alda", "Studio B", 24, 24, false, false, 15, 15),    // full (no waitlist), overdue, both
     makeEvent("9h", "Meditation", "4pm", "meditation", "Alan Alda", "Studio B", 15, 20, false, false), // available, overdue, none
-    makeEvent("9i", "Spin", "5pm", "spin", "Alan Alda", "Studio B", 36, 36, false, false, 15, 0),          // full (no waitlist), no overdue, pre only
+    makeEvent("9i", "Personal Training: Lucas Anderson", "5pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0),          // full (no waitlist), no overdue, pre only
     makeEvent("9j", "HIIT", "6pm", "hiit", "Alan Alda", "Studio B", 30, 30, false, true, 0, 15),           // waitlisted, overdue, post only
     makeEvent("9k", "Pilates", "7pm", "pilates", "Alan Alda", "Studio B", 10, 24, false, false, 15, 15),    // available, overdue, both
     makeEvent("9l", "Meditation", "8pm", "meditation", "Alan Alda", "Studio B", 20, 20, false, false), // full (no waitlist), no overdue, none
@@ -646,7 +646,7 @@ function generateMockEvents(): DayEvents {
     makeEvent("9n", "HIIT", "9pm", "hiit", "Alan Alda", "Studio B", 18, 30, false, false, 0, 15),          // available, overdue, post only
   ];
   events[10] = [
-    makeEvent("10a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),  // pre only
+    makeEvent("10a", "Personal Training: Charlotte Taylor", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0),  // pre only
     makeEvent("10b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
     makeEvent("10c", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
     makeEvent("10d", "Yoga", "2pm", "yoga", "Sara Chen", "Studio A", -1, -1, false, false, 15, 15), // both
@@ -655,21 +655,21 @@ function generateMockEvents(): DayEvents {
     makeEvent("11a", "CLOSED", "", "closed", "", "", 0, 0, true),
   ];
   events[12] = [
-    makeEvent("12a", "Morning Spin Reset", "11am", "spin", "Alan Alda", "Studio B", 32, 36, false, false, 15, 0), // pre only
+    makeEvent("12a", "Personal Training: Aiden Moore", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0), // pre only
     makeEvent("12b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),  // post only
     makeEvent("12c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("12d", "HIIT", "2pm", "hiit"),                                                        // none
     makeEvent("12e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
   ];
   events[13] = [
-    makeEvent("13a", "Morning Spin Reset", "11am", "spin", "Alan Alda", "Studio B", 0, 36, false, false, 0, 15), // post only
+    makeEvent("13a", "Personal Training: Amelia Jackson", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15), // post only
     makeEvent("13b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("13c", "Yoga", "1pm", "yoga"),                                                          // none
     makeEvent("13d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
     makeEvent("13e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[14] = [
-    makeEvent("14a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("14a", "Personal Training: Harper White", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 15), // both
     makeEvent("14b", "Meditation", "12am", "meditation"),                                            // none
     makeEvent("14c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),    // pre only
     makeEvent("14d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),    // post only
@@ -678,7 +678,7 @@ function generateMockEvents(): DayEvents {
 
   // Week 3: days 15-21
   events[15] = [
-    makeEvent("15a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),  // pre only
+    makeEvent("15a", "Personal Training: Elijah Harris", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0),  // pre only
     makeEvent("15b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
     makeEvent("15c", "Power Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("15d", "Tigers v. Capybaras", "1:30pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
@@ -686,35 +686,35 @@ function generateMockEvents(): DayEvents {
     makeEvent("15f", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
     makeEvent("15g", "Stretch & Restore", "4pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
     makeEvent("15h", "HIIT", "5pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),    // both
-    makeEvent("15i", "Power Spin", "6pm", "spin"),                                                     // none
+    makeEvent("15i", "Personal Training: Abigail Martin", "6pm", "personalTraining", "Alan Alda", "Studio B", 1, 1),                                                     // none
     makeEvent("15j", "Meditation", "7pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
     makeEvent("15k", "Yoga", "8pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),     // post only
     makeEvent("15l", "Pilates", "9pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("15m", "HIIT", "10pm", "hiit"),                                                          // none
   ];
   events[16] = [
-    makeEvent("16a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),   // post only
+    makeEvent("16a", "Personal Training: Benjamin Clark", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),   // post only
     makeEvent("16b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("16c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 0, 36),                            // none
     makeEvent("16d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
     makeEvent("16e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[17] = [
-    makeEvent("17a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("17a", "Personal Training: Emily Lewis", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 15), // both
     makeEvent("17b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
     makeEvent("17c", "Power Yoga", "1pm", "yoga"),                                                     // none
     makeEvent("17d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
     makeEvent("17e", "Meditation", "3pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[18] = [
-    makeEvent("18a", "Morning Spin Reset", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
+    makeEvent("18a", "Personal Training: Daniel Walker", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0), // pre only
     makeEvent("18b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),  // post only
     makeEvent("18c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
     makeEvent("18d", "Power Yoga", "2pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("18e", "HIIT", "3pm", "hiit"),                                                            // none
   ];
   events[19] = [
-    makeEvent("19a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),   // post only
+    makeEvent("19a", "Personal Training: Elizabeth Hall", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),   // post only
     makeEvent("19b", "Stretch & Restore", "12pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("19c", "Meditation", "1pm", "meditation", "Sara Chen", "Studio A", 0, 20),               // none
     makeEvent("19d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
@@ -723,14 +723,14 @@ function generateMockEvents(): DayEvents {
   events[20] = [
     makeEvent("20a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("20b", "Meditation", "12am", "meditation"),                                             // none
-    makeEvent("20c", "Spin", "1pm", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),    // pre only
+    makeEvent("20c", "Personal Training: Emma Rodriguez", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0),    // pre only
     makeEvent("20d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),    // post only
     makeEvent("20e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
   ];
   events[21] = [
     makeEvent("21a", "Yoga", "11am", "yoga"),                                                          // none
     makeEvent("21b", "Pilates", "12am", "pilates", "Lisa Park", "Studio A", 0, 24, false, false, 15, 0), // pre only
-    makeEvent("21c", "Spin", "1pm", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),     // post only
+    makeEvent("21c", "Personal Training: James Wilson", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),     // post only
     makeEvent("21d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),    // both
     makeEvent("21e", "Pilates", "3pm", "pilates"),                                                     // none
   ];
@@ -743,27 +743,27 @@ function generateMockEvents(): DayEvents {
     makeEvent("22d", "Meditation", "3pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
   ];
   events[23] = [
-    makeEvent("23a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),    // post only
+    makeEvent("23a", "Personal Training: Sophia Lee", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),    // post only
     makeEvent("23b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("23c", "Yoga", "1pm", "yoga"),                                                            // none
     makeEvent("23d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),      // pre only
     makeEvent("23e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[24] = [
-    makeEvent("24a", "Morning Spin Reset", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("24a", "Personal Training: Liam Martinez", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 15), // both
     makeEvent("24b", "Tigers v. Capybaras", "12pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
     makeEvent("24c", "Yoga", "1pm", "yoga"),                                                             // none
     makeEvent("24d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),       // pre only
     makeEvent("24e", "Pilates", "3pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
   ];
   events[25] = [
-    makeEvent("25a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),   // pre only
+    makeEvent("25a", "Personal Training: Olivia Chen", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0),   // pre only
     makeEvent("25b", "Meditation", "12am", "meditation", "Sara Chen", "Studio A", 0, 20, false, false, 0, 15), // post only
     makeEvent("25c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15),   // both
     makeEvent("25d", "HIIT", "2pm", "hiit"),                                                          // none
   ];
   events[26] = [
-    makeEvent("26a", "Spin", "11am", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),   // post only
+    makeEvent("26a", "Personal Training: Noah Thompson", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15),   // post only
     makeEvent("26b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
     makeEvent("26c", "Yoga", "1pm", "yoga"),                                                           // none
     makeEvent("26d", "HIIT", "2pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),     // pre only
@@ -771,7 +771,7 @@ function generateMockEvents(): DayEvents {
   ];
   events[27] = [
     makeEvent("27a", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 0, 20, false, false, 15, 15), // both
-    makeEvent("27b", "Spin", "1pm", "spin"),                                                            // none
+    makeEvent("27b", "Personal Training: Ava Patel", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1),                                                            // none
     makeEvent("27c", "Meditation", "2pm", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0), // pre only
     makeEvent("27d", "HIIT", "3pm", "hiit", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15),      // post only
     makeEvent("27e", "Pilates", "4pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
@@ -779,7 +779,7 @@ function generateMockEvents(): DayEvents {
   events[28] = [
     makeEvent("28a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),    // pre only
     makeEvent("28b", "Meditation", "12am", "meditation", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
-    makeEvent("28c", "Power Spin", "2pm", "spin", "Alan Alda", "Studio B", -1, -1, false, false, 15, 15), // both
+    makeEvent("28c", "Personal Training: Mason Brown", "2pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 15), // both
     makeEvent("28d", "HIIT", "3pm", "hiit"),                                                             // none
     makeEvent("28e", "Yoga", "4pm", "yoga", "Alan Alda", "Studio B", -1, -1, false, false, 15, 0),      // pre only
     makeEvent("28f", "Pilates", "5pm", "pilates", "Alan Alda", "Studio B", -1, -1, false, false, 0, 15), // post only
@@ -788,14 +788,14 @@ function generateMockEvents(): DayEvents {
 
   // Week 5: days 29-31 (only render in months with 29+ days)
   events[29] = [
-    makeEvent("29a", "Morning Spin Reset", "11am", "spin", "Alan Alda", "Studio B", 18, 36, false, false, 15, 0), // pre only
+    makeEvent("29a", "Personal Training: Isabella Garcia", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0), // pre only
     makeEvent("29b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 14, 20, false, false, 0, 15),   // post only
     makeEvent("29c", "Yoga", "1pm", "yoga", "Alan Alda", "Studio B", 26, 36, false, false, 15, 15),   // both
     makeEvent("29d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 22, 30, false, false),        // none
     makeEvent("29e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 16, 24, false, false, 15, 0), // pre only
   ];
   events[30] = [
-    makeEvent("30a", "Power Spin", "11am", "spin", "Alan Alda", "Studio B", 30, 36, false, false, 0, 15), // post only
+    makeEvent("30a", "Personal Training: Ethan Davis", "11am", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 0, 15), // post only
     makeEvent("30b", "Stretch & Restore", "12pm", "meditation", "Lisa Park", "Studio A", 8, 20, false, false, 15, 15), // both
     makeEvent("30c", "Tigers v. Capybaras", "1pm", "league", "—", "Field A", 0, 0, true, false, 30, 30), // both
     makeEvent("30d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 30, 30, false, true),          // none
@@ -804,7 +804,7 @@ function generateMockEvents(): DayEvents {
   events[31] = [
     makeEvent("31a", "Yoga", "11am", "yoga", "Alan Alda", "Studio B", 24, 36, false, false, 15, 15),   // both
     makeEvent("31b", "Meditation", "12pm", "meditation", "Sara Chen", "Studio A", 20, 20, false, true), // none
-    makeEvent("31c", "Power Spin", "1pm", "spin", "Alan Alda", "Studio B", 18, 36, false, false, 15, 0), // pre only
+    makeEvent("31c", "Personal Training: Mia Johnson", "1pm", "personalTraining", "Alan Alda", "Studio B", 1, 1, false, false, 15, 0), // pre only
     makeEvent("31d", "HIIT", "2pm", "hiit", "Marcus Jones", "Gym Floor", 26, 30, false, false, 0, 15),  // post only
     makeEvent("31e", "Pilates", "3pm", "pilates", "Lisa Park", "Studio A", 20, 24, false, false, 15, 15), // both
   ];
@@ -828,14 +828,14 @@ function generateMockEvents(): DayEvents {
     meditation: ["Sara Chen", "James Kim"],
     pilates:    ["Lisa Park", "Mia Rodriguez"],
     hiit:       ["Marcus Jones", "Derek Thompson"],
-    spin:       ["Marcus Jones", "Olivia Nguyen"],
+    personalTraining: ["Marcus Jones", "Olivia Nguyen"],
   };
   const VENUES_FOR: Partial<Record<ReservationType, string[]>> = {
     yoga:       ["Studio A", "Studio B", "Multipurpose Room"],
     meditation: ["Studio A", "Studio B", "Multipurpose Room"],
     pilates:    ["Studio A", "Multipurpose Room"],
     hiit:       ["Gym Floor", "Multipurpose Room", "Court 1", "Court 2"],
-    spin:       ["Gym Floor", "Court 1"],
+    personalTraining: ["Gym Floor", "Court 1"],
   };
   // Fallback pools — every named instructor/venue above, deduped — used
   // when a type's own pool is entirely busy for a given time span so
@@ -850,12 +850,13 @@ function generateMockEvents(): DayEvents {
   };
   // Default capacity per reservation type — used when an event was
   // created without explicit capacity. Reflects realistic studio sizing.
+  // Personal Training is capped at 1 — it's a 1-on-1 session, not a class.
   const CAPACITY_FOR: Partial<Record<ReservationType, number>> = {
     yoga:       36,
     meditation: 20,
     pilates:    24,
     hiit:       30,
-    spin:       20,
+    personalTraining: 1,
   };
   // Pool of booking-level percentages. Spans nearly-empty through fully
   // booked, weighted toward partially-full so the demo schedule looks
@@ -3504,7 +3505,7 @@ interface MobileEventListProps {
 // Stable display order for "sort by reservation type" — alphabetical
 // by display label. Closures are excluded since they're shown in a
 // dedicated section above the sorted list.
-const TYPE_SORT_ORDER: ReservationType[] = ["hiit", "league", "meditation", "pilates", "spin", "yoga"];
+const TYPE_SORT_ORDER: ReservationType[] = ["hiit", "league", "meditation", "personalTraining", "pilates", "yoga"];
 
 // Strip out placeholder values like "—" or "" that mean "no resource".
 function isRealResource(name: string): boolean {
@@ -3727,8 +3728,8 @@ function MobileEventList({
                   { type: "hiit" as ReservationType, label: "HIIT" },
                   { type: "league" as ReservationType, label: "League Game" },
                   { type: "meditation" as ReservationType, label: "Meditation" },
+                  { type: "personalTraining" as ReservationType, label: "Personal Training" },
                   { type: "pilates" as ReservationType, label: "Pilates" },
-                  { type: "spin" as ReservationType, label: "Spin" },
                   { type: "yoga" as ReservationType, label: "Yoga" },
                 ].map((row) => {
                   const c = colors[row.type];
@@ -4443,17 +4444,19 @@ const INSTRUCTOR_OPTIONS = [
 
 // Activity categories for the form's "Reservation type" select.
 // Mirrors the calendar's ReservationType enum (yoga / meditation /
-// pilates / hiit / spin / league). "Group Class" was dropped because most
-// events are group classes by default; class size = 1 implies a
-// private session without needing its own type. Session-specific
-// names like "Power Yoga" or "Stretch & Restore" go in the title
-// field, not here.
+// pilates / hiit / personalTraining / league). "Group Class" was dropped
+// because most events are group classes by default. Personal Training is
+// the one type that's always a 1-on-1 session (capacity 1, always fully
+// booked) — see CAPACITY_FOR and the mock event generator. Session-
+// specific names like "Power Yoga" or "Stretch & Restore" go in the
+// title field, not here (Personal Training is the exception — its title
+// is always "Personal Training: [client name]").
 const RESERVATION_TYPE_OPTIONS = [
   "HIIT",
   "League Game",
   "Meditation",
+  "Personal Training",
   "Pilates",
-  "Spin",
   "Yoga",
 ];
 
@@ -4822,6 +4825,30 @@ const ALL_PAID_CLIENTS: BookedClient[] = MOCK_BOOKED_CLIENTS.filter(
 function getEventClients(event: CalendarEvent): BookedClient[] {
   const booked = event.booked || 0;
   if (booked === 0) return [];
+  // Personal Training is always a single named client, and the title is
+  // the source of truth for who that is ("Personal Training: <name>") —
+  // derive the roster from it instead of the deterministic-bucket scheme
+  // below, so the one client shown in every panel always matches the
+  // name in the title exactly, rather than an unrelated name the id-hash
+  // bucket happens to land on.
+  if (event.type === "personalTraining") {
+    const name = event.title.split(":").slice(1).join(":").trim();
+    const match = MOCK_BOOKED_CLIENTS.find((c) => c.name === name);
+    return [
+      match
+        ? { ...match, status: "Booked" }
+        : {
+            name,
+            status: "Booked",
+            paymentStatus: "Paid",
+            balance: 0,
+            age: 30,
+            phone: "(555) 000-0000",
+            packageType: "Personal Training",
+            isMember: true,
+          },
+    ];
+  }
   const idHash = event.id
     .split("")
     .reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) | 0, 0);
@@ -5657,7 +5684,7 @@ function ReservationDetailsPanelContent({
       : event.type === "hiit" ? "HIIT"
       : event.type === "meditation" ? "Meditation"
       : event.type === "pilates" ? "Pilates"
-      : event.type === "spin" ? "Spin"
+      : event.type === "personalTraining" ? "Personal Training"
       : event.type === "yoga" ? "Yoga"
       : "";
   const initTitle = event.title;
@@ -6435,8 +6462,10 @@ function searchMockEvents(msg: string): { criteria: number; results: CoachSearch
   const lower = msg.toLowerCase();
 
   const type =
-    (["yoga", "meditation", "pilates", "hiit", "spin", "league"] as ReservationType[])
-      .find((t) => lower.includes(t)) ?? null;
+    (["yoga", "meditation", "pilates", "hiit", "personalTraining", "league"] as ReservationType[])
+      // "personalTraining" isn't a word someone would type — match the
+      // natural phrase instead; every other key already reads as one.
+      .find((t) => lower.includes(t === "personalTraining" ? "personal training" : t)) ?? null;
   const venue = VENUE_OPTIONS.find((v) => lower.includes(v.toLowerCase())) ?? null;
   const instructor = INSTRUCTOR_OPTIONS.find((i) => lower.includes(i.toLowerCase())) ?? null;
 
@@ -9263,12 +9292,15 @@ function CalendarFiltersContent({
   dateFilterDisabledMessage,
 }: CalendarFiltersContentProps) {
   // Pretty label for a reservation type. HIIT keeps its acronym casing;
-  // league reads as "League Game"; the rest get a simple capitalize.
+  // league reads as "League Game"; personalTraining reads as "Personal
+  // Training"; the rest get a simple capitalize.
   const typeLabel = (t: ReservationType): string =>
     t === "hiit"
       ? "HIIT"
       : t === "league"
       ? "League Game"
+      : t === "personalTraining"
+      ? "Personal Training"
       : t.charAt(0).toUpperCase() + t.slice(1);
   // Colored dot used as the leading element for each type option in
   // the mobile multiselect — same color tokens as the desktop chips so
@@ -9296,8 +9328,8 @@ function CalendarFiltersContent({
     "hiit",
     "league",
     "meditation",
+    "personalTraining",
     "pilates",
-    "spin",
     "yoga",
   ];
   return (
@@ -13461,8 +13493,8 @@ export function SchedulePage() {
                     { types: ["hiit"] as const, label: "HIIT" },
                     { types: ["league"] as const, label: "League Game" },
                     { types: ["meditation"] as const, label: "Meditation" },
+                    { types: ["personalTraining"] as const, label: "Personal Training" },
                     { types: ["pilates"] as const, label: "Pilates" },
-                    { types: ["spin"] as const, label: "Spin" },
                     { types: ["yoga"] as const, label: "Yoga" },
                   ].map((row) => {
                     const c = colors[row.types[0]];
