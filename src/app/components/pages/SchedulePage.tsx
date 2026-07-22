@@ -221,6 +221,22 @@ function contrastTextColor(bgHex: string): string {
   return whiteRatio >= darkRatio ? "#ffffff" : DARK_TEXT;
 }
 
+/** "closed" and "league" fill their badge/chip at full opacity (no tint +
+ *  border treatment) since they're neutral/administrative rather than a
+ *  real class type — shared by every view that draws a reservation. */
+function isNeutralAccentType(type: ReservationType): boolean {
+  return type === "closed" || type === "league";
+}
+
+/** Single source of truth for a reservation type's accent color, used by
+ *  Monthly's EventBadge, WeeklyEventChip, Resources' renderEventBlock,
+ *  Upcoming Today, and the "+N more" day panel — so all views stay in
+ *  sync with MONTHLY_ACCENT_BG. */
+function getAccentBg(type: ReservationType, isDark: boolean): string {
+  if (type === "closed") return isDark ? "#3e535b" : "#eff0f3";
+  return MONTHLY_ACCENT_BG[type] ?? MONTHLY_ACCENT_BG.yoga;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    THEME-DERIVED SEMANTIC COLORS
    ═══════════════════════════════════════════════════════════════════════ */
@@ -8122,7 +8138,10 @@ function UpcomingTodayPanel({
         </div>
       ) : (
         events.map((event) => {
-          const ec = colors[event.type];
+          // Dot color sources from the same MONTHLY_ACCENT_BG-backed map
+          // Monthly/Weekly/Resources use, so a reservation type reads as
+          // the same color everywhere in the app.
+          const accentDotColor = getAccentBg(event.type, isDark);
           const remaining = Math.max(0, event.capacity - event.booked);
           const hasCapacity  = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
           const attendPct    = hasCapacity ? event.booked / event.capacity : 0;
@@ -8161,7 +8180,7 @@ function UpcomingTodayPanel({
               }}
             >
               <span
-                style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: ec.text, flexShrink: 0 }}
+                style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: accentDotColor, flexShrink: 0 }}
               />
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
@@ -9076,7 +9095,6 @@ function DayEventsPanelContent({
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
   const sc = semanticColors(palette, isDark);
-  const colors = getEventStyles(isDark);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -9086,7 +9104,10 @@ function DayEventsPanelContent({
         </div>
       ) : (
         events.map((event) => {
-          const ec = colors[event.type];
+          // Dot color sources from the same MONTHLY_ACCENT_BG-backed map
+          // Monthly/Weekly/Resources/Upcoming Today use, so a reservation
+          // type reads as the same color everywhere in the app.
+          const accentDotColor = getAccentBg(event.type, isDark);
           const remaining = Math.max(0, event.capacity - event.booked);
           const isFull = remaining === 0;
           return (
@@ -9117,7 +9138,7 @@ function DayEventsPanelContent({
                 e.currentTarget.style.borderColor = sc.border;
               }}
             >
-              <span style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: ec.text, flexShrink: 0 }} />
+              <span style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: accentDotColor, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
                   <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -9993,7 +10014,11 @@ function ResourcesView({
     const hourIdx = Math.floor(startMins / 60) - RES_START_HOUR;
     if (hourIdx < 0 || hourIdx >= hours.length) return null;
     const left = hourIdx * RES_COL_W;
-    const style     = colors[event.type] || colors.yoga;
+    // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
+    // kept as a prop for signature compatibility, but Resources now sources
+    // its accent from the same MONTHLY_ACCENT_BG-backed helpers Monthly and
+    // Weekly use, so all three views stay in sync.
+    void colors;
     const isHovered = event.id === hoveredEventId;
     const width = RES_COL_W - 4;
 
@@ -10004,14 +10029,41 @@ function ResourcesView({
     // chip's allocated pixel height, so a resource's rows read consistently
     // regardless of how many lanes happen to be stacked at a given hour.
 
+    // ── Fill/border — same low-opacity-tint + full-opacity-left-border
+    // system as Monthly/Weekly: league keeps a full-opacity neutral fill
+    // (closed events are filtered out of this view above), every real
+    // category gets a tinted fill with a thick accent-colored left border.
+    const isNeutralFillType = isNeutralAccentType(event.type);
+    const accentBg = getAccentBg(event.type, isDark);
+    const accentTextColor = contrastTextColor(accentBg);
+    const normalTextColor = isDark ? "#dfe9ec" : "#182023";
+    const textColor = isNeutralFillType ? accentTextColor : normalTextColor;
+    const tintBg = hexToRgba(accentBg, isDark ? 0.22 : 0.14);
+    const LEFT_BORDER_W = 4;
+
     // ── Buffer stripes — narrow, inside the chip (mirrors EventBadge) ──
     const STRIPE_W  = 7;
     const hasPre    = (event.preBuffer  ?? 0) > 0;
     const hasPost   = (event.postBuffer ?? 0) > 0;
-    const padL      = hasPre  ? STRIPE_W + 2 : 6;
-    const padR      = hasPost ? STRIPE_W + 2 : 6;
-    // Stripe color: contrasts with the chip background in both states.
-    const stripeColor = isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text;
+    // Reserved on both sides regardless of whether this row has a buffer,
+    // same alignment rule as Monthly/Weekly.
+    const padL      = STRIPE_W + 2;
+    const padR      = STRIPE_W + 2;
+    // Stripe color: the type's own full-opacity accent, not the text color.
+    const stripeColor = accentBg;
+
+    // "Highlight my sessions" — same ring + dim treatment as EventBadge.
+    const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
+    const dimNotMine = highlightMySessions && !isMine;
+    const isPast = isSessionPast(event, clampedDay, currentMonth, currentYear);
+
+    // Hover ring — thin, type-colored (neutral for league), same as
+    // Monthly/Weekly's ringShadows. `isHovered` (event.id === hoveredEventId)
+    // stands in for Monthly's `isSelected`, which is likewise hover-driven.
+    const selectionRingColor = isDark ? "rgba(255,255,255,0.65)" : "rgba(16,24,40,0.55)";
+    const ringShadows: string[] = [];
+    if (isMine) ringShadows.push(`0 0 0 2px ${mineRingColor}`);
+    if (isHovered) ringShadows.push(`0 0 0 ${isMine ? 3 : 1}px ${isNeutralFillType ? selectionRingColor : accentBg}`);
 
     // ── Attendance indicator (mirrors EventBadge logic) ──────────────
     const hasCapacityData =
@@ -10043,11 +10095,6 @@ function ResourcesView({
       ? EZ_RED_ON_COLOR
       : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
     const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
-
-    // "Highlight my sessions" — same ring + dim treatment as EventBadge.
-    const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
-    const dimNotMine = highlightMySessions && !isMine;
-    const isPast = isSessionPast(event, clampedDay, currentMonth, currentYear);
 
     return (
       // Outer shell: handles absolute placement within the row
@@ -10081,14 +10128,16 @@ function ResourcesView({
             position: "relative",
             flex: 1,
             borderRadius: "5px",
-            background: isHovered ? style.text : style.bg,
-            // Outer border removed — category is carried by background color alone.
-            boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
+            background: isNeutralFillType ? accentBg : tintBg,
+            borderLeft: !isNeutralFillType ? `${LEFT_BORDER_W}px solid ${accentBg}` : undefined,
+            boxShadow: ringShadows.length ? ringShadows.join(", ") : undefined,
             opacity: isPast ? 0.28 : dimNotMine ? 0.5 : 1,
-            color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
+            color: textColor,
             fontSize: "11px",
             fontWeight: 600,
-            padding: isDensityCompact ? `2px ${padR}px 2px ${padL}px` : `4px ${padR}px 4px ${padL}px`,
+            padding: isDensityCompact
+              ? `2px ${padR}px 2px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`
+              : `4px ${padR}px 4px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`,
             overflow: "hidden",
             cursor: "pointer",
             display: "flex",
@@ -10152,10 +10201,8 @@ function ResourcesView({
                     marginLeft: "auto",
                     display: "inline-block",
                     flexShrink: 0,
-                    background: isHovered
-                      ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
-                      : statusBg,
-                    color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                    background: statusBg,
+                    color: statusColor,
                     fontSize: isDensityCompact ? "9px" : "10px",
                     fontWeight: 700,
                     lineHeight: isDensityCompact ? "11px" : "13px",
@@ -10567,7 +10614,11 @@ function WeeklyEventChip({
    *  `isSessionPast`) — dims the chip to 50% opacity. Still clickable. */
   isPast?: boolean;
 }) {
-  const style = colors[event.type] || colors.yoga;
+  // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
+  // kept as a prop for signature compatibility, but Weekly now sources its
+  // accent from the same MONTHLY_ACCENT_BG-backed helpers Monthly uses, so
+  // the two views stay in sync.
+  void colors;
   const isCompact = density === "compact";
 
   const hasPre = (event.preBuffer ?? 0) > 0;
@@ -10610,13 +10661,38 @@ function WeeklyEventChip({
 
   const timeRangeLabel = getSessionTimeRangeLabel(event);
 
+  // Same "reserve the stripe's inset on both sides regardless of whether
+  // THIS row actually has a buffer" rule as Monthly's EventBadge — titles,
+  // and here the status pill, need to land at a consistent x position
+  // whether or not a given session has buffers.
   const STRIPE_W = 7;
-  const basePad = isCompact ? 6 : 8;
-  const padL = hasPre ? STRIPE_W + 2 : basePad;
-  const padR = hasPost ? STRIPE_W + 2 : basePad;
+  const padL = STRIPE_W + 2;
+  const padR = STRIPE_W + 2;
 
   const deletableColor = isDark ? "#e05a5a" : "#d41840";
-  const stripeColor = isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text;
+
+  // Same low-opacity-tint + full-opacity-left-border system as Monthly:
+  // league/closed keep a full-opacity neutral fill, every real category
+  // gets a tinted fill with a thick accent-colored left border instead.
+  const isNeutralFillType = isNeutralAccentType(event.type);
+  const accentBg = getAccentBg(event.type, isDark);
+  const accentTextColor = contrastTextColor(accentBg);
+  const normalTextColor = isDark ? "#dfe9ec" : "#182023";
+  const textColor = isNeutralFillType ? accentTextColor : normalTextColor;
+  const tintBg = hexToRgba(accentBg, isDark ? 0.22 : 0.14);
+  const LEFT_BORDER_W = 4;
+
+  // Hover ring — thin, type-colored (neutral for league/closed), same as
+  // Monthly's ringShadows. Weekly no longer inverts to a solid fill on
+  // hover; the ring is the only hover treatment.
+  const selectionRingColor = isDark ? "rgba(255,255,255,0.65)" : "rgba(16,24,40,0.55)";
+  const ringShadows: string[] = [];
+  if (isMine) ringShadows.push(`0 0 0 2px ${mineRingColor}`);
+  if (isSelected) ringShadows.push(`0 0 0 ${isMine ? 3 : 1}px ${isNeutralFillType ? selectionRingColor : accentBg}`);
+
+  // Buffer stripes use the type's full-opacity accent color, not the text
+  // color, so they read as "this type's buffer" regardless of theme.
+  const stripeColor = isDeletable ? deletableColor : accentBg;
 
   return (
     <div
@@ -10635,15 +10711,15 @@ function WeeklyEventChip({
         borderRadius: "5px",
         background: isDeletable
           ? (isDark ? "rgba(224,90,90,0.12)" : "rgba(212,24,64,0.10)")
-          : isSelected ? style.text : style.bg,
-        // Outer border removed — category is carried by background color
-        // alone. Delete Mode's dashed outline is kept as a functional
-        // "this is removable" affordance, not a decorative outline.
+          : isNeutralFillType ? accentBg : tintBg,
         border: isDeletable ? `1px dashed ${deletableColor}` : "none",
-        boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
-        color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
+        borderLeft: !isDeletable && !isNeutralFillType ? `${LEFT_BORDER_W}px solid ${accentBg}` : undefined,
+        boxShadow: ringShadows.length ? ringShadows.join(", ") : undefined,
+        color: isDeletable ? deletableColor : textColor,
         opacity: isPast ? 0.28 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
-        padding: isCompact ? `3px ${padR}px 3px ${padL}px` : `5px ${padR}px 5px ${padL}px`,
+        padding: isCompact
+          ? `3px ${padR}px 3px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`
+          : `5px ${padR}px 5px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`,
         display: "flex",
         flexDirection: "column",
         gap: "2px",
@@ -10717,10 +10793,8 @@ function WeeklyEventChip({
               style={{
                 marginLeft: "auto",
                 flexShrink: 0,
-                background: isSelected
-                  ? (isDark ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)")
-                  : statusBg,
-                color: isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : statusColor,
+                background: statusBg,
+                color: statusColor,
                 fontSize: "9px",
                 fontWeight: 700,
                 lineHeight: "13px",
