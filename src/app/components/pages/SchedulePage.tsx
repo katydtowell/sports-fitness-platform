@@ -1530,7 +1530,9 @@ function DateCell({
         borderBottom: `1px solid ${sc.border}`,
         borderLeft: `1px solid ${sc.border}`,
         padding: "2px",
-        gap: "1px",
+        // Nudged closer to the 3px gap Weekly uses between stacked chips —
+        // still tight enough to keep a packed day cell readable.
+        gap: "2px",
         overflow: "hidden",
       }}
     >
