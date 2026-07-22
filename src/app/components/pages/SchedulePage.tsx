@@ -3285,8 +3285,8 @@ function MobileEventRow({
             )}
             <span
               style={{
-                fontSize: "13px",
-                fontWeight: 700,
+                fontSize: "11px",
+                fontWeight: 600,
                 color: sc.heading,
               }}
             >
