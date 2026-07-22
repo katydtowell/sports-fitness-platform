@@ -181,6 +181,13 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/** Same hex, at the given alpha, as an rgba() string — used for the
+ *  low-opacity tint fill paired with a full-opacity left border. */
+function hexToRgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 /** WCAG 2.x relative luminance of an sRGB color (0-1 range). */
 function relativeLuminance(r: number, g: number, b: number): number {
   const linear = (c: number) => {
@@ -1343,27 +1350,40 @@ function EventBadge({
 
   const isCompact = density === "compact";
 
-  // Full-opacity, bold category background — see MONTHLY_ACCENT_BG. Text
-  // is derived from it via contrastTextColor rather than a fixed per-
-  // category value, so it stays legible regardless of how bold/light the
-  // background is. Selection no longer swaps the fill (that would fight
-  // with "full opacity" backgrounds); it's a ring instead, alongside the
-  // "my sessions" ring.
+  // League and closed keep their full-opacity fill (see MONTHLY_ACCENT_BG):
+  // both are neutral, low-saturation colors chosen so a THIN border in the
+  // same hue would barely register against the day cell background (onyx
+  // league on a dark cell, or near-white closed on a light one), so the
+  // low-opacity-fill + full-opacity-left-border treatment below is
+  // reserved for the five real, saturated brand-colored categories.
   // "Closed" reverts to the same theme-aware neutral gray it used before
-  // this trial (matching LIGHT_EVENT_STYLES/DARK_EVENT_STYLES.closed)
-  // instead of a single fixed "jewel tone" hex — it isn't a reservation,
-  // so it doesn't need a bold brand color, just to look like it always did.
+  // the full-opacity trial (matching LIGHT_EVENT_STYLES/DARK_EVENT_STYLES.
+  // closed) rather than a fixed "jewel tone" hex.
+  const isNeutralFillType = event.type === "closed" || event.type === "league";
   const accentBg = event.type === "closed"
     ? (isDark ? "#3e535b" : "#eff0f3")
     : MONTHLY_ACCENT_BG[event.type] ?? MONTHLY_ACCENT_BG.yoga;
-  const textColor = contrastTextColor(accentBg);
+  const accentTextColor = contrastTextColor(accentBg);
+  // Normal categories: a low-opacity tint of the accent color as the fill,
+  // with a thick left border in that same accent at full opacity — text
+  // uses the app's ordinary theme color rather than a per-color contrast
+  // pick, since the tint is close enough to the cell background that a
+  // bold/white-vs-dark choice isn't needed the way it was for a solid fill.
+  const normalTextColor = isDark ? "#dfe9ec" : "#182023";
+  const textColor = isNeutralFillType ? accentTextColor : normalTextColor;
+  const tintBg = hexToRgba(accentBg, isDark ? 0.22 : 0.14);
   // Pie's empty wedge — light tint on dark/bold badges, dark tint on light
-  // (league/closed) ones, so it stays visible against either.
-  const pieTrackColor = textColor === "#ffffff" ? "rgba(255,255,255,0.28)" : "rgba(16,24,40,0.18)";
+  // ones, based on theme rather than the (no longer contrast-derived)
+  // text color.
+  const pieTrackColor = isNeutralFillType
+    ? (accentTextColor === "#ffffff" ? "rgba(255,255,255,0.28)" : "rgba(16,24,40,0.18)")
+    : (isDark ? "rgba(255,255,255,0.28)" : "rgba(16,24,40,0.18)");
   const selectionRingColor = isDark ? "rgba(255,255,255,0.65)" : "rgba(16,24,40,0.55)";
   const ringShadows: string[] = [];
   if (isMine) ringShadows.push(`0 0 0 2px ${mineRingColor}`);
   if (isSelected) ringShadows.push(`0 0 0 ${isMine ? 4 : 2}px ${selectionRingColor}`);
+
+  const LEFT_BORDER_W = 4;
 
   const badgeStyle: CSSProperties = {
     position: "relative",
@@ -1371,7 +1391,10 @@ function EventBadge({
     alignItems: "center",
     gap: isCompact ? "3px" : "4px",
     height: isCompact ? "20px" : "24px",
-    padding: isCompact ? `2px ${padR}px 2px ${padL}px` : `4px ${padR}px 4px ${padL}px`,
+    boxSizing: "border-box",
+    padding: isCompact
+      ? `2px ${padR}px 2px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`
+      : `4px ${padR}px 4px ${isNeutralFillType ? padL : padL + LEFT_BORDER_W}px`,
     borderRadius: "4px",
     fontSize: isCompact ? "9px" : "10px",
     fontWeight: 700,
@@ -1382,11 +1405,14 @@ function EventBadge({
     minWidth: 0,
     background: isDeletable
       ? (isDark ? "rgba(224,90,90,0.12)" : "rgba(212,24,64,0.10)")
-      : accentBg,
-    // Outer border removed — category is carried by background color alone.
-    // Delete Mode's dashed outline is kept since it's a functional "this is
-    // removable" affordance, not a decorative outline.
+      : isNeutralFillType ? accentBg : tintBg,
+    // League/closed keep no border (category still carried by their full
+    // fill alone). Delete Mode's dashed outline wins over both when active.
+    // Every other category instead gets ONLY a thick, full-opacity left
+    // border in its accent color — the low-opacity fill above is that same
+    // color at reduced alpha.
     border: isDeletable ? `1px dashed ${deletableColor}` : "none",
+    borderLeft: !isDeletable && !isNeutralFillType ? `${LEFT_BORDER_W}px solid ${accentBg}` : undefined,
     boxShadow: ringShadows.length ? ringShadows.join(", ") : undefined,
     color: isDeletable ? deletableColor : textColor,
     opacity: isPast ? 0.28 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
@@ -1394,8 +1420,7 @@ function EventBadge({
   };
 
   // Diagonal-stripe pattern for buffer indicators, tinted to match
-  // whichever text color the badge landed on (white on bold/dark
-  // backgrounds, near-black on light ones).
+  // whichever text color the badge landed on.
   const stripeColor = isDeletable ? deletableColor : textColor;
   const bufferStripeStyle: CSSProperties = {
     position: "absolute",
