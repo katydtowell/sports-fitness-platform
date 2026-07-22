@@ -1269,26 +1269,25 @@ function EventBadge({
     background: isDeletable
       ? (isDark ? "rgba(224,90,90,0.12)" : "rgba(212,24,64,0.10)")
       : isSelected ? style.text : style.bg,
-    border: isDeletable
-      ? `1px dashed ${deletableColor}`
-      : `1px solid ${isSelected ? style.text : style.border}`,
+    // Outer border removed — category is carried by background color alone.
+    // Delete Mode's dashed outline is kept since it's a functional "this is
+    // removable" affordance, not a decorative outline.
+    border: isDeletable ? `1px dashed ${deletableColor}` : "none",
     boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
     color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
-    opacity: isPast ? 0.5 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
+    opacity: isPast ? 0.28 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
     transition: "all 0.15s ease",
   };
 
   if (event.type === "league") {
     const leagueStyle = colors.league;
     badgeStyle.background = isSelected ? leagueStyle.text : leagueStyle.bg;
-    badgeStyle.border = `1px solid ${isSelected ? leagueStyle.text : leagueStyle.border}`;
     badgeStyle.color = isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : leagueStyle.text;
   }
 
   if (event.type === "closed") {
     const closedStyle = colors.closed;
     badgeStyle.background = closedStyle.bg;
-    badgeStyle.border = `1px solid ${closedStyle.border}`;
     badgeStyle.color = closedStyle.text;
     badgeStyle.cursor = "default";
   }
@@ -1543,7 +1542,7 @@ function DateCell({
             fontWeight: 700,
             color: isToday ? (isDark ? "#0a0e0f" : "#ffffff") : sc.heading,
             background: isToday ? sc.brand : "transparent",
-            opacity: isPastDay ? 0.5 : 1,
+            opacity: isPastDay ? 0.3 : 1,
           }}
         >
           {day}
@@ -9937,9 +9936,9 @@ function ResourcesView({
             flex: 1,
             borderRadius: "5px",
             background: isHovered ? style.text : style.bg,
-            border: `1px solid ${isHovered ? style.text : style.border}`,
+            // Outer border removed — category is carried by background color alone.
             boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
-            opacity: isPast ? 0.5 : dimNotMine ? 0.5 : 1,
+            opacity: isPast ? 0.28 : dimNotMine ? 0.5 : 1,
             color: isHovered ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
             fontSize: "11px",
             fontWeight: 600,
@@ -10491,12 +10490,13 @@ function WeeklyEventChip({
         background: isDeletable
           ? (isDark ? "rgba(224,90,90,0.12)" : "rgba(212,24,64,0.10)")
           : isSelected ? style.text : style.bg,
-        border: isDeletable
-          ? `1px dashed ${deletableColor}`
-          : `1px solid ${isSelected ? style.text : style.border}`,
+        // Outer border removed — category is carried by background color
+        // alone. Delete Mode's dashed outline is kept as a functional
+        // "this is removable" affordance, not a decorative outline.
+        border: isDeletable ? `1px dashed ${deletableColor}` : "none",
         boxShadow: isMine ? `0 0 0 2px ${mineRingColor}` : undefined,
         color: isDeletable ? deletableColor : isSelected ? (isDark ? "#0a0e0f" : "#ffffff") : style.text,
-        opacity: isPast ? 0.5 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
+        opacity: isPast ? 0.28 : dimNonDeletable ? 0.4 : dimNotMine ? 0.45 : 1,
         padding: isCompact ? `3px ${padR}px 3px ${padL}px` : `5px ${padR}px 5px ${padL}px`,
         display: "flex",
         flexDirection: "column",
@@ -10847,7 +10847,7 @@ function WeeklyView({
                       fontWeight: 700,
                       color: isToday ? (isDark ? "#0a0e0f" : "#ffffff") : sc.heading,
                       background: isToday ? sc.brand : "transparent",
-                      opacity: isPastDay ? 0.5 : 1,
+                      opacity: isPastDay ? 0.3 : 1,
                     }}
                   >
                     {date.getDate()}
@@ -11293,7 +11293,7 @@ function DailyView({
                 ? `3px solid ${mineRingColor}`
                 : "3px solid transparent",
               background: isDeletable ? (isDark ? "rgba(224,90,90,0.06)" : "rgba(212,24,64,0.04)") : "transparent",
-              opacity: isPast ? 0.5 : dimNonDeletable ? 0.5 : dimNotMine ? 0.55 : 1,
+              opacity: isPast ? 0.28 : dimNonDeletable ? 0.5 : dimNotMine ? 0.55 : 1,
               cursor: "pointer",
             }}
           >
