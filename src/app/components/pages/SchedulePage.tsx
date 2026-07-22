@@ -2518,7 +2518,7 @@ function MobileToolbar({
               boxShadow: "0px 1px 0.5px 0px rgba(29,41,61,0.02)",
             }}
           >
-            <CalendarIcon size={16} /> {dateButtonLabel}
+            {showCalendar ? <X size={16} /> : <CalendarIcon size={16} />} {dateButtonLabel}
           </button>
 
           {showTodayButton && (
@@ -2865,6 +2865,11 @@ function MiniCalendar({
           const cellIsEnd = day !== null && isEnd(day);
           const cellInRange = day !== null && isInRange(day);
           const cellSelected = cellIsStart || cellIsEnd;
+          // Same "already happened" treatment used everywhere else in the
+          // calendar (day-number opacity 0.3) — skipped for a cell the user
+          // has actually selected, so a past date they're deliberately
+          // viewing doesn't wash out.
+          const isPastDay = day !== null && isDayInPast(day, currentMonth, currentYear);
 
           return (
             <div
@@ -2891,7 +2896,7 @@ function MiniCalendar({
                     : sc.muted,
                 fontSize: "14px",
                 fontWeight: 500,
-                opacity: day === null ? 0.4 : 1,
+                opacity: day === null ? 0.4 : (isPastDay && !cellSelected) ? 0.3 : 1,
               }}
             >
               {day}
@@ -2903,7 +2908,7 @@ function MiniCalendar({
                     width: "5px",
                     height: "5px",
                     borderRadius: "50%",
-                    background: isClosedAllDay ? sc.muted : sc.brand,
+                    background: (isClosedAllDay || isPastDay) ? sc.muted : sc.brand,
                   }}
                 />
               )}
@@ -3034,6 +3039,10 @@ interface MobileEventRowProps {
    *  rendered inside a ResourceGroup, where the resource it belongs
    *  to is already shown in the dedicated left column. */
   hideMiddleColumn?: boolean;
+  /** Whether this session's start time has already passed (see
+   *  `isSessionPast`) — dims the whole row to 0.28 opacity, matching
+   *  how desktop views dim past reservations. Still fully clickable. */
+  isPast?: boolean;
 }
 
 function MobileEventRow({
@@ -3044,6 +3053,7 @@ function MobileEventRow({
   isDark,
   onClick,
   hideMiddleColumn = false,
+  isPast = false,
 }: MobileEventRowProps) {
   // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
   // kept as a prop for signature compatibility, but this row's dot now
@@ -3107,6 +3117,7 @@ function MobileEventRow({
         padding: "12px 16px",
         borderBottom: hideMiddleColumn ? "none" : `1px solid ${sc.border}`,
         cursor: "pointer",
+        opacity: isPast ? 0.28 : 1,
       }}
     >
       {/* Left: dot, time, title, capacity */}
@@ -3353,6 +3364,7 @@ function ResourceGroup({
                   isDark={isDark}
                   onClick={() => onSelectEvent(item.event)}
                   hideMiddleColumn
+                  isPast={isSessionPast(item.event, item.date.getDate(), item.date.getMonth(), item.date.getFullYear())}
                 />
               </div>
             ))}
@@ -3785,6 +3797,7 @@ function MobileEventList({
               colors={colors}
               isDark={isDark}
               onClick={() => onSelectEvent(item.event)}
+              isPast={isSessionPast(item.event, item.date.getDate(), item.date.getMonth(), item.date.getFullYear())}
             />
           ))
         ) : (
