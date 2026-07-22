@@ -354,43 +354,34 @@ const REGISTRATION_STATUS_CATEGORY_META: Record<
   Waitlisted: { label: "Waitlisted",  dotLight: "#d41840",  dotDark: "#e05a5a" },
 };
 
-/** Per-view visibility for each of the four status categories. */
+/** Visibility for each of the four status categories — ONE global setting
+ *  that applies identically to every schedule view (Monthly, Weekly,
+ *  Daily, Resources, Upcoming Today, the "+N more" day panel), rather than
+ *  a separate choice per view. `ViewStatusVisibility` is kept as the name
+ *  every view component's prop is still typed with (`statusVisibility?:
+ *  ViewStatusVisibility`) since the shape is unchanged — only the "one
+ *  copy per view" wrapper around it is gone. */
 type ViewStatusVisibility = Record<RegistrationStatusCategory, boolean>;
 
-type RegistrationStatusPrefs = Record<ScheduleViewId, ViewStatusVisibility>;
+type RegistrationStatusPrefs = ViewStatusVisibility;
 
 function makeDefaultViewStatusVisibility(): ViewStatusVisibility {
   return { Available: true, NearlyFull: true, Full: true, Waitlisted: true };
 }
 
-function makeDefaultRegistrationStatusPrefs(): RegistrationStatusPrefs {
-  return {
-    Monthly: makeDefaultViewStatusVisibility(),
-    Weekly: makeDefaultViewStatusVisibility(),
-    Daily: makeDefaultViewStatusVisibility(),
-    Resources: makeDefaultViewStatusVisibility(),
-  };
-}
-
 const REGISTRATION_STATUS_PREFS_KEY = "ezf_schedule_registration_status_prefs";
 
 function loadRegistrationStatusPrefs(): RegistrationStatusPrefs {
-  const defaults = makeDefaultRegistrationStatusPrefs();
+  const defaults = makeDefaultViewStatusVisibility();
   try {
     const stored = localStorage.getItem(REGISTRATION_STATUS_PREFS_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored) as Partial<
-        Record<ScheduleViewId, Partial<ViewStatusVisibility>>
-      >;
-      // Merge over the defaults per-view AND per-category rather than
-      // trusting the stored shape outright, so a future new view or status
-      // category (or a stale/partial record) always ends up with a valid
-      // boolean instead of `undefined`.
-      const merged = {} as RegistrationStatusPrefs;
-      for (const view of SCHEDULE_VIEW_IDS) {
-        merged[view] = { ...defaults[view], ...(parsed?.[view] ?? {}) };
-      }
-      return merged;
+      const parsed = JSON.parse(stored) as Partial<RegistrationStatusPrefs>;
+      // Merge over the defaults per-category rather than trusting the
+      // stored shape outright, so a future new status category (or a
+      // stale/partial record) always ends up with a valid boolean instead
+      // of `undefined`.
+      return { ...defaults, ...parsed };
     }
   } catch {
     // localStorage may be unavailable, or the stored value malformed —
@@ -410,8 +401,8 @@ function persistRegistrationStatusPrefs(prefs: RegistrationStatusPrefs) {
 }
 
 /** Given a session's derived capacity state, which status category it
- *  visually falls into — used to look up the right boolean in a view's
- *  ViewStatusVisibility. */
+ *  visually falls into — used to look up the right boolean in the global
+ *  RegistrationStatusPrefs. */
 function registrationStatusCategoryOf(
   isFull: boolean,
   isWaitlisted: boolean,
@@ -8021,42 +8012,23 @@ function UpcomingTodayPanel({
   }, [railPopover]);
 
   // Registration-status preference helpers ────────────────────────────
-  // Three levels of bulk-setter, none of them a separately stored value —
-  // each just reads as "on" when everything underneath it is already on,
-  // and clicking it snaps everything underneath to the opposite of that.
-  //   1. Everything (every view × every status category)
-  //   2. One view, every status category
-  //   3. One view, one status category (the actual stored leaf value)
-  const isEverythingOn = SCHEDULE_VIEW_IDS.every((v) =>
-    REGISTRATION_STATUS_CATEGORIES.every((c) => registrationStatusPrefs[v][c])
-  );
+  // One global setting (not per-view) — a bulk "everything" toggle that
+  // reads as "on" only when every status category below is already on,
+  // plus a per-category toggle for the actual stored leaf value.
+  const isEverythingOn = REGISTRATION_STATUS_CATEGORIES.every((c) => registrationStatusPrefs[c]);
   const toggleEverything = () => {
     const next = !isEverythingOn;
-    const nextPrefs = {} as RegistrationStatusPrefs;
-    for (const v of SCHEDULE_VIEW_IDS) {
-      nextPrefs[v] = REGISTRATION_STATUS_CATEGORIES.reduce(
+    setRegistrationStatusPrefs(
+      REGISTRATION_STATUS_CATEGORIES.reduce(
         (acc, c) => ({ ...acc, [c]: next }),
-        {} as ViewStatusVisibility
-      );
-    }
-    setRegistrationStatusPrefs(nextPrefs);
+        {} as RegistrationStatusPrefs
+      )
+    );
   };
-  const isViewAllOn = (view: ScheduleViewId) =>
-    REGISTRATION_STATUS_CATEGORIES.every((c) => registrationStatusPrefs[view][c]);
-  const toggleViewAll = (view: ScheduleViewId) => {
-    const next = !isViewAllOn(view);
+  const toggleStatusCategory = (category: RegistrationStatusCategory) => {
     setRegistrationStatusPrefs({
       ...registrationStatusPrefs,
-      [view]: REGISTRATION_STATUS_CATEGORIES.reduce(
-        (acc, c) => ({ ...acc, [c]: next }),
-        {} as ViewStatusVisibility
-      ),
-    });
-  };
-  const toggleViewCategory = (view: ScheduleViewId, category: RegistrationStatusCategory) => {
-    setRegistrationStatusPrefs({
-      ...registrationStatusPrefs,
-      [view]: { ...registrationStatusPrefs[view], [category]: !registrationStatusPrefs[view][category] },
+      [category]: !registrationStatusPrefs[category],
     });
   };
 
@@ -8181,9 +8153,19 @@ function UpcomingTodayPanel({
           const hasCapacity  = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
           const attendPct    = hasCapacity ? event.booked / event.capacity : 0;
           const isFull       = hasCapacity && event.booked >= event.capacity;
+          const isWaitlisted = isFull && !!event.waitlistEnabled;
           const isNearlyFull = !isFull && hasCapacity && attendPct >= 0.8;
           const isEmpty      = hasCapacity && event.booked === 0;
-          const statusLabel  = isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null;
+          // Same global registration-status preference every other view
+          // reads — Upcoming Today isn't a separate view for this setting.
+          const categoryVisible = hasCapacity
+            ? (registrationStatusPrefs ?? makeDefaultViewStatusVisibility())[
+                registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+              ]
+            : false;
+          const statusLabel  = categoryVisible
+            ? (isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
+            : null;
           const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
           const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
           return (
@@ -8574,14 +8556,15 @@ function UpcomingTodayPanel({
         Registration status
       </div>
       <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "17px", marginBottom: "4px" }}>
-        Choose which statuses show up on the calendar, and on which
-        views — e.g. show only "Available" on the Monthly view and
-        hide the rest. This only changes how the calendar looks;
-        reservation details always show full registration info.
+        Choose which statuses show up on the calendar — this one setting
+        applies the same way across every view (Monthly, Weekly, Daily,
+        Resources, and Upcoming Today). This only changes how the
+        calendar looks; reservation details always show full
+        registration info.
       </div>
 
-      {/* Bulk "everything" toggle — reads "on" only when every
-          status on every view below is already on. */}
+      {/* Bulk "everything" toggle — reads "on" only when every status
+          category below is already on. */}
       <div
         style={{
           display: "flex",
@@ -8591,67 +8574,50 @@ function UpcomingTodayPanel({
         }}
       >
         <span style={{ fontSize: "13px", fontWeight: 600, color: sc.heading }}>
-          Show everywhere
+          Show all statuses
         </span>
         <SchedulePrefToggle
           enabled={isEverythingOn}
           onChange={toggleEverything}
           sc={sc}
-          ariaLabel="Show registration status for every status and every schedule view"
+          ariaLabel="Show every registration status"
         />
       </div>
 
       <div style={{ height: "1px", background: sc.border, margin: "4px 0 4px" }} />
 
-      {SCHEDULE_VIEW_IDS.map((view) => (
-        <div key={view}>
-          {/* Per-view header — its own bulk toggle for all 4
-              categories, reusing the same "Instructors"-style
-              group-label row (uppercase label + right-aligned
-              control) already used elsewhere in this panel. */}
-          <div style={{ ...groupLabelStyle, padding: "10px 4px 6px" }}>
-            <span>{view}</span>
-            <SchedulePrefToggle
-              enabled={isViewAllOn(view)}
-              onChange={() => toggleViewAll(view)}
-              sc={sc}
-              ariaLabel={`Show registration status for every status on the ${view} view`}
+      {REGISTRATION_STATUS_CATEGORIES.map((category) => {
+        const meta = REGISTRATION_STATUS_CATEGORY_META[category];
+        const isChecked = registrationStatusPrefs[category];
+        return (
+          <label
+            key={category}
+            style={checkRowStyle}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
+            <input
+              type="checkbox"
+              checked={isChecked}
+              onChange={() => toggleStatusCategory(category)}
+              style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
             />
-          </div>
-          {REGISTRATION_STATUS_CATEGORIES.map((category) => {
-            const meta = REGISTRATION_STATUS_CATEGORY_META[category];
-            const isChecked = registrationStatusPrefs[view][category];
-            return (
-              <label
-                key={category}
-                style={checkRowStyle}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => toggleViewCategory(view, category)}
-                  style={{ accentColor: sc.brand, width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
-                />
-                <span
-                  aria-hidden
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: isDark ? meta.dotDark : meta.dotLight,
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
-                  {meta.label}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      ))}
+            <span
+              aria-hidden
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: isDark ? meta.dotDark : meta.dotLight,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: "13px", color: sc.body, lineHeight: "18px", cursor: "pointer" }}>
+              {meta.label}
+            </span>
+          </label>
+        );
+      })}
     </>
   );
 
@@ -9155,13 +9121,16 @@ function UpcomingTodayPanel({
    ═══════════════════════════════════════════════════════════════════════ */
 
 function DayEventsPanelContent({
-  day, month, year, events, onSelectEvent,
+  day, month, year, events, onSelectEvent, statusVisibility,
 }: {
   day: number;
   month: number;
   year: number;
   events: CalendarEvent[];
   onSelectEvent: (event: CalendarEvent) => void;
+  /** Same global registration-status preference every other view reads —
+   *  the "+N more" day panel isn't a separate view for this setting. */
+  statusVisibility?: ViewStatusVisibility;
 }) {
   const { palette, mode } = useTheme();
   const isDark = mode === "dark";
@@ -9185,9 +9154,20 @@ function DayEventsPanelContent({
           const hasCapacity  = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
           const attendPct    = hasCapacity ? event.booked / event.capacity : 0;
           const isFull       = hasCapacity && event.booked >= event.capacity;
+          const isWaitlisted = isFull && !!event.waitlistEnabled;
           const isNearlyFull = !isFull && hasCapacity && attendPct >= 0.8;
           const isEmpty      = hasCapacity && event.booked === 0;
-          const statusLabel  = isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null;
+          // Same global registration-status preference every other view
+          // reads — the "+N more" day panel isn't a separate view for
+          // this setting.
+          const categoryVisible = hasCapacity
+            ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
+                registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+              ]
+            : false;
+          const statusLabel  = categoryVisible
+            ? (isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
+            : null;
           const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
           const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
           return (
@@ -12412,6 +12392,7 @@ export function SchedulePage() {
           month={currentMonth}
           year={currentYear}
           events={dayEvents}
+          statusVisibility={registrationStatusPrefs}
           onSelectEvent={(event) => {
             openPanel(
               <ReservationDetailsPanelContent
@@ -13721,7 +13702,7 @@ export function SchedulePage() {
             currentYear={currentYear}
             filterInstructors={filterInstructors}
             filterVenues={filterVenues}
-            statusVisibility={registrationStatusPrefs.Resources}
+            statusVisibility={registrationStatusPrefs}
             density={density}
             highlightMySessions={highlightMySessions}
           />
@@ -13737,7 +13718,7 @@ export function SchedulePage() {
             onHoverLeave={handleHoverLeave}
             hoveredEventId={hoveredEvent?.event.id ?? null}
             deleteMode={deleteMode}
-            statusVisibility={registrationStatusPrefs.Weekly}
+            statusVisibility={registrationStatusPrefs}
             density={density}
             highlightMySessions={highlightMySessions}
             viewByResource={viewByResource}
@@ -13755,7 +13736,7 @@ export function SchedulePage() {
             isDark={isDark}
             onClickEvent={handleClickEvent}
             deleteMode={deleteMode}
-            statusVisibility={registrationStatusPrefs.Daily}
+            statusVisibility={registrationStatusPrefs}
             density={density}
             highlightMySessions={highlightMySessions}
             viewByResource={viewByResource}
@@ -13828,7 +13809,7 @@ export function SchedulePage() {
                   colors={colors}
                   isDark={isDark}
                   deleteMode={deleteMode}
-                  statusVisibility={registrationStatusPrefs.Monthly}
+                  statusVisibility={registrationStatusPrefs}
                   density={density}
                   highlightMySessions={highlightMySessions}
                   month={currentMonth}
