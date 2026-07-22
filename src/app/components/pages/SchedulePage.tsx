@@ -11376,7 +11376,7 @@ function DailyView({
     if (mins === -1 || mins >= nowMinutes) break; // first upcoming (or unparsable) session wins
   }
   useEffect(() => {
-    currentRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    currentRowRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     // Re-run if the visible day(s) change — e.g. navigating back to today
     // should still land on the current session, not wherever the list
     // happened to be scrolled to for the previously-viewed day.
