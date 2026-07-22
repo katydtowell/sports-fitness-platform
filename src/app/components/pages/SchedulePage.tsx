@@ -1784,7 +1784,13 @@ function ReservationDetailsPopover({
   isDark: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const dotColor = (colors[event.type] || colors.yoga).text;
+  // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
+  // kept as a prop for signature compatibility, but this popover's dot now
+  // sources from the same MONTHLY_ACCENT_BG-backed map as Monthly/Weekly/
+  // Resources/Upcoming Today/the day panel, so it reads as the same color
+  // as the reservation everywhere else instead of the retired palette.
+  void colors;
+  const dotColor = getAccentBg(event.type, isDark);
   // Closed-day popover is much narrower since it only shows two lines.
   const POPOVER_WIDTH = event.type === "closed" ? 240 : 320;
   const GAP = 8;
@@ -11380,6 +11386,11 @@ function DailyView({
   const formatItemDate = (it: DailyRangeItem) =>
     new Date(it.year, it.month, it.day).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
+  // `colors` (the shared LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette) is
+  // kept as a prop for signature compatibility, but every dot in this view
+  // now sources from the same MONTHLY_ACCENT_BG-backed map the rest of the
+  // app uses (see `getAccentBg` calls below) instead of the retired palette.
+  void colors;
   const statusPillColors = getStatusPillColors(isDark);
   const deletableColor = isDark ? "#e05a5a" : "#d41840";
   const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
@@ -11511,7 +11522,7 @@ function DailyView({
               width: "10px",
               height: "10px",
               borderRadius: "50%",
-              background: (colors[it.event.type] || colors.closed).text,
+              background: getAccentBg(it.event.type, isDark),
               flexShrink: 0,
             }}
           />
@@ -11547,7 +11558,10 @@ function DailyView({
        *  nothing and always shows both. */
       const renderSessionRow = (item: DailyRangeItem, omitResourceKind?: "instructor" | "venue") => {
         const { event, day: itemDay, month: itemMonth, year: itemYear } = item;
-        const style = colors[event.type] || colors.yoga;
+        // Sources from the same MONTHLY_ACCENT_BG-backed map every other
+        // view's dot/accent reads from, instead of the retired
+        // LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette.
+        const dotColor = getAccentBg(event.type, isDark);
         const isPast = isSessionPast(event, itemDay, itemMonth, itemYear);
         const hasCapacity = event.capacity > 0;
         const available = Math.max(0, event.capacity - event.booked);
@@ -11650,7 +11664,7 @@ function DailyView({
           >
             {/* Top line — dot, (date), time, title, instructor/venue, status button */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: style.text, flexShrink: 0 }} />
+              <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
               {isRange && (
                 <span style={{ fontSize: "13px", fontWeight: 600, color: sc.muted, flexShrink: 0, whiteSpace: "nowrap" }}>
                   {formatItemDate(item)}
