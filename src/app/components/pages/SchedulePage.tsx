@@ -11365,6 +11365,16 @@ function DailyView({
   // and just keeps the default top-of-list scroll position).
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const currentRowRef = useRef<HTMLDivElement | null>(null);
+  // Invisible spacer, last child of the scrollable list — sized (only when
+  // actually needed) so a target row near the END of the day can still
+  // reach the very top of the container. A plain `scrollTop = offsetTop`
+  // gets silently clamped by the browser to `scrollHeight - clientHeight`
+  // whenever there isn't enough content BELOW the target to push it up
+  // that far — which is exactly the "next-up session is one of the last
+  // for the day" case. Sized imperatively (not React state) so it's
+  // computed and applied within the same measurement pass as the scroll,
+  // with no extra render/flicker.
+  const bottomSpacerRef = useRef<HTMLDivElement | null>(null);
   const now = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const isTodayItem = (it: DailyRangeItem) =>
@@ -11384,18 +11394,29 @@ function DailyView({
       const raf2 = requestAnimationFrame(() => {
         const container = listContainerRef.current;
         const target = currentRowRef.current;
+        const spacer = bottomSpacerRef.current;
+        if (!container || !target) return;
+        // Reset any spacer height left over from a previous run first, so
+        // `scrollHeight` below reflects only the list's real content, not
+        // a stale spacer from the last time this ran.
+        if (spacer) spacer.style.height = "0px";
+        // How much taller the content would need to be for `target` to
+        // reach the container's very top: if the list is already tall
+        // enough below the target, this is negative/zero and no spacer is
+        // added at all.
+        const neededExtra = target.offsetTop + container.clientHeight - container.scrollHeight;
+        if (spacer) spacer.style.height = `${Math.max(0, neededExtra)}px`;
         // eslint-disable-next-line no-console
         console.debug("[DailyView autoscroll]", {
           now: now.toString(),
           currentRowItem: currentRowItem
             ? { title: currentRowItem.event.title, time: currentRowItem.event.time, day: currentRowItem.day, month: currentRowItem.month, year: currentRowItem.year }
             : null,
-          containerFound: !!container,
-          targetFound: !!target,
-          targetOffsetTop: target?.offsetTop,
-          containerScrollHeight: container?.scrollHeight,
+          targetOffsetTop: target.offsetTop,
+          containerClientHeight: container.clientHeight,
+          containerScrollHeight: container.scrollHeight,
+          spacerHeightAdded: Math.max(0, neededExtra),
         });
-        if (!container || !target) return;
         // `container` is given `position: relative` below specifically so
         // it's guaranteed to be `target`'s offsetParent — otherwise
         // offsetTop resolves against whatever OTHER positioned ancestor
@@ -11799,6 +11820,12 @@ function DailyView({
         </>
       );
       })()}
+
+      {/* Invisible auto-scroll spacer — see bottomSpacerRef above. Height
+          starts at 0 and is only ever grown imperatively, exactly enough
+          to let a near-the-end "current session" row reach the top of the
+          list; it never adds space up front. */}
+      <div ref={bottomSpacerRef} aria-hidden style={{ height: 0, flexShrink: 0 }} />
     </div>
   );
 }
