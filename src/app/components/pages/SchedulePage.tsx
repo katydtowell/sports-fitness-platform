@@ -1336,11 +1336,14 @@ function EventBadge({
     : isNearlyFull ? "#FFE109" : EZ_GREEN;
 
   // Narrow stripe area so the buffer indicator reads as a slim accent
-  // rather than crowding the badge; padding on the affected side is
-  // derived from this so text still starts just past the stripe.
+  // rather than crowding the badge. Padding reserves this space on BOTH
+  // sides regardless of whether this particular session actually has a
+  // pre/post buffer — the title and attendance dot need to land at the
+  // same x position across every row in a day cell, buffered or not, so
+  // the inset can't shrink just because a given row has no stripe to show.
   const STRIPE_W = 7;
-  const padL = hasPre ? STRIPE_W + 2 : 6;
-  const padR = hasPost ? STRIPE_W + 2 : 6;
+  const padL = STRIPE_W + 2;
+  const padR = STRIPE_W + 2;
 
   // Theme-aware "deletable" red — same hue as the overdue-balances meter
   // segment so destructive affordances stay visually consistent.
