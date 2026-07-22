@@ -1375,11 +1375,14 @@ function EventBadge({
   const tintBg = hexToRgba(accentBg, isDark ? 0.22 : 0.14);
   // Hover ring (`isSelected` is driven by hover, not click, in Monthly —
   // see the `selectedEventId={hoveredEvent?.event.id}` wiring above this
-  // component) — thin, and colored to match this reservation's own accent
-  // rather than a generic neutral tone.
+  // component) — thin. League/closed go back to the original neutral
+  // tone (their own accentBg is a near-black/near-white neutral that
+  // doesn't read well as a ring); every real category still uses its own
+  // accent color.
+  const selectionRingColor = isDark ? "rgba(255,255,255,0.65)" : "rgba(16,24,40,0.55)";
   const ringShadows: string[] = [];
   if (isMine) ringShadows.push(`0 0 0 2px ${mineRingColor}`);
-  if (isSelected) ringShadows.push(`0 0 0 ${isMine ? 3 : 1}px ${accentBg}`);
+  if (isSelected) ringShadows.push(`0 0 0 ${isMine ? 3 : 1}px ${isNeutralFillType ? selectionRingColor : accentBg}`);
 
   const LEFT_BORDER_W = 4;
 
