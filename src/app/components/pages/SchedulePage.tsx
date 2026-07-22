@@ -1373,10 +1373,13 @@ function EventBadge({
   const normalTextColor = isDark ? "#dfe9ec" : "#182023";
   const textColor = isNeutralFillType ? accentTextColor : normalTextColor;
   const tintBg = hexToRgba(accentBg, isDark ? 0.22 : 0.14);
-  const selectionRingColor = isDark ? "rgba(255,255,255,0.65)" : "rgba(16,24,40,0.55)";
+  // Hover ring (`isSelected` is driven by hover, not click, in Monthly —
+  // see the `selectedEventId={hoveredEvent?.event.id}` wiring above this
+  // component) — thin, and colored to match this reservation's own accent
+  // rather than a generic neutral tone.
   const ringShadows: string[] = [];
   if (isMine) ringShadows.push(`0 0 0 2px ${mineRingColor}`);
-  if (isSelected) ringShadows.push(`0 0 0 ${isMine ? 4 : 2}px ${selectionRingColor}`);
+  if (isSelected) ringShadows.push(`0 0 0 ${isMine ? 3 : 1}px ${accentBg}`);
 
   const LEFT_BORDER_W = 4;
 
