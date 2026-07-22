@@ -9104,12 +9104,21 @@ function DayEventsPanelContent({
         </div>
       ) : (
         events.map((event) => {
-          // Dot color sources from the same MONTHLY_ACCENT_BG-backed map
-          // Monthly/Weekly/Resources/Upcoming Today use, so a reservation
-          // type reads as the same color everywhere in the app.
+          // Same row markup, computations, and colors as Upcoming Today's
+          // event list (see upcomingEventListContent above) — kept as two
+          // separate blocks (rather than sharing one variable) since this
+          // one still has to tolerate closed-day events, which Upcoming
+          // Today's own event list never contains.
           const accentDotColor = getAccentBg(event.type, isDark);
           const remaining = Math.max(0, event.capacity - event.booked);
-          const isFull = remaining === 0;
+          const hasCapacity  = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
+          const attendPct    = hasCapacity ? event.booked / event.capacity : 0;
+          const isFull       = hasCapacity && event.booked >= event.capacity;
+          const isNearlyFull = !isFull && hasCapacity && attendPct >= 0.8;
+          const isEmpty      = hasCapacity && event.booked === 0;
+          const statusLabel  = isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null;
+          const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
+          const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
           return (
             <button
               key={event.id}
@@ -9138,33 +9147,34 @@ function DayEventsPanelContent({
                 e.currentTarget.style.borderColor = sc.border;
               }}
             >
-              <span style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: accentDotColor, flexShrink: 0 }} />
+              <span
+                style={{ width: "10px", height: "10px", marginTop: "5px", borderRadius: "50%", background: accentDotColor, flexShrink: 0 }}
+              />
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px" }}>
-                  <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: "14px", fontWeight: 600, color: sc.heading, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 0", minWidth: 0 }}>
                     {event.title}
                   </span>
+                  {statusLabel && (
+                    <span style={{ flexShrink: 0, fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText }}>
+                      {statusLabel}
+                    </span>
+                  )}
                   <span style={{ fontSize: "12px", fontWeight: 500, color: sc.body, lineHeight: "16px", flexShrink: 0 }}>
-                    {event.time ? getSessionTimeRangeLabel(event) : event.time}
+                    {event.time}
                   </span>
                 </div>
                 <div style={{ fontSize: "12px", color: sc.muted, lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <User size={12} /> {event.instructor}
-                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><User size={12} /> {event.instructor}</span>
                   <span style={{ opacity: 0.5 }}>·</span>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <MapPin size={12} /> {event.venue}
-                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><MapPin size={12} /> {event.venue}</span>
                 </div>
                 {event.type !== "closed" && (
                   <div style={{ fontSize: "12px", lineHeight: "16px", display: "flex", alignItems: "center", gap: "6px", color: sc.body }}>
                     <Users size={12} style={{ color: sc.muted }} />
                     <span style={{ fontWeight: 600 }}>{event.booked}/{event.capacity}</span>
                     <span style={{ color: sc.muted }}>
-                      {isFull
-                        ? event.waitlistEnabled ? "(Waitlist open)" : "(Full)"
-                        : `(${remaining} available)`}
+                      {isFull ? (event.waitlistEnabled ? "(Waitlist open)" : "(Full)") : `(${remaining} available)`}
                     </span>
                   </div>
                 )}
