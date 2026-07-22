@@ -11354,6 +11354,35 @@ function DailyView({
   const isCompact = density === "compact";
   const rowPadding = isCompact ? "10px 24px" : "16px 24px";
 
+  // ── Auto-scroll to "now" ──────────────────────────────────────────────
+  // Daily is a flat chronological list rather than an hour grid, so there's
+  // no fixed "now" position to scroll to independent of the sessions
+  // themselves — instead, land on whichever of TODAY's sessions is
+  // happening right now or is next up, so a same-day visit doesn't open
+  // scrolled to a morning class that's long over. Only meaningful when
+  // today's date is actually part of what's showing (a past/future day,
+  // or a range that doesn't include today, has no "now" row to jump to
+  // and just keeps the default top-of-list scroll position).
+  const currentRowRef = useRef<HTMLDivElement | null>(null);
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const isTodayItem = (it: DailyRangeItem) =>
+    it.day === now.getDate() && it.month === now.getMonth() && it.year === now.getFullYear();
+  let currentRowItem: DailyRangeItem | null = null;
+  for (const it of sessionItems) {
+    if (!isTodayItem(it)) continue;
+    const mins = parseEventTimeToMinutes(it.event.time);
+    currentRowItem = it;
+    if (mins === -1 || mins >= nowMinutes) break; // first upcoming (or unparsable) session wins
+  }
+  useEffect(() => {
+    currentRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    // Re-run if the visible day(s) change — e.g. navigating back to today
+    // should still land on the current session, not wherever the list
+    // happened to be scrolled to for the previously-viewed day.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day, month, year, isRange]);
+
   // ── "View by resource" support ──────────────────────────────────────
   // Same grouping/order and duplication rule as ResourcesView: a session
   // with both an instructor and a venue shows up once under each.
@@ -11507,9 +11536,17 @@ function DailyView({
         const isMine = highlightMySessions && event.instructor === CURRENT_USER_INSTRUCTOR;
         const dimNotMine = highlightMySessions && !isMine;
 
+        // Marks whichever session is happening now or next up today, so
+        // the auto-scroll effect above has a DOM node to land on. (See
+        // `currentRowItem` — reference equality against the same
+        // DailyRangeItem objects `sessionItems` is built from, whether
+        // rendered flat or duplicated into a resource group.)
+        const isCurrentRow = item === currentRowItem;
+
         return (
           <div
             key={event.id}
+            ref={isCurrentRow ? currentRowRef : undefined}
             onClick={(e) => onClickEvent(event, itemDay, e, isRange ? { month: itemMonth, year: itemYear } : undefined)}
             style={{
               display: "flex",
