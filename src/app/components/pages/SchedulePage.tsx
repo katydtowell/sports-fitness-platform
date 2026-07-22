@@ -8905,42 +8905,6 @@ function UpcomingTodayPanel({
     color: sc.heading,
     lineHeight: "20px",
   };
-  // Header variant for cards that pair a title with a count badge
-  // (Resources, Filters) — a flex row instead of cardHeaderStyle's plain
-  // block, which Upcoming Today's stacked title+subtitle still needs.
-  const cardHeaderRowStyle: CSSProperties = {
-    ...cardHeaderStyle,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "8px",
-  };
-  // Same visual badge used on the Resources/Filters tabs, reused in the
-  // maximized card headers and (smaller, absolutely-positioned) on the
-  // minimized rail's icons — one indicator, three places it can surface.
-  const renderCountBadge = (count: number) =>
-    count > 0 ? (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minWidth: "16px",
-          height: "16px",
-          padding: "0 4px",
-          borderRadius: "8px",
-          background: sc.brand,
-          color: isDark ? "#0a0e0f" : "#101828",
-          fontSize: "10px",
-          fontWeight: 700,
-          lineHeight: 1,
-          flexShrink: 0,
-        }}
-      >
-        {count}
-      </span>
-    ) : null;
-
   return (
     <>
       {/* ── Panel 1: Upcoming Today event list ─────────────────────── */}
@@ -9068,44 +9032,116 @@ function UpcomingTodayPanel({
           </div>
         </aside>
       ) : (
-        /* ── Resources / Filters / Display preferences — three separate
-           cards, vertically stacked (each its own bordered panel, not one
-           long scrolling surface), filling the 50%-narrower column left
-           behind once Upcoming Today is hidden. ─────────────────────────── */
-        <>
-          <aside style={{ ...panelStyle, flex: "1 1 0" }}>
-            <div style={cardHeaderRowStyle}>
-              <span style={cardTitleStyle}>Resources</span>
-              {renderCountBadge(resourceFilterCount)}
-            </div>
-            <div className="always-show-scrollbar" style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
-              {resourcesTabContent}
-            </div>
-          </aside>
+        /* ── Resources / Filters / Preferences — same tabbed panel as when
+           Upcoming Today is shown (just the one card, not three stacked
+           ones), now claiming the full rail width/height on its own since
+           there's no Upcoming Today panel beside it to share the column
+           with. `flex: "1 1 0"` (rather than Panel 2's "2 1 0" above)
+           makes it stretch the entire rail height, matching the
+           calendar's height exactly like every other rail panel does. */
+        <aside style={{ ...panelStyle, flex: "1 1 0" }}>
+          {/* Tab row */}
+          <div
+            style={{
+              display: "flex",
+              borderBottom: `1px solid ${sc.border}`,
+              flexShrink: 0,
+              background: sc.headerBg,
+            }}
+          >
+            {(["Resources", "Filters"] as const).map((tab) => {
+              const isActive = sidebarTab === tab;
+              const badge = tab === "Resources" ? resourceFilterCount : nonResourceFilterCount;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setSidebarTab(tab)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 12px",
+                    border: "none",
+                    borderBottom: isActive ? `2px solid ${sc.brand}` : "2px solid transparent",
+                    background: "transparent",
+                    fontSize: "13px",
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? sc.brand : sc.muted,
+                    fontFamily: "var(--font-family)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+                  }}
+                >
+                  {tab}
+                  {badge > 0 && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minWidth: "16px",
+                        height: "16px",
+                        padding: "0 4px",
+                        borderRadius: "8px",
+                        background: sc.brand,
+                        color: isDark ? "#0a0e0f" : "#101828",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {/* Preferences tab — icon-only (gear), no badge, same as Panel 2's
+                tab row above. */}
+            <button
+              onClick={() => setSidebarTab("Preferences")}
+              aria-label="Schedule display preferences"
+              aria-pressed={sidebarTab === "Preferences"}
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                border: "none",
+                borderBottom: sidebarTab === "Preferences" ? `2px solid ${sc.brand}` : "2px solid transparent",
+                background: "transparent",
+                color: sidebarTab === "Preferences" ? sc.brand : sc.muted,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "color 0.15s ease, border-bottom-color 0.15s ease",
+              }}
+            >
+              <Settings size={16} />
+            </button>
+          </div>
 
-          <aside style={{ ...panelStyle, flex: "1 1 0" }}>
-            <div style={cardHeaderRowStyle}>
-              <span style={cardTitleStyle}>Filters</span>
-              {renderCountBadge(nonResourceFilterCount)}
-            </div>
-            <div className="always-show-scrollbar" style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
+          {/* Tab content — scrolls independently */}
+          <div
+            className="always-show-scrollbar"
+            style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}
+          >
+            {sidebarTab === "Resources" && resourcesTabContent}
+
+            {sidebarTab === "Filters" && (
               <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
                 {filtersTabContent}
               </div>
-            </div>
-          </aside>
+            )}
 
-          <aside style={{ ...panelStyle, flex: "1 1 0" }}>
-            <div style={cardHeaderStyle}>
-              <span style={cardTitleStyle}>Display preferences</span>
-            </div>
-            <div className="always-show-scrollbar" style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto" }}>
+            {sidebarTab === "Preferences" && (
               <div style={{ padding: "12px 16px 12px", display: "flex", flexDirection: "column", gap: "4px" }}>
                 {preferencesTabContent}
               </div>
-            </div>
-          </aside>
-        </>
+            )}
+          </div>
+        </aside>
       )}
     </>
   );
