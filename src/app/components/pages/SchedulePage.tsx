@@ -3258,20 +3258,10 @@ function MobileEventRow({
             minWidth: 0,
           }}
         >
-          {dateLabel && (
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: sc.muted,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                lineHeight: 1.2,
-              }}
-            >
-              {dateLabel}
-            </span>
-          )}
+          {/* Date (only when a range is active) + the start–end time
+              range share one line; the reservation name gets its own
+              line below rather than competing with the date/time for
+              space on one row. */}
           <div
             style={{
               display: "flex",
@@ -3279,6 +3269,20 @@ function MobileEventRow({
               gap: "6px",
             }}
           >
+            {dateLabel && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: sc.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  flexShrink: 0,
+                }}
+              >
+                {dateLabel}
+              </span>
+            )}
             <span
               style={{
                 fontSize: "13px",
@@ -3286,21 +3290,21 @@ function MobileEventRow({
                 color: sc.heading,
               }}
             >
-              {event.time}
-            </span>
-            <span
-              style={{
-                fontSize: "13px",
-                fontWeight: 500,
-                color: sc.heading,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {event.title}
+              {event.time ? getSessionTimeRangeLabel(event) : "—"}
             </span>
           </div>
+          <span
+            style={{
+              fontSize: "13px",
+              fontWeight: 500,
+              color: sc.heading,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {event.title}
+          </span>
           {event.capacity > 0 && (
             <span
               style={{
