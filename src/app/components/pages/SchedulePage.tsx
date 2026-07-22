@@ -2453,12 +2453,6 @@ interface MobileToolbarProps {
   onGoToToday: () => void;
   /** Active filter count for the Filters icon's badge. */
   activeFilterCount: number;
-  /** Current sort/grouping for the events list — opens via a
-   *  dropdown button in the toolbar. */
-  sortBy: "time" | "name" | "type" | "resource";
-  setSortBy: (s: "time" | "name" | "type" | "resource") => void;
-  showSortMenu: boolean;
-  setShowSortMenu: (show: boolean) => void;
 }
 
 // Height of a single MobileToolbar row (the main date/sort/search/filter
@@ -2483,34 +2477,7 @@ function MobileToolbar({
   showTodayButton,
   onGoToToday,
   activeFilterCount,
-  sortBy,
-  setSortBy,
-  showSortMenu,
-  setShowSortMenu,
 }: MobileToolbarProps) {
-  const sortMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close sort popover on outside click.
-  useEffect(() => {
-    if (!showSortMenu) return;
-    function handleClick(e: MouseEvent) {
-      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
-        setShowSortMenu(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showSortMenu, setShowSortMenu]);
-
-  const sortOptions: { value: "time" | "name" | "type" | "resource"; label: string }[] = [
-    { value: "time", label: "Time" },
-    { value: "name", label: "Reservation name" },
-    { value: "type", label: "Reservation type" },
-    { value: "resource", label: "Resource" },
-  ];
-  const sortLabel = sortOptions.find((o) => o.value === sortBy)?.label ?? "Time";
-  const isNonDefaultSort = sortBy !== "time";
-
   return (
     <>
       {/* Main toolbar */}
@@ -2581,94 +2548,6 @@ function MobileToolbar({
             resource" toggle: "Resource" is now one of the four sort
             options instead of a separate layout. */}
         <div style={{ display: "flex", gap: "8px" }}>
-          <div ref={sortMenuRef} style={{ position: "relative" }}>
-            <button
-              onClick={() => setShowSortMenu(!showSortMenu)}
-              aria-expanded={showSortMenu}
-              aria-label={`Sort: ${sortLabel}`}
-              title={`Sort: ${sortLabel}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "40px",
-                height: "40px",
-                borderRadius: "8px",
-                border: `1px solid ${(showSortMenu || isNonDefaultSort) ? sc.brand : sc.border}`,
-                background: (showSortMenu || isNonDefaultSort)
-                  ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
-                  : sc.controlBg,
-                cursor: "pointer",
-                color: (showSortMenu || isNonDefaultSort) ? sc.brand : sc.body,
-              }}
-            >
-              <ArrowUpDown size={18} />
-            </button>
-            {showSortMenu && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 6px)",
-                  right: 0,
-                  width: "220px",
-                  background: sc.cellBg,
-                  border: `1px solid ${sc.border}`,
-                  borderRadius: "10px",
-                  boxShadow: `0px 12px 24px -6px ${sc.shadow}, 0px 4px 6px 0px ${sc.shadow}`,
-                  padding: "6px",
-                  zIndex: 100,
-                  display: "flex",
-                  flexDirection: "column",
-                  fontFamily: "var(--font-family)",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: sc.muted,
-                    padding: "6px 10px 4px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Sort by
-                </span>
-                {sortOptions.map((opt) => {
-                  const isActive = opt.value === sortBy;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => {
-                        setSortBy(opt.value);
-                        setShowSortMenu(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "8px 10px",
-                        borderRadius: "6px",
-                        border: "none",
-                        background: isActive
-                          ? (isDark ? "rgba(0,196,160,0.12)" : "rgba(0,196,160,0.08)")
-                          : "transparent",
-                        color: isActive ? sc.brand : sc.body,
-                        fontSize: "13px",
-                        fontWeight: isActive ? 600 : 500,
-                        fontFamily: "var(--font-family)",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      {opt.label}
-                      {isActive && <span style={{ fontSize: "12px" }}>✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
           <button
             onClick={() => setShowSearch(!showSearch)}
             aria-label="Search"
@@ -3983,13 +3862,12 @@ function MobileScheduleView({
   });
   const [selectedEnd, setSelectedEnd] = useState<Date | null>(null);
   const [rangeMode, setRangeMode] = useState(false);
-  // How the events list is sorted/grouped. "time" is the default
-  // (chronological). "resource" is special: it splits the list into
-  // two stacked groups (by instructor, by venue), each alphabetized
-  // and with events filed under every resource they reference — so a
-  // session with one instructor + one venue appears once in each group.
-  const [sortBy, setSortBy] = useState<"time" | "name" | "type" | "resource">("time");
-  const [showSortMenu, setShowSortMenu] = useState(false);
+  // How the events list is sorted/grouped. The toolbar's sort button
+  // that used to let the user change this has been removed, so this is
+  // now permanently "time" (chronological) — kept as a variable (rather
+  // than inlining the literal at MobileEventList's call site) since
+  // MobileEventList's prop and internal branches still key off it.
+  const sortBy: "time" | "name" | "type" | "resource" = "time";
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   // Mini calendar visibility — toggled by tapping the Date button in
@@ -4265,10 +4143,6 @@ function MobileScheduleView({
           showTodayButton={!isViewingToday}
           onGoToToday={handleGoToToday}
           activeFilterCount={activeFilterCount}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          showSortMenu={showSortMenu}
-          setShowSortMenu={setShowSortMenu}
         />
       </div>
       <div style={{ height: toolbarSpacerH, flexShrink: 0 }} />
