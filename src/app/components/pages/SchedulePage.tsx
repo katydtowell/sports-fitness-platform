@@ -9474,9 +9474,18 @@ function CalendarFiltersContent({
           ] as const).map(({ value, label, pillBg, pillBorder, pillText }) => {
             const isActive = filterRegistrations.includes(value);
             const toggle = () => {
-              const next = isActive
-                ? filterRegistrations.filter((x) => x !== value)
-                : [...filterRegistrations, value];
+              const enabling = !isActive;
+              let next = enabling
+                ? [...filterRegistrations, value]
+                : filterRegistrations.filter((x) => x !== value);
+              // Empty classes are technically "available" too, so turning
+              // on the Available filter also turns on Empty by default —
+              // the user can still switch Empty back off on its own.
+              // Doesn't run in reverse: selecting Empty alone shouldn't
+              // pull in Available.
+              if (enabling && value === "Available" && !next.includes("Empty")) {
+                next = [...next, "Empty"];
+              }
               setFilterRegistrations(next);
             };
             return (
