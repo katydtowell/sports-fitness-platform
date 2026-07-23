@@ -3091,9 +3091,12 @@ function MobileEventRow({
       borderRadius: "4px",
       fontSize: "12px",
       fontWeight: 500,
-      border: `1px solid ${sc.brand}`,
+      // Red outline, not brand green — matches the waitlisted treatment
+      // everywhere else attendance status is shown (Monthly, Weekly,
+      // Resources, Daily).
+      border: `1px solid ${EZ_RED}`,
       background: "transparent",
-      color: sc.brand,
+      color: EZ_RED,
       cursor: "pointer",
     };
   } else if (isFull) {
@@ -8074,11 +8077,15 @@ function UpcomingTodayPanel({
                 registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
               ]
             : false;
+          // Waitlisted now gets its own label + outline treatment instead
+          // of folding into "FULLY BOOKED" — same red-outline convention
+          // Monthly/Weekly/Resources use for a waitlisted session.
           const statusLabel  = categoryVisible
-            ? (isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
+            ? (isWaitlisted ? "WAITLIST" : isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
             : null;
-          const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
-          const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+          const statusPillBg     = isWaitlisted ? "transparent" : isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
+          const statusPillText   = isWaitlisted ? EZ_RED : isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+          const statusPillBorder = isWaitlisted ? `1px solid ${EZ_RED}` : "none";
           return (
             <button
               key={event.id}
@@ -8116,7 +8123,7 @@ function UpcomingTodayPanel({
                     {event.title}
                   </span>
                   {statusLabel && (
-                    <span style={{ flexShrink: 0, fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText }}>
+                    <span style={{ flexShrink: 0, boxSizing: "border-box", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: isWaitlisted ? "0px 5px" : "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText, border: statusPillBorder }}>
                       {statusLabel}
                     </span>
                   )}
@@ -9082,11 +9089,15 @@ function DayEventsPanelContent({
                 registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
               ]
             : false;
+          // Waitlisted now gets its own label + outline treatment instead
+          // of folding into "FULLY BOOKED" — same red-outline convention
+          // Monthly/Weekly/Resources use for a waitlisted session.
           const statusLabel  = categoryVisible
-            ? (isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
+            ? (isWaitlisted ? "WAITLIST" : isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
             : null;
-          const statusPillBg   = isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
-          const statusPillText = isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+          const statusPillBg     = isWaitlisted ? "transparent" : isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
+          const statusPillText   = isWaitlisted ? EZ_RED : isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+          const statusPillBorder = isWaitlisted ? `1px solid ${EZ_RED}` : "none";
           return (
             <button
               key={event.id}
@@ -9124,7 +9135,7 @@ function DayEventsPanelContent({
                     {event.title}
                   </span>
                   {statusLabel && (
-                    <span style={{ flexShrink: 0, fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText }}>
+                    <span style={{ flexShrink: 0, boxSizing: "border-box", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: isWaitlisted ? "0px 5px" : "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText, border: statusPillBorder }}>
                       {statusLabel}
                     </span>
                   )}
@@ -11566,7 +11577,9 @@ function DailyView({
         };
         if (isFull && event.waitlistEnabled) {
           statusLabel = "Waitlist";
-          statusStyle = { ...statusStyle, background: "transparent", border: `1px solid ${sc.brand}`, color: sc.brand };
+          // Red outline, not brand green — matches the waitlisted
+          // treatment everywhere else attendance status is shown.
+          statusStyle = { ...statusStyle, background: "transparent", border: `1px solid ${EZ_RED}`, color: EZ_RED };
         } else if (isFull) {
           statusLabel = "Full";
           statusStyle = { ...statusStyle, background: sc.muted, color: sc.cellBg, cursor: "default", opacity: 0.6 };
