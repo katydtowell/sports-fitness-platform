@@ -1316,16 +1316,14 @@ function EventBadge({
   const dimNotMine = highlightMySessions && !isMine && event.type !== "closed";
   const mineRingColor = isDark ? "#00c4a0" : "#00c28a";
 
-  // Attendance status — surfaced as a small "people" icon aligned to the
-  // far right of the badge, colored for status, instead of a colored pill
-  // wrapped around the time itself. Closed / league events are excluded —
-  // no per-session capacity.
-  //   available   (<80% booked, including 0) → green icon
-  //   nearly full (≥80%, <100%)              → yellow icon
-  //   full, no waitlist (≥100%)              → solid red icon
-  //   full, waitlist open (≥100%)            → darker/muted red icon
-  //     (distinct solid shade rather than a translucent one — a small
-  //     icon glyph reads better as a solid color than a faded tint would)
+  // Attendance status — surfaced as a colored badge wrapped around the
+  // time itself (rather than a separate dot/icon elsewhere in the row).
+  // Closed / league events are excluded — no per-session capacity.
+  //   available   (<80% booked, including 0) → green fill
+  //   nearly full (≥80%, <100%)              → yellow fill
+  //   full, no waitlist (≥100%)              → solid red fill
+  //   full, waitlist open (≥100%)            → transparent, red outline +
+  //     red text — distinct from solid "full" red at a glance.
   const hasCapacityData = event.capacity > 0 && event.type !== "closed" && event.type !== "league";
   const attendancePct   = hasCapacityData ? event.booked / event.capacity : 0;
   const isFull          = hasCapacityData && event.booked >= event.capacity;
@@ -1336,12 +1334,18 @@ function EventBadge({
         registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
       ]
     : false;
-  const showAttendanceIcon = hasCapacityData && categoryVisible;
-  const attendanceIconColor = isWaitlisted
-    ? (isDark ? "#e05a5a" : "#d41840")
+  const showAttendanceStatus = hasCapacityData && categoryVisible;
+  const attendanceBg = isWaitlisted
+    ? "transparent"
     : isFull
     ? EZ_RED
     : isNearlyFull ? "#FFE109" : EZ_GREEN;
+  const attendanceTextColor = isWaitlisted
+    ? (isDark ? "#e05a5a" : "#d41840")
+    : isFull
+    ? EZ_RED_ON_COLOR
+    : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+  const attendanceBorder = isWaitlisted ? `1px solid ${isDark ? "#e05a5a" : "#d41840"}` : "none";
 
   // Narrow stripe area so the buffer indicator reads as a slim accent
   // rather than crowding the badge. Padding reserves this space on BOTH
@@ -1487,32 +1491,25 @@ function EventBadge({
         <span
           style={{
             flexShrink: 0,
-            fontWeight: 400,
+            fontWeight: showAttendanceStatus ? 700 : 400,
             textAlign: "right",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            boxSizing: "border-box",
+            ...(showAttendanceStatus
+              ? {
+                  background: attendanceBg,
+                  color: attendanceTextColor,
+                  border: attendanceBorder,
+                  borderRadius: "3px",
+                  padding: isWaitlisted ? "1px 3px" : "1px 4px",
+                }
+              : null),
           }}
         >
           {getSessionTimeRangeLabel(event)}
         </span>
-      )}
-      {showAttendanceIcon && (
-        <span
-          aria-hidden
-          style={{
-            flexShrink: 0,
-            width: isCompact ? "6px" : "7px",
-            height: isCompact ? "6px" : "7px",
-            borderRadius: "50%",
-            boxSizing: "border-box",
-            // Waitlisted renders as an outline (transparent fill, colored
-            // ring) instead of a solid dot, so it reads as distinct from
-            // "full" at a glance even at this tiny size.
-            background: isWaitlisted ? "transparent" : attendanceIconColor,
-            border: isWaitlisted ? `1px solid ${attendanceIconColor}` : "none",
-          }}
-        />
       )}
 
     </div>
