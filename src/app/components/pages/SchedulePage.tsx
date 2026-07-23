@@ -11616,10 +11616,11 @@ function DailyView({
         const isNearlyFull = hasCapacity && !isFull && bookedPct >= 80;
         // Registration meter fill — same fullness palette as the Monthly/
         // Weekly time chip and the Resources view status pill (green /
-        // yellow / red, translucent red once a waitlist opens), so a
+        // yellow / red, translucent orange once a waitlist opens — same
+        // hue as the waitlisted outline/text used everywhere else), so a
         // session's "how full is it" signal reads identically everywhere.
         const meterColor = isWaitlisted
-          ? (isDark ? "rgba(224,90,90,0.55)" : "rgba(212,24,64,0.5)")
+          ? (isDark ? "rgba(255,180,50,0.55)" : "rgba(176,120,0,0.5)")
           : isFull
           ? EZ_RED
           : isNearlyFull
