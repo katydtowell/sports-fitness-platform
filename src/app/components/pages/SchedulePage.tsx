@@ -351,7 +351,9 @@ const REGISTRATION_STATUS_CATEGORY_META: Record<
   Available:  { label: "Available",   dotLight: EZ_GREEN,  dotDark: EZ_GREEN },
   NearlyFull: { label: "Nearly full", dotLight: "#FFE109",  dotDark: "#FFE109" },
   Full:       { label: "Full",        dotLight: EZ_RED,     dotDark: EZ_RED },
-  Waitlisted: { label: "Waitlisted",  dotLight: "#d41840",  dotDark: "#e05a5a" },
+  // Green outline (not a solid fill — rendered as such below) so it reads
+  // as distinct from "full" red rather than just a darker shade of it.
+  Waitlisted: { label: "Waitlisted",  dotLight: "#00c28a",  dotDark: "#00c4a0" },
 };
 
 /** Visibility for each of the four status categories — ONE global setting
@@ -1341,11 +1343,11 @@ function EventBadge({
     ? EZ_RED
     : isNearlyFull ? "#FFE109" : EZ_GREEN;
   const attendanceTextColor = isWaitlisted
-    ? (isDark ? "#e05a5a" : "#d41840")
+    ? (isDark ? "#00c4a0" : "#00c28a")
     : isFull
     ? EZ_RED_ON_COLOR
     : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-  const attendanceBorder = isWaitlisted ? `1px solid ${isDark ? "#e05a5a" : "#d41840"}` : "none";
+  const attendanceBorder = isWaitlisted ? `1px solid ${isDark ? "#00c4a0" : "#00c28a"}` : "none";
 
   // Narrow stripe area so the buffer indicator reads as a slim accent
   // rather than crowding the badge. Padding reserves this space on BOTH
@@ -8516,8 +8518,14 @@ function UpcomingTodayPanel({
               style={{
                 width: "8px",
                 height: "8px",
-                borderRadius: "50%",
-                background: isDark ? meta.dotDark : meta.dotLight,
+                borderRadius: "2px",
+                boxSizing: "border-box",
+                // Waitlisted renders as an outline (transparent fill,
+                // colored border) instead of a solid square, matching the
+                // outline treatment its badge gets everywhere on the
+                // calendar.
+                background: category === "Waitlisted" ? "transparent" : (isDark ? meta.dotDark : meta.dotLight),
+                border: category === "Waitlisted" ? `1px solid ${isDark ? meta.dotDark : meta.dotLight}` : "none",
                 flexShrink: 0,
               }}
             />
@@ -9419,10 +9427,11 @@ function CalendarFiltersContent({
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           {([
             { value: "Full",       label: "Full",        pillBg: EZ_RED,   pillBorder: EZ_RED,   pillText: EZ_RED_ON_COLOR   },
-            // Translucent red — mirrors the waitlisted time-chip treatment on
-            // the calendar badges, so "red = full/blocked" stays consistent
-            // between the filter pill and the events it's filtering for.
-            { value: "Waitlisted", label: "Waitlisted",  pillBg: isDark ? "rgba(224,90,90,0.22)" : "rgba(212,24,64,0.14)", pillBorder: isDark ? "#e05a5a" : "#d41840", pillText: isDark ? "#e05a5a" : "#d41840" },
+            // Transparent + green outline — mirrors the waitlisted badge
+            // treatment on the calendar (Monthly's time badge, Resources'
+            // and Weekly's status pill), so the filter pill and the events
+            // it's filtering for read consistently.
+            { value: "Waitlisted", label: "Waitlisted",  pillBg: "transparent", pillBorder: isDark ? "#00c4a0" : "#00c28a", pillText: isDark ? "#00c4a0" : "#00c28a" },
             { value: "NearlyFull", label: "Nearly Full", pillBg: "#FFE109", pillBorder: "#C4A800", pillText: "#111111"          },
             { value: "Available",  label: "Available",   pillBg: EZ_GREEN,  pillBorder: EZ_GREEN,  pillText: EZ_GREEN_ON_COLOR  },
             { value: "Empty",      label: "Empty",       pillBg: isDark ? "rgba(255,255,255,0.08)" : "#f3f4f6", pillBorder: palette.borderMedium, pillText: sc.body },
@@ -9463,9 +9472,10 @@ function CalendarFiltersContent({
         <div style={{ fontSize: "12px", fontWeight: 600, color: sc.body, marginBottom: "6px" }}>Payment status</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           {([
-            // Reuses the Waitlisted pill's translucent red — same "red =
-            // needs attention" language as the Registrations row above —
-            // and the Empty pill's neutral gray for Paid.
+            // Translucent red — same "red = needs attention" language used
+            // for overdue balances elsewhere (the per-client badge, the
+            // popover's Overdue Balances button) — and the Empty pill's
+            // neutral gray for Paid.
             { value: "Owed", label: "Overdue Balance", pillBg: isDark ? "rgba(224,90,90,0.22)" : "rgba(212,24,64,0.14)", pillBorder: isDark ? "#e05a5a" : "#d41840", pillText: isDark ? "#e05a5a" : "#d41840" },
             { value: "Paid", label: "Paid", pillBg: isDark ? "rgba(255,255,255,0.08)" : "#f3f4f6", pillBorder: palette.borderMedium, pillText: sc.body },
           ] as const).map(({ value, label, pillBg, pillBorder, pillText }) => {
@@ -10062,8 +10072,8 @@ function ResourcesView({
       : false;
     const showCapacityIndicator = hasCapacityData && categoryVisible;
     // Same red/yellow/green treatment as the Monthly/Weekly EventBadge time
-    // chip: full = solid red, waitlisted = transparent with a red outline
-    // and red text, so fullness reads identically across every schedule
+    // chip: full = solid red, waitlisted = transparent with a green outline
+    // and green text, so fullness reads identically across every schedule
     // view.
     const statusBg       = isWaitlisted
       ? "transparent"
@@ -10071,11 +10081,11 @@ function ResourcesView({
       ? EZ_RED
       : isNearlyFull ? "#FFE109" : EZ_GREEN;
     const statusColor    = isWaitlisted
-      ? (isDark ? "#e05a5a" : "#d41840")
+      ? (isDark ? "#00c4a0" : "#00c28a")
       : isFull
       ? EZ_RED_ON_COLOR
       : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-    const statusBorder   = isWaitlisted ? `1px solid ${isDark ? "#e05a5a" : "#d41840"}` : "none";
+    const statusBorder   = isWaitlisted ? `1px solid ${isDark ? "#00c4a0" : "#00c28a"}` : "none";
     const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
 
     return (
@@ -10631,20 +10641,20 @@ function WeeklyEventChip({
       ]
     : false;
   const showStatusPill = hasCapacityData && categoryVisible;
-  // Waitlisted renders transparent with a red outline + red text instead
-  // of a translucent red fill, so it reads as distinct from "full" — same
-  // treatment as ResourcesView's status pill and Monthly's dot.
+  // Waitlisted renders transparent with a green outline + green text
+  // instead of a solid fill, so it reads as distinct from "full" — same
+  // treatment as ResourcesView's status pill and Monthly's badge.
   const statusBg = isWaitlisted
     ? "transparent"
     : isFull
     ? EZ_RED
     : isNearlyFull ? "#FFE109" : EZ_GREEN;
   const statusColor = isWaitlisted
-    ? (isDark ? "#e05a5a" : "#d41840")
+    ? (isDark ? "#00c4a0" : "#00c28a")
     : isFull
     ? EZ_RED_ON_COLOR
     : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-  const statusBorder = isWaitlisted ? `1px solid ${isDark ? "#e05a5a" : "#d41840"}` : "none";
+  const statusBorder = isWaitlisted ? `1px solid ${isDark ? "#00c4a0" : "#00c28a"}` : "none";
   const statusLabel = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
 
   const timeRangeLabel = getSessionTimeRangeLabel(event);
