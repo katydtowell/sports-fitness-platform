@@ -1321,7 +1321,10 @@ function EventBadge({
   // Attendance status — surfaced as a colored badge wrapped around the
   // time itself (rather than a separate dot/icon elsewhere in the row).
   // Closed / league events are excluded — no per-session capacity.
-  //   available   (<80% booked, including 0) → green fill
+  //   empty (0 booked)                        → transparent, green outline
+  //     (still technically "available", but a class nobody has signed up
+  //     for reads differently than one that's actively filling up)
+  //   available   (1+ booked, <80%)           → green fill
   //   nearly full (≥80%, <100%)              → yellow fill
   //   full, no waitlist (≥100%)              → solid red fill
   //   full, waitlist open (≥100%)            → transparent, red outline +
@@ -1331,6 +1334,7 @@ function EventBadge({
   const isFull          = hasCapacityData && event.booked >= event.capacity;
   const isWaitlisted    = isFull && !!event.waitlistEnabled;
   const isNearlyFull    = !isFull && hasCapacityData && attendancePct >= 0.8;
+  const isEmpty         = hasCapacityData && event.booked === 0;
   const categoryVisible = hasCapacityData
     ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
         registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
@@ -1341,13 +1345,25 @@ function EventBadge({
     ? "transparent"
     : isFull
     ? EZ_RED
-    : isNearlyFull ? "#FFE109" : EZ_GREEN;
+    : isNearlyFull
+    ? "#FFE109"
+    : isEmpty
+    ? "transparent"
+    : EZ_GREEN;
   const attendanceTextColor = isWaitlisted
     ? EZ_RED
     : isFull
     ? EZ_RED_ON_COLOR
-    : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-  const attendanceBorder = isWaitlisted ? `1px solid ${EZ_RED}` : "none";
+    : isNearlyFull
+    ? "#111111"
+    : isEmpty
+    ? EZ_GREEN
+    : EZ_GREEN_ON_COLOR;
+  const attendanceBorder = isWaitlisted
+    ? `1px solid ${EZ_RED}`
+    : isEmpty
+    ? `1px solid ${EZ_GREEN}`
+    : "none";
 
   // Narrow stripe area so the buffer indicator reads as a slim accent
   // rather than crowding the badge. Padding reserves this space on BOTH
@@ -1505,7 +1521,7 @@ function EventBadge({
                   color: attendanceTextColor,
                   border: attendanceBorder,
                   borderRadius: "3px",
-                  padding: isWaitlisted ? "1px 3px" : "1px 4px",
+                  padding: (isWaitlisted || isEmpty) ? "1px 3px" : "1px 4px",
                 }
               : null),
           }}
@@ -8083,9 +8099,12 @@ function UpcomingTodayPanel({
           const statusLabel  = categoryVisible
             ? (isWaitlisted ? "WAITLIST" : isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
             : null;
-          const statusPillBg     = isWaitlisted ? "transparent" : isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
-          const statusPillText   = isWaitlisted ? EZ_RED : isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-          const statusPillBorder = isWaitlisted ? `1px solid ${EZ_RED}` : "none";
+          // Empty (0 booked) is still technically "available", but gets
+          // the same outline treatment as waitlisted so it reads as
+          // distinct from a class that already has bookings.
+          const statusPillBg     = isWaitlisted ? "transparent" : isFull ? EZ_RED : isNearlyFull ? "#FFE109" : isEmpty ? "transparent" : EZ_GREEN;
+          const statusPillText   = isWaitlisted ? EZ_RED : isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : isEmpty ? EZ_GREEN : EZ_GREEN_ON_COLOR;
+          const statusPillBorder = isWaitlisted ? `1px solid ${EZ_RED}` : isEmpty ? `1px solid ${EZ_GREEN}` : "none";
           return (
             <button
               key={event.id}
@@ -8123,7 +8142,7 @@ function UpcomingTodayPanel({
                     {event.title}
                   </span>
                   {statusLabel && (
-                    <span style={{ flexShrink: 0, boxSizing: "border-box", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: isWaitlisted ? "0px 5px" : "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText, border: statusPillBorder }}>
+                    <span style={{ flexShrink: 0, boxSizing: "border-box", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: (isWaitlisted || isEmpty) ? "0px 5px" : "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText, border: statusPillBorder }}>
                       {statusLabel}
                     </span>
                   )}
@@ -9095,9 +9114,12 @@ function DayEventsPanelContent({
           const statusLabel  = categoryVisible
             ? (isWaitlisted ? "WAITLIST" : isFull ? "FULLY BOOKED" : isNearlyFull ? "NEARLY FULL" : (isEmpty || hasCapacity) ? "AVAILABLE" : null)
             : null;
-          const statusPillBg     = isWaitlisted ? "transparent" : isFull ? EZ_RED : isNearlyFull ? "#FFE109" : EZ_GREEN;
-          const statusPillText   = isWaitlisted ? EZ_RED : isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-          const statusPillBorder = isWaitlisted ? `1px solid ${EZ_RED}` : "none";
+          // Empty (0 booked) is still technically "available", but gets
+          // the same outline treatment as waitlisted so it reads as
+          // distinct from a class that already has bookings.
+          const statusPillBg     = isWaitlisted ? "transparent" : isFull ? EZ_RED : isNearlyFull ? "#FFE109" : isEmpty ? "transparent" : EZ_GREEN;
+          const statusPillText   = isWaitlisted ? EZ_RED : isFull ? EZ_RED_ON_COLOR : isNearlyFull ? "#111111" : isEmpty ? EZ_GREEN : EZ_GREEN_ON_COLOR;
+          const statusPillBorder = isWaitlisted ? `1px solid ${EZ_RED}` : isEmpty ? `1px solid ${EZ_GREEN}` : "none";
           return (
             <button
               key={event.id}
@@ -9135,7 +9157,7 @@ function DayEventsPanelContent({
                     {event.title}
                   </span>
                   {statusLabel && (
-                    <span style={{ flexShrink: 0, boxSizing: "border-box", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: isWaitlisted ? "0px 5px" : "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText, border: statusPillBorder }}>
+                    <span style={{ flexShrink: 0, boxSizing: "border-box", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: "16px", padding: (isWaitlisted || isEmpty) ? "0px 5px" : "1px 6px", borderRadius: "4px", background: statusPillBg, color: statusPillText, border: statusPillBorder }}>
                       {statusLabel}
                     </span>
                   )}
@@ -10076,6 +10098,10 @@ function ResourcesView({
     const isFull         = hasCapacityData && event.booked >= event.capacity;
     const isWaitlisted   = isFull && !!event.waitlistEnabled;
     const isNearlyFull   = !isFull && hasCapacityData && attendancePct >= 0.8;
+    // A class with zero registrants is technically still "available", but
+    // gets its own outline treatment (below) so it reads as distinct from
+    // a class that already has some bookings.
+    const isEmpty        = hasCapacityData && event.booked === 0;
     // Preferences tab can turn this indicator off per view AND per status
     // category; when the event's own category is off, `showCapacityIndicator`
     // gates the status pill below so it doesn't render.
@@ -10087,19 +10113,31 @@ function ResourcesView({
     const showCapacityIndicator = hasCapacityData && categoryVisible;
     // Same red/yellow/green treatment as the Monthly/Weekly EventBadge time
     // chip: full = solid red, waitlisted = transparent with a red outline
-    // and red text, so fullness reads identically across every schedule
-    // view.
+    // and red text, empty = transparent with a green outline, so fullness
+    // reads identically across every schedule view.
     const statusBg       = isWaitlisted
       ? "transparent"
       : isFull
       ? EZ_RED
-      : isNearlyFull ? "#FFE109" : EZ_GREEN;
+      : isNearlyFull
+      ? "#FFE109"
+      : isEmpty
+      ? "transparent"
+      : EZ_GREEN;
     const statusColor    = isWaitlisted
       ? EZ_RED
       : isFull
       ? EZ_RED_ON_COLOR
-      : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-    const statusBorder   = isWaitlisted ? `1px solid ${EZ_RED}` : "none";
+      : isNearlyFull
+      ? "#111111"
+      : isEmpty
+      ? EZ_GREEN
+      : EZ_GREEN_ON_COLOR;
+    const statusBorder   = isWaitlisted
+      ? `1px solid ${EZ_RED}`
+      : isEmpty
+      ? `1px solid ${EZ_GREEN}`
+      : "none";
     const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
 
     return (
@@ -10214,7 +10252,7 @@ function ResourcesView({
                     fontSize: isDensityCompact ? "9px" : "10px",
                     fontWeight: 700,
                     lineHeight: isDensityCompact ? "11px" : "13px",
-                    padding: isWaitlisted ? "0px 3px" : "0px 4px",
+                    padding: (isWaitlisted || isEmpty) ? "0px 3px" : "0px 4px",
                     borderRadius: "3px",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
@@ -10649,26 +10687,43 @@ function WeeklyEventChip({
   const isFull = hasCapacityData && event.booked >= event.capacity;
   const isWaitlisted = isFull && !!event.waitlistEnabled;
   const isNearlyFull = !isFull && hasCapacityData && attendancePct >= 0.8;
+  // A class with zero registrants is technically still "available", but
+  // gets its own outline treatment (below) so it reads as distinct from
+  // a class that already has some bookings.
+  const isEmpty = hasCapacityData && event.booked === 0;
   const categoryVisible = hasCapacityData
     ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
         registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
       ]
     : false;
   const showStatusPill = hasCapacityData && categoryVisible;
-  // Waitlisted renders transparent with a red outline + red text instead
-  // of a solid fill, so it reads as distinct from "full" — same treatment
-  // as ResourcesView's status pill and Monthly's badge.
+  // Waitlisted renders transparent with a red outline + red text, empty
+  // with a green outline + green text, instead of a solid fill, so both
+  // read as distinct from "full"/"available" — same treatment as
+  // ResourcesView's status pill and Monthly's badge.
   const statusBg = isWaitlisted
     ? "transparent"
     : isFull
     ? EZ_RED
-    : isNearlyFull ? "#FFE109" : EZ_GREEN;
+    : isNearlyFull
+    ? "#FFE109"
+    : isEmpty
+    ? "transparent"
+    : EZ_GREEN;
   const statusColor = isWaitlisted
     ? EZ_RED
     : isFull
     ? EZ_RED_ON_COLOR
-    : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
-  const statusBorder = isWaitlisted ? `1px solid ${EZ_RED}` : "none";
+    : isNearlyFull
+    ? "#111111"
+    : isEmpty
+    ? EZ_GREEN
+    : EZ_GREEN_ON_COLOR;
+  const statusBorder = isWaitlisted
+    ? `1px solid ${EZ_RED}`
+    : isEmpty
+    ? `1px solid ${EZ_GREEN}`
+    : "none";
   const statusLabel = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
 
   const timeRangeLabel = getSessionTimeRangeLabel(event);
@@ -10812,7 +10867,7 @@ function WeeklyEventChip({
                 fontSize: "9px",
                 fontWeight: 700,
                 lineHeight: "13px",
-                padding: isWaitlisted ? "0 4px" : "0 5px",
+                padding: (isWaitlisted || isEmpty) ? "0 4px" : "0 5px",
                 borderRadius: "3px",
                 whiteSpace: "nowrap",
               }}
