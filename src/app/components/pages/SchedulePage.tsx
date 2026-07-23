@@ -1505,7 +1505,12 @@ function EventBadge({
             width: isCompact ? "6px" : "7px",
             height: isCompact ? "6px" : "7px",
             borderRadius: "50%",
-            background: attendanceIconColor,
+            boxSizing: "border-box",
+            // Waitlisted renders as an outline (transparent fill, colored
+            // ring) instead of a solid dot, so it reads as distinct from
+            // "full" at a glance even at this tiny size.
+            background: isWaitlisted ? "transparent" : attendanceIconColor,
+            border: isWaitlisted ? `1px solid ${attendanceIconColor}` : "none",
           }}
         />
       )}
@@ -10060,10 +10065,11 @@ function ResourcesView({
       : false;
     const showCapacityIndicator = hasCapacityData && categoryVisible;
     // Same red/yellow/green treatment as the Monthly/Weekly EventBadge time
-    // chip: full = solid red, waitlisted = translucent red (red text), so
-    // fullness reads identically across every schedule view.
+    // chip: full = solid red, waitlisted = transparent with a red outline
+    // and red text, so fullness reads identically across every schedule
+    // view.
     const statusBg       = isWaitlisted
-      ? (isDark ? "rgba(224,90,90,0.18)" : "rgba(212,24,64,0.12)")
+      ? "transparent"
       : isFull
       ? EZ_RED
       : isNearlyFull ? "#FFE109" : EZ_GREEN;
@@ -10072,6 +10078,7 @@ function ResourcesView({
       : isFull
       ? EZ_RED_ON_COLOR
       : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+    const statusBorder   = isWaitlisted ? `1px solid ${isDark ? "#e05a5a" : "#d41840"}` : "none";
     const statusLabel    = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
 
     return (
@@ -10179,12 +10186,14 @@ function ResourcesView({
                     marginLeft: "auto",
                     display: "inline-block",
                     flexShrink: 0,
+                    boxSizing: "border-box",
                     background: statusBg,
                     color: statusColor,
+                    border: statusBorder,
                     fontSize: isDensityCompact ? "9px" : "10px",
                     fontWeight: 700,
                     lineHeight: isDensityCompact ? "11px" : "13px",
-                    padding: "0px 4px",
+                    padding: isWaitlisted ? "0px 3px" : "0px 4px",
                     borderRadius: "3px",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
@@ -10625,8 +10634,11 @@ function WeeklyEventChip({
       ]
     : false;
   const showStatusPill = hasCapacityData && categoryVisible;
+  // Waitlisted renders transparent with a red outline + red text instead
+  // of a translucent red fill, so it reads as distinct from "full" — same
+  // treatment as ResourcesView's status pill and Monthly's dot.
   const statusBg = isWaitlisted
-    ? (isDark ? "rgba(224,90,90,0.18)" : "rgba(212,24,64,0.12)")
+    ? "transparent"
     : isFull
     ? EZ_RED
     : isNearlyFull ? "#FFE109" : EZ_GREEN;
@@ -10635,6 +10647,7 @@ function WeeklyEventChip({
     : isFull
     ? EZ_RED_ON_COLOR
     : isNearlyFull ? "#111111" : EZ_GREEN_ON_COLOR;
+  const statusBorder = isWaitlisted ? `1px solid ${isDark ? "#e05a5a" : "#d41840"}` : "none";
   const statusLabel = isFull ? (event.waitlistEnabled ? "Waitlist" : "Full") : isNearlyFull ? "Nearly full" : "Available";
 
   const timeRangeLabel = getSessionTimeRangeLabel(event);
@@ -10771,12 +10784,14 @@ function WeeklyEventChip({
               style={{
                 marginLeft: "auto",
                 flexShrink: 0,
+                boxSizing: "border-box",
                 background: statusBg,
                 color: statusColor,
+                border: statusBorder,
                 fontSize: "9px",
                 fontWeight: 700,
                 lineHeight: "13px",
-                padding: "0 5px",
+                padding: isWaitlisted ? "0 4px" : "0 5px",
                 borderRadius: "3px",
                 whiteSpace: "nowrap",
               }}
