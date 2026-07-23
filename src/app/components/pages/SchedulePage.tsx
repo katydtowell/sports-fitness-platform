@@ -9198,6 +9198,13 @@ function DayEventsPanelContent({
    placed in either layout.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/** Every selectable value in the Registrations filter row — used to detect
+ *  "the user has now turned every one of these on", which is equivalent to
+ *  no filter at all (the calendar already shows everything by default), so
+ *  that state resets back to the empty array instead of sitting there
+ *  fully-checked. */
+const ALL_REGISTRATION_FILTER_VALUES = ["Full", "Waitlisted", "NearlyFull", "Available", "Empty"] as const;
+
 interface CalendarFiltersContentProps {
   filterStartDate: string;
   filterEndDate: string;
@@ -9475,7 +9482,7 @@ function CalendarFiltersContent({
             const isActive = filterRegistrations.includes(value);
             const toggle = () => {
               const enabling = !isActive;
-              let next = enabling
+              let next: string[] = enabling
                 ? [...filterRegistrations, value]
                 : filterRegistrations.filter((x) => x !== value);
               // Empty classes are technically "available" too, so turning
@@ -9485,6 +9492,13 @@ function CalendarFiltersContent({
               // pull in Available.
               if (enabling && value === "Available" && !next.includes("Empty")) {
                 next = [...next, "Empty"];
+              }
+              // Every status selected is the same thing as no filter at
+              // all — the calendar already shows everything by default —
+              // so reset back to that default (all chips deselected)
+              // instead of leaving every chip sitting there checked.
+              if (ALL_REGISTRATION_FILTER_VALUES.every((v) => next.includes(v))) {
+                next = [];
               }
               setFilterRegistrations(next);
             };
