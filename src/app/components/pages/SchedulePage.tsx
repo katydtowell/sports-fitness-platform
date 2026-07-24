@@ -328,16 +328,20 @@ type ScheduleViewId = "Monthly" | "Weekly" | "Daily" | "Resources";
 
 const SCHEDULE_VIEW_IDS: ScheduleViewId[] = ["Monthly", "Weekly", "Daily", "Resources"];
 
-/** The four visual registration-status categories a session can fall into.
- *  Mirrors the Filters tab's "Registrations" options (minus "Empty", which
- *  is a filter-only concept — Empty sessions are visually just "Available"). */
-type RegistrationStatusCategory = "Available" | "NearlyFull" | "Full" | "Waitlisted";
+/** The five visual registration-status categories a session can fall into.
+ *  "Empty" used to be a filter-only concept (see the separate Registrations
+ *  filter pills / `filterRegistrations` below, which predate this list and
+ *  remain their own thing) folded visually into "Available" for display
+ *  purposes; it's now a real category here too so its outline treatment can
+ *  be shown/hidden independently, same as the other four. */
+type RegistrationStatusCategory = "Available" | "NearlyFull" | "Full" | "Waitlisted" | "Empty";
 
 const REGISTRATION_STATUS_CATEGORIES: RegistrationStatusCategory[] = [
   "Available",
   "NearlyFull",
   "Full",
   "Waitlisted",
+  "Empty",
 ];
 
 /** Display label + dot color for each category, used by the Preferences
@@ -355,9 +359,15 @@ const REGISTRATION_STATUS_CATEGORY_META: Record<
   // the same amber/orange already used for a client's "Waitlisted"
   // status pill elsewhere, so the color means the same thing everywhere.
   Waitlisted: { label: "Waitlisted",  dotLight: "#b07800",  dotDark: "#ffb432" },
+  // Green outline (same rendered-as-outline treatment as Waitlisted above,
+  // not a solid fill) — mirrors the "empty session" outline used on the
+  // calendar (EventBadge/ResourcesView/WeeklyEventChip's transparent +
+  // green-outline treatment), so an unbooked session's checkbox reads as
+  // a variant of "Available" rather than identical to it.
+  Empty:      { label: "Empty",       dotLight: EZ_GREEN,   dotDark: EZ_GREEN },
 };
 
-/** Visibility for each of the four status categories — ONE global setting
+/** Visibility for each of the five status categories — ONE global setting
  *  that applies identically to every schedule view (Monthly, Weekly,
  *  Daily, Resources, Upcoming Today, the "+N more" day panel), rather than
  *  a separate choice per view. `ViewStatusVisibility` is kept as the name
@@ -369,7 +379,7 @@ type ViewStatusVisibility = Record<RegistrationStatusCategory, boolean>;
 type RegistrationStatusPrefs = ViewStatusVisibility;
 
 function makeDefaultViewStatusVisibility(): ViewStatusVisibility {
-  return { Available: true, NearlyFull: true, Full: true, Waitlisted: true };
+  return { Available: true, NearlyFull: true, Full: true, Waitlisted: true, Empty: true };
 }
 
 const REGISTRATION_STATUS_PREFS_KEY = "ezf_schedule_registration_status_prefs";
@@ -409,11 +419,13 @@ function persistRegistrationStatusPrefs(prefs: RegistrationStatusPrefs) {
 function registrationStatusCategoryOf(
   isFull: boolean,
   isWaitlisted: boolean,
-  isNearlyFull: boolean
+  isNearlyFull: boolean,
+  isEmpty: boolean = false
 ): RegistrationStatusCategory {
   if (isWaitlisted) return "Waitlisted";
   if (isFull) return "Full";
   if (isNearlyFull) return "NearlyFull";
+  if (isEmpty) return "Empty";
   return "Available";
 }
 
@@ -1339,7 +1351,7 @@ function EventBadge({
   const isEmpty         = hasCapacityData && event.booked === 0;
   const categoryVisible = hasCapacityData
     ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
-        registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+        registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull, isEmpty)
       ]
     : false;
   const showAttendanceStatus = hasCapacityData && categoryVisible;
@@ -4823,11 +4835,20 @@ function getClientStatusCounts(event: CalendarEvent): Record<BookedClient["statu
 // palette used by ReservationDetailsPanelContent's registered-clients
 // filter pills so the Daily view's breakdown reads as the same visual
 // language rather than a one-off color set.
+//
+// Intentionally neutral/uncolored: these are registrant statuses (a
+// client's spot on a session), not the session's own attendance/capacity
+// status — that distinction matters because the Daily view was showing
+// too many competing colors at once. Color coding stays reserved for the
+// event's attendance status (Available/Nearly Full/Full/Waitlisted, via
+// meterColor/attendanceBg elsewhere) and for the red "Overdue" balance
+// badge — every registrant-status pill below shares one neutral gray.
 function getStatusPillColors(isDark: boolean): Record<BookedClient["status"], { bg: string; text: string }> {
+  const neutral = { bg: isDark ? "rgba(161,189,198,0.14)" : "rgba(62,83,91,0.08)", text: isDark ? "#a1bdc6" : "#3e535b" };
   return {
-    Booked: { bg: isDark ? "rgba(0,196,160,0.15)" : "rgba(0,160,130,0.18)", text: isDark ? "#00c4a0" : "#00876c" },
-    Waitlisted: { bg: isDark ? "rgba(255,180,50,0.15)" : "rgba(220,150,20,0.22)", text: isDark ? "#ffb432" : "#b07800" },
-    Reserved: { bg: isDark ? "rgba(120,160,200,0.15)" : "rgba(80,120,170,0.18)", text: isDark ? "#78a0c8" : "#2d6cab" },
+    Booked: neutral,
+    Waitlisted: neutral,
+    Reserved: neutral,
   };
 }
 
@@ -6057,7 +6078,7 @@ function ReservationDetailsPanelContent({
               flexShrink: 0,
             }}
           >
-            Go to EZLeagues <ExternalLink size={13} />
+            Manage on EZLeagues <ExternalLink size={13} />
           </button>
         </div>
       )}
@@ -8092,7 +8113,7 @@ function UpcomingTodayPanel({
           // reads — Upcoming Today isn't a separate view for this setting.
           const categoryVisible = hasCapacity
             ? (registrationStatusPrefs ?? makeDefaultViewStatusVisibility())[
-                registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+                registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull, isEmpty)
               ]
             : false;
           // Waitlisted now gets its own label + outline treatment instead
@@ -8548,12 +8569,13 @@ function UpcomingTodayPanel({
                 height: "8px",
                 borderRadius: "2px",
                 boxSizing: "border-box",
-                // Waitlisted renders as an outline (transparent fill,
-                // colored border) instead of a solid square, matching the
-                // outline treatment its badge gets everywhere on the
-                // calendar.
-                background: category === "Waitlisted" ? "transparent" : (isDark ? meta.dotDark : meta.dotLight),
-                border: category === "Waitlisted" ? `1px solid ${isDark ? meta.dotDark : meta.dotLight}` : "none",
+                // Waitlisted and Empty render as an outline (transparent
+                // fill, colored border) instead of a solid square, matching
+                // the outline treatment their badges get everywhere on the
+                // calendar — Empty's outline is what tells it apart from
+                // Available's solid swatch, since both use the same green.
+                background: (category === "Waitlisted" || category === "Empty") ? "transparent" : (isDark ? meta.dotDark : meta.dotLight),
+                border: (category === "Waitlisted" || category === "Empty") ? `1px solid ${isDark ? meta.dotDark : meta.dotLight}` : "none",
                 flexShrink: 0,
               }}
             />
@@ -9107,7 +9129,7 @@ function DayEventsPanelContent({
           // this setting.
           const categoryVisible = hasCapacity
             ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
-                registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+                registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull, isEmpty)
               ]
             : false;
           // Waitlisted now gets its own label + outline treatment instead
@@ -10131,7 +10153,7 @@ function ResourcesView({
     // gates the status pill below so it doesn't render.
     const categoryVisible = hasCapacityData
       ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
-          registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+          registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull, isEmpty)
         ]
       : false;
     const showCapacityIndicator = hasCapacityData && categoryVisible;
@@ -10717,7 +10739,7 @@ function WeeklyEventChip({
   const isEmpty = hasCapacityData && event.booked === 0;
   const categoryVisible = hasCapacityData
     ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
-        registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+        registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull, isEmpty)
       ]
     : false;
   const showStatusPill = hasCapacityData && categoryVisible;
@@ -11614,6 +11636,11 @@ function DailyView({
         const isWaitlisted = isFull && !!event.waitlistEnabled;
         const bookedPct = hasCapacity ? Math.min(100, (event.booked / event.capacity) * 100) : 0;
         const isNearlyFull = hasCapacity && !isFull && bookedPct >= 80;
+        // A class with zero registrants is technically still "available",
+        // but gets its own show/hide toggle in Preferences (see the
+        // registrationStatusCategoryOf call below) so it can be told apart
+        // from a class that already has bookings.
+        const isEmpty = hasCapacity && event.booked === 0;
         // Registration meter fill — same fullness palette as the Monthly/
         // Weekly time chip and the Resources view status pill (green /
         // yellow / red, translucent orange once a waitlist opens — same
@@ -11630,7 +11657,7 @@ function DailyView({
         // specific session only renders when its own category is visible.
         const showMeter = hasCapacity
           ? (statusVisibility ?? makeDefaultViewStatusVisibility())[
-              registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull)
+              registrationStatusCategoryOf(isFull, isWaitlisted, isNearlyFull, isEmpty)
             ]
           : false;
 
@@ -11662,7 +11689,11 @@ function DailyView({
           statusStyle = { ...statusStyle, background: "transparent", border: `1px solid ${isDark ? "#ffb432" : "#b07800"}`, color: isDark ? "#ffb432" : "#b07800" };
         } else if (isFull) {
           statusLabel = "Full";
-          statusStyle = { ...statusStyle, background: sc.muted, color: sc.cellBg, cursor: "default", opacity: 0.6 };
+          // Solid red, same as the Full status indicator everywhere else —
+          // still clickable (the row's onClick opens Reservation Details
+          // regardless of where on the row you click), it just can't
+          // actually book anyone since the session has no open spots.
+          statusStyle = { ...statusStyle, background: EZ_RED, color: EZ_RED_ON_COLOR, cursor: "pointer" };
         }
         // A session that's already passed is never bookable, regardless
         // of remaining capacity — takes precedence over Book/Waitlist/Full.
@@ -11744,7 +11775,36 @@ function DailyView({
                   .filter(Boolean)
                   .join(" · ")}
               </span>
-              {hasCapacity && <button style={{ ...statusStyle, flexShrink: 0 }}>{statusLabel}</button>}
+              {event.type === "league" ? (
+                // League games have no Book/Waitlist/Full state of their
+                // own — roster is managed in EZLeagues, not here — so this
+                // slot gets a shortcut straight there instead. Green outline,
+                // same treatment as an "Empty" session's outline elsewhere,
+                // and stops propagation so it doesn't also open Reservation
+                // Details underneath it.
+                <button
+                  onClick={(e) => { e.stopPropagation(); /* Hook up to EZLeagues navigation when wired. */ }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    border: `1px solid ${EZ_GREEN}`,
+                    background: "transparent",
+                    color: EZ_GREEN,
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  Manage on EZLeagues <ExternalLink size={12} />
+                </button>
+              ) : (
+                hasCapacity && <button style={{ ...statusStyle, flexShrink: 0 }}>{statusLabel}</button>
+              )}
             </div>
 
             {/* Second line — capacity bar, registration-status breakdown,
@@ -13073,6 +13133,35 @@ export function SchedulePage() {
             )}
           </div>
 
+          {/* Today — sits immediately to the right of the view selector
+              (before the "View by resource" toggle on Weekly/Daily), rather
+              than inside the arrows/date group, so it doesn't disturb that
+              group's natural width. Hidden when already on today.
+              For Resources: today = current day in current month/year.
+              For Weekly: today = current Mon→Sun week.
+              For Daily: today = current day in current month/year.
+              For Monthly/other: today = current month/year. */}
+          {!(desktopView === "Resources"
+            ? (isCurrentMonth && clampedResourcesDay === today.getDate())
+            : desktopView === "Weekly"
+            ? isCurrentWeek
+            : desktopView === "Daily"
+            ? (isCurrentMonth && clampedDailyDay === today.getDate())
+            : isCurrentMonth) && (
+            <button
+              onClick={handleGoToToday}
+              style={{
+                ...controlBtn,
+                padding: "12px 20px",
+                fontSize: "16px",
+                fontWeight: 500,
+                color: sc.body,
+              }}
+            >
+              Today
+            </button>
+          )}
+
           {/* "View by resource" toggle — only meaningful on Weekly/Daily;
               Monthly and the standalone Resources view are untouched. */}
           {(desktopView === "Weekly" || desktopView === "Daily") && (
@@ -13099,11 +13188,14 @@ export function SchedulePage() {
         </div>
 
         {/* Date picker — centered; Resources view shows a day picker,
-            all other views show the existing month/year picker.
-            Today button sits immediately to the right of the nav group. */}
-        <div style={{ justifySelf: "center", display: "flex", alignItems: "center", gap: "8px", padding: "8px" }}>
+            Weekly a week-range picker, Daily a day/range picker, and
+            Monthly a month/year picker, each flanked by its own prev/next
+            arrows. Today now lives with the view selector instead of here
+            (see the left group above), so this control is back to sizing
+            itself naturally to whatever it's showing. */}
+        <div style={{ justifySelf: "center", display: "flex", alignItems: "center", padding: "8px" }}>
           {desktopView === "Resources" ? (
-            /* ── Resources: prev-day / clickable-date / next-day / Today ── */
+            /* ── Resources: prev-day / clickable-date / next-day ── */
             <div ref={resourcesDayPickerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
               {/* Prev day */}
               <button
@@ -13386,75 +13478,85 @@ export function SchedulePage() {
               </button>
             </div>
           ) : (
-            /* ── Monthly: month/year picker ── */
-            <div ref={desktopMonthPickerRef} style={{ position: "relative" }}>
+            /* ── Monthly: prev-month / clickable month+year / next-month ── */
+            <div ref={desktopMonthPickerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
+              {/* Prev month */}
               <button
-                onClick={() => setShowDesktopMonthPicker(!showDesktopMonthPicker)}
-                aria-expanded={showDesktopMonthPicker}
+                onClick={handlePrevMonth}
+                aria-label="Previous month"
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "8px 14px",
-                  borderRadius: "8px",
-                  border: `1px solid ${showDesktopMonthPicker ? sc.brand : "transparent"}`,
-                  background: showDesktopMonthPicker
-                    ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
-                    : "transparent",
-                  fontSize: "16px",
-                  fontWeight: 600,
-                  color: sc.heading,
-                  cursor: "pointer",
-                  fontFamily: "var(--font-family)",
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
                 }}
               >
-                {MONTH_NAMES[currentMonth]} {currentYear}
-                <ChevronDown
-                  size={14}
-                  style={{
-                    transform: showDesktopMonthPicker ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.15s ease",
-                    color: sc.muted,
-                  }}
-                />
+                <ChevronLeft size={16} />
               </button>
 
-              {showDesktopMonthPicker && (
-                <MonthYearPicker
-                  currentMonth={currentMonth}
-                  currentYear={currentYear}
-                  onPick={handleDesktopPickMonth}
-                  sc={sc}
-                  isDark={isDark}
-                />
-              )}
-            </div>
-          )}
+              {/* Clickable month/year label — opens the month/year picker
+                  popover. Wrapped in its own position:relative box (rather
+                  than relying on the outer ref div) so the popover — which
+                  anchors via `left: 0` instead of centering — stays under
+                  the label itself now that prev/next arrows sit beside it. */}
+              <div style={{ position: "relative" }}>
+                <button
+                  onClick={() => setShowDesktopMonthPicker(!showDesktopMonthPicker)}
+                  aria-expanded={showDesktopMonthPicker}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    border: `1px solid ${showDesktopMonthPicker ? sc.brand : "transparent"}`,
+                    background: showDesktopMonthPicker
+                      ? (isDark ? "rgba(0,196,160,0.10)" : "rgba(0,196,160,0.06)")
+                      : "transparent",
+                    fontSize: "16px",
+                    fontWeight: 600,
+                    color: sc.heading,
+                    cursor: "pointer",
+                    fontFamily: "var(--font-family)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {MONTH_NAMES[currentMonth]} {currentYear}
+                  <ChevronDown
+                    size={14}
+                    style={{
+                      transform: showDesktopMonthPicker ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 0.15s ease",
+                      color: sc.muted,
+                    }}
+                  />
+                </button>
 
-          {/* Today — hidden when already on today.
-              For Resources: today = current day in current month/year.
-              For Weekly: today = current Mon→Sun week.
-              For Daily: today = current day in current month/year.
-              For Monthly/other: today = current month/year. */}
-          {!(desktopView === "Resources"
-            ? (isCurrentMonth && clampedResourcesDay === today.getDate())
-            : desktopView === "Weekly"
-            ? isCurrentWeek
-            : desktopView === "Daily"
-            ? (isCurrentMonth && clampedDailyDay === today.getDate())
-            : isCurrentMonth) && (
-            <button
-              onClick={handleGoToToday}
-              style={{
-                ...controlBtn,
-                padding: "8px 14px",
-                fontSize: "14px",
-                fontWeight: 500,
-                color: sc.body,
-              }}
-            >
-              Today
-            </button>
+                {showDesktopMonthPicker && (
+                  <MonthYearPicker
+                    currentMonth={currentMonth}
+                    currentYear={currentYear}
+                    onPick={handleDesktopPickMonth}
+                    sc={sc}
+                    isDark={isDark}
+                  />
+                )}
+              </div>
+
+              {/* Next month */}
+              <button
+                onClick={handleNextMonth}
+                aria-label="Next month"
+                style={{
+                  width: "32px", height: "32px", borderRadius: "8px",
+                  border: `1px solid ${sc.border}`, background: sc.controlBg,
+                  color: sc.body, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
           )}
         </div>
 
