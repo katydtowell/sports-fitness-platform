@@ -337,11 +337,11 @@ const SCHEDULE_VIEW_IDS: ScheduleViewId[] = ["Monthly", "Weekly", "Daily", "Reso
 type RegistrationStatusCategory = "Available" | "NearlyFull" | "Full" | "Waitlisted" | "Empty";
 
 const REGISTRATION_STATUS_CATEGORIES: RegistrationStatusCategory[] = [
+  "Empty",
   "Available",
   "NearlyFull",
-  "Full",
   "Waitlisted",
-  "Empty",
+  "Full",
 ];
 
 /** Display label + dot color for each category, used by the Preferences
@@ -7979,10 +7979,21 @@ function UpcomingTodayPanel({
     );
   };
   const toggleStatusCategory = (category: RegistrationStatusCategory) => {
-    setRegistrationStatusPrefs({
+    const enabling = !registrationStatusPrefs[category];
+    let next: RegistrationStatusPrefs = {
       ...registrationStatusPrefs,
-      [category]: !registrationStatusPrefs[category],
-    });
+      [category]: enabling,
+    };
+    // Empty classes are technically "available" too, so turning on the
+    // Available preference also turns on Empty by default — the user can
+    // still switch Empty back off on its own afterward. Doesn't run in
+    // reverse: turning Empty on (or Available off) doesn't touch the
+    // other. Mirrors the same rule already used by the Filters tab's
+    // Registrations pills.
+    if (enabling && category === "Available" && !next.Empty) {
+      next = { ...next, Empty: true };
+    }
+    setRegistrationStatusPrefs(next);
   };
 
   // Resource checkbox toggle helpers ──────────────────────────────────
