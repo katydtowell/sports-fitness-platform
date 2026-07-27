@@ -16,6 +16,7 @@ import { getClientById, getClientBySlug, clientSlug } from "./data/clients";
 // ── Page components ──────────────────────────────────────────────────────────
 import { AdminPage } from "./components/pages/AdminPage";
 import { PlaceholderPage } from "./components/pages/PlaceholderPage";
+import { SelfServiceClientPortalPage } from "./components/pages/SelfServiceClientPortalPage";
 import { ADMIN_SUBPAGE_ITEMS } from "./components/layout/navItems";
 import { CheckInPage } from "./components/pages/CheckInPage";
 import { ClientsPage } from "./components/pages/ClientsPage";
@@ -85,6 +86,16 @@ function AppRouter() {
 
     // Admin has subpages: /admin/billing, /admin/client-settings, etc.
     if (id === "admin") {
+      if (nav.subpage === "self-service/client-portal") {
+        return (
+          <SelfServiceClientPortalPage
+            onNavigate={(target) => {
+              if (target === "admin") nav.setActiveId("admin");
+              else nav.setSubpage("self-service");
+            }}
+          />
+        );
+      }
       if (nav.subpage) {
         const subItem = ADMIN_SUBPAGE_ITEMS.find(
           (s) => s.id === `admin/${nav.subpage}`

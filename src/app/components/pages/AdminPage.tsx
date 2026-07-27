@@ -359,7 +359,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     links: [
       { id: "self-service", label: "Kiosk Settings" },
       { id: "self-service", label: "Online Booking" },
-      { id: "self-service", label: "Client Portal" },
+      { id: "self-service/client-portal", label: "Client Portal" },
       { id: "self-service", label: "Mobile App" },
     ],
   },
