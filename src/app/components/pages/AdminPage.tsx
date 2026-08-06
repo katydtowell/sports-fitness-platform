@@ -422,7 +422,7 @@ const ACTIVITY: ActivityItem[] = [
   },
   {
     user: "Mike Johnson",
-    action: "disabled the EZLeagues module",
+    action: "disabled the Leagues module",
     time: "1 hour ago",
     color: "warning",
   },

@@ -1,5 +1,5 @@
 /**
- * Layout — shared shell for all EZFacility pages.
+ * Layout — shared shell for all SportzGym pages.
  *
  * Renders the fixed TopNav, the fixed Sidebar (desktop/tablet),
  * the optional MoreToolsDrawer, and the scrollable main content area.

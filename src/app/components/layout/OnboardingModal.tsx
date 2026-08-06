@@ -2,7 +2,7 @@
  * OnboardingModal — multi-step onboarding wizard (7 steps + completion).
  *
  * Steps:
- *   1. Welcome to EZFacility
+ *   1. Welcome to SportzGym
  *   2. Select Your Industries
  *   3. Enable Modules
  *   4. Set Up User Roles
@@ -13,6 +13,8 @@
  */
 
 import { useState } from "react";
+import logo from "../../../assets/logo.svg";
+import logoWhite from "../../../assets/logo-white.svg";
 import {
   X,
   Check,
@@ -110,7 +112,8 @@ const widgetOptions = [
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function OnboardingModal({ isOpen, onClose, onNavigate }: OnboardingModalProps) {
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDarkMode = mode === "dark";
   const [currentStep, setCurrentStep] = useState(1);
 
   // Step 2 state
@@ -196,7 +199,7 @@ export function OnboardingModal({ isOpen, onClose, onNavigate }: OnboardingModal
   // ── Step titles ──
   const stepTitle = (() => {
     switch (currentStep) {
-      case 1: return "Welcome to EZFacility";
+      case 1: return "Welcome to SportzGym";
       case 2: return "Select Your Industries";
       case 3: return "Enable Modules";
       case 4: return "Set Up User Roles";
@@ -273,7 +276,7 @@ export function OnboardingModal({ isOpen, onClose, onNavigate }: OnboardingModal
                 fontFamily: "var(--font-family)",
               }}
             >
-              Welcome to EZFacility
+              Welcome to SportzGym
             </h2>
             <p
               style={{
@@ -789,29 +792,7 @@ export function OnboardingModal({ isOpen, onClose, onNavigate }: OnboardingModal
                     background: cardBg,
                   }}
                 >
-                  <div
-                    style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "8px",
-                      background: primaryColor,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Check size={18} strokeWidth={3} style={{ color: palette.iconReversed }} />
-                  </div>
-                  <span
-                    style={{
-                      fontWeight: 700,
-                      fontSize: "16px",
-                      color: primaryColor,
-                      fontFamily: "var(--font-family)",
-                    }}
-                  >
-                    EZFacility
-                  </span>
+                  <img src={isDarkMode ? logoWhite : logo} alt="Logo" style={{ height: "24px" }} />
                 </div>
               </div>
             </div>
@@ -939,7 +920,7 @@ export function OnboardingModal({ isOpen, onClose, onNavigate }: OnboardingModal
                 marginRight: "auto",
               }}
             >
-              Your EZFacility platform is ready to use. You can always adjust
+              Your SportzGym platform is ready to use. You can always adjust
               these settings later from the Admin panel.
             </p>
             <button

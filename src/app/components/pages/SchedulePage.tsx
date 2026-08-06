@@ -10,7 +10,7 @@
  *  • "+ Add Reservation" CTA
  *  • Full dark / light mode support via ThemeContext
  *
- * Matches the Figma design: Flowbite_Calendar_EZLeagues
+ * Matches the Figma design: Flowbite_Calendar_Leagues
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
@@ -144,7 +144,7 @@ function getEventStyles(isDark: boolean): Record<ReservationType, BadgeColors> {
    LIGHT_EVENT_STYLES/DARK_EVENT_STYLES palette above unchanged. If this
    look is kept, the same accent map + contrastTextColor should replace
    the `style.bg`/`style.text` pairs in those two components too.
-   Colors are the actual EZFacility brand hues, at full saturation/
+   Colors are the actual SportzGym brand hues, at full saturation/
    opacity, rather than invented "gemstone" approximations — pink/purple
    are the brand's own pink/violet accents, turquoise is the app's
    existing containerInfo teal (#00bcc2), and HIIT's yellow is the brand
@@ -5656,7 +5656,7 @@ function ReservationDetailsPanelContent({
   const initOnlineDescription = event.type === "league" ? "League Game" : "Yoga";
   const initAllowSelfBooking = true;
   const initAllowFreeBookings = true;
-  const initShowOnEZLeagues = true;
+  const initShowOnLeagues = true;
 
   const [scheduleType, setScheduleType] = useState<"session" | "rental">(initScheduleType);
   const [recurring, setRecurring] = useState<"yes" | "no">(initRecurring);
@@ -5677,7 +5677,7 @@ function ReservationDetailsPanelContent({
   const [onlineDescription, setOnlineDescription] = useState(initOnlineDescription);
   const [allowSelfBooking, setAllowSelfBooking] = useState(initAllowSelfBooking);
   const [allowFreeBookings, setAllowFreeBookings] = useState(initAllowFreeBookings);
-  const [showOnEZLeagues, setShowOnEZLeagues] = useState(initShowOnEZLeagues);
+  const [showOnLeagues, setShowOnLeagues] = useState(initShowOnLeagues);
 
   // Track whether any field has been modified
   const hasChanges =
@@ -5700,7 +5700,7 @@ function ReservationDetailsPanelContent({
     onlineDescription !== initOnlineDescription ||
     allowSelfBooking !== initAllowSelfBooking ||
     allowFreeBookings !== initAllowFreeBookings ||
-    showOnEZLeagues !== initShowOnEZLeagues;
+    showOnLeagues !== initShowOnLeagues;
 
   // Attempt to exit editing — shows confirmation if there are unsaved changes
   const handleCancelEditing = () => {
@@ -5732,7 +5732,7 @@ function ReservationDetailsPanelContent({
     setOnlineDescription(initOnlineDescription);
     setAllowSelfBooking(initAllowSelfBooking);
     setAllowFreeBookings(initAllowFreeBookings);
-    setShowOnEZLeagues(initShowOnEZLeagues);
+    setShowOnLeagues(initShowOnLeagues);
     setShowCancelConfirm(false);
     setIsEditing(false);
   };
@@ -5954,7 +5954,7 @@ function ReservationDetailsPanelContent({
                   <input type="checkbox" checked={allowFreeBookings} onChange={(e) => setAllowFreeBookings(e.target.checked)} style={{ accentColor: palette.primary }} /> Allow free bookings
                 </label>
                 <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-                  <input type="checkbox" checked={showOnEZLeagues} onChange={(e) => setShowOnEZLeagues(e.target.checked)} style={{ accentColor: palette.primary }} /> Show on EZ Leagues
+                  <input type="checkbox" checked={showOnLeagues} onChange={(e) => setShowOnLeagues(e.target.checked)} style={{ accentColor: palette.primary }} /> Show on Leagues
                 </label>
               </div>
             </div>
@@ -6043,7 +6043,7 @@ function ReservationDetailsPanelContent({
 
       {/* ── League games — no edit / book affordances. Bar mirrors
           the availability bar's structure: contextual content on the
-          left (Trophy icon + "Managed in EZLeagues" line so the user
+          left (Trophy icon + "Managed in Leagues" line so the user
           understands why the button leads elsewhere) and the action
           button on the right. */}
       {event.type === "league" && (
@@ -6052,7 +6052,7 @@ function ReservationDetailsPanelContent({
             <Trophy size={16} style={{ color: palette.textTertiary, flexShrink: 0 }} />
             <div style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0 }}>
               <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, fontFamily: "var(--font-family)", color: palette.textPrimary, lineHeight: 1.2 }}>
-                Managed in EZLeagues
+                Managed in Leagues
               </span>
               <span style={{ fontSize: "var(--text-xs)", fontFamily: "var(--font-family)", color: palette.textTertiary, lineHeight: 1.3 }}>
                 Roster, scoring, and standings
@@ -6060,7 +6060,7 @@ function ReservationDetailsPanelContent({
             </div>
           </div>
           <button
-            onClick={() => { /* Hook up to EZLeagues navigation when wired. */ }}
+            onClick={() => { /* Hook up to Leagues navigation when wired. */ }}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -6078,7 +6078,7 @@ function ReservationDetailsPanelContent({
               flexShrink: 0,
             }}
           >
-            Manage on EZLeagues <ExternalLink size={13} />
+            Manage on Leagues <ExternalLink size={13} />
           </button>
         </div>
       )}
@@ -6233,7 +6233,7 @@ function ReservationDetailsPanelContent({
           below Additional options to match the order used in edit
           mode and Add Reservation). League games skip Additional
           options entirely — their booking rules are managed in
-          EZLeagues, not here — so only Scheduled on shows for them. */}
+          Leagues, not here — so only Scheduled on shows for them. */}
       <div style={{ height: "1px", background: palette.borderLight }} />
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {event.type !== "league" && (
@@ -6244,7 +6244,7 @@ function ReservationDetailsPanelContent({
                 onlineDescription ? `Online description: ${onlineDescription}` : null,
                 allowSelfBooking ? "Allow self booking" : null,
                 allowFreeBookings ? "Allow free bookings" : null,
-                showOnEZLeagues ? "Show on EZ Leagues" : null,
+                showOnLeagues ? "Show on Leagues" : null,
               ]
                 .filter((opt): opt is string => Boolean(opt))
                 .map((opt) => (
@@ -7069,7 +7069,7 @@ function AddReservationPanelContent() {
   const initOnlineDescription = "";
   const initAllowSelfBooking = true;
   const initAllowFreeBookings = false;
-  const initShowOnEZLeagues = false;
+  const initShowOnLeagues = false;
 
   const [scheduleType, setScheduleType] = useState<"session" | "rental">(initScheduleType);
   const [recurring, setRecurring] = useState<"yes" | "no">(initRecurring);
@@ -7092,7 +7092,7 @@ function AddReservationPanelContent() {
   const [onlineDescription, setOnlineDescription] = useState(initOnlineDescription);
   const [allowSelfBooking, setAllowSelfBooking] = useState(initAllowSelfBooking);
   const [allowFreeBookings, setAllowFreeBookings] = useState(initAllowFreeBookings);
-  const [showOnEZLeagues, setShowOnEZLeagues] = useState(initShowOnEZLeagues);
+  const [showOnLeagues, setShowOnLeagues] = useState(initShowOnLeagues);
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
 
   // Cancel-confirmation gate: only show the modal when something diverges
@@ -7118,7 +7118,7 @@ function AddReservationPanelContent() {
     onlineDescription !== initOnlineDescription ||
     allowSelfBooking !== initAllowSelfBooking ||
     allowFreeBookings !== initAllowFreeBookings ||
-    showOnEZLeagues !== initShowOnEZLeagues ||
+    showOnLeagues !== initShowOnLeagues ||
     classSize !== initClassSize ||
     allowWaitlisting !== initAllowWaitlisting ||
     notes !== initNotes;
@@ -7662,7 +7662,7 @@ function AddReservationPanelContent() {
                 <input type="checkbox" checked={allowFreeBookings} onChange={(e) => setAllowFreeBookings(e.target.checked)} style={{ accentColor: palette.primary }} /> Allow free bookings
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "var(--text-sm)", fontFamily: "var(--font-family)", color: palette.textPrimary }}>
-                <input type="checkbox" checked={showOnEZLeagues} onChange={(e) => setShowOnEZLeagues(e.target.checked)} style={{ accentColor: palette.primary }} /> Show on EZ Leagues
+                <input type="checkbox" checked={showOnLeagues} onChange={(e) => setShowOnLeagues(e.target.checked)} style={{ accentColor: palette.primary }} /> Show on Leagues
               </label>
             </div>
           </div>
@@ -11788,13 +11788,13 @@ function DailyView({
               </span>
               {event.type === "league" ? (
                 // League games have no Book/Waitlist/Full state of their
-                // own — roster is managed in EZLeagues, not here — so this
+                // own — roster is managed in Leagues, not here — so this
                 // slot gets a shortcut straight there instead. Green outline,
                 // same treatment as an "Empty" session's outline elsewhere,
                 // and stops propagation so it doesn't also open Reservation
                 // Details underneath it.
                 <button
-                  onClick={(e) => { e.stopPropagation(); /* Hook up to EZLeagues navigation when wired. */ }}
+                  onClick={(e) => { e.stopPropagation(); /* Hook up to Leagues navigation when wired. */ }}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -11811,7 +11811,7 @@ function DailyView({
                     flexShrink: 0,
                   }}
                 >
-                  Manage on EZLeagues <ExternalLink size={12} />
+                  Manage on Leagues <ExternalLink size={12} />
                 </button>
               ) : (
                 hasCapacity && <button style={{ ...statusStyle, flexShrink: 0 }}>{statusLabel}</button>

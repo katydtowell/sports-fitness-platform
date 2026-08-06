@@ -1,4 +1,4 @@
-# EZFacility Ultimate Warrior — Rollout Plan for Dev Handoff
+# SportzGym Ultimate Warrior — Rollout Plan for Dev Handoff
 
 ## Purpose
 

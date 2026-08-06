@@ -60,7 +60,7 @@ const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 2,
-    title: "EZFacility Support will be closed for the holiday.",
+    title: "SportzGym Support will be closed for the holiday.",
     body: "If you need assistance, leave a message and a representative will reach out when the office is open on 10/31/2029.",
     cta: [
       { label: "Visit the Support Portal", variant: "outline" },

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 
-/* ── EZFacility brand color rules ────────────────────────────────────────────
+/* ── SportzGym brand color rules ────────────────────────────────────────────
  *
  *  EZ_GREEN (#00BC8A) and EZ_RED (#E61848) are high-chroma brand colors.
  *  Per the style guide, labels placed on these backgrounds must always be
@@ -17,7 +17,7 @@ export const EZ_GREEN_ON_COLOR = "#111111";
 export const EZ_RED           = "#E61848";
 export const EZ_RED_ON_COLOR   = "#111111";
 
-/* ── Light / dark colour palettes from the EZFacility Style Guide ────────── */
+/* ── Light / dark colour palettes from the SportzGym Style Guide ────────── */
 
 export interface ThemePalette {
   /* surface */

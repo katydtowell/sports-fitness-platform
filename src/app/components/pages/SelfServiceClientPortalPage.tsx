@@ -14,12 +14,14 @@
  *     items they see — the functional settings from the original screen.
  *
  * The portal itself is reached two ways: a dedicated subdomain
- * (https://{subdomain}.ezfacility.com) or an <iframe> embed snippet for the
+ * (https://{subdomain}.sportzgym.com) or an <iframe> embed snippet for the
  * gym's own website — both surfaced together in the first card since
  * they're two doors to the same room.
  */
 
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import defaultLogo from "../../../assets/logo.svg";
+import defaultLogoWhite from "../../../assets/logo-white.svg";
 import {
   Globe,
   ChevronRight,
@@ -62,7 +64,7 @@ import { useIsMobile } from "../ui/use-mobile";
    ═══════════════════════════════════════════════════════════════════════ */
 
 const BRAND_SWATCHES = [
-  "#00C4A0", // EZFacility teal (default)
+  "#00C4A0", // SportzGym teal (default)
   "#0EA5E9", // sky
   "#6366F1", // indigo
   "#8B5CF6", // violet
@@ -369,7 +371,8 @@ interface SelfServiceClientPortalPageProps {
 }
 
 export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPortalPageProps) {
-  const { palette } = useTheme();
+  const { palette, mode } = useTheme();
+  const isDarkMode = mode === "dark";
   const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -409,7 +412,7 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
     buysMembership: false,
     cancels: true,
   });
-  const [notifyEmails, setNotifyEmails] = useState<string[]>(["mvidal@ezfacility.com"]);
+  const [notifyEmails, setNotifyEmails] = useState<string[]>(["mvidal@sportzgym.com"]);
   const [newEmail, setNewEmail] = useState("");
 
   // ── Portal menu ──────────────────────────────────────────────────────────
@@ -434,7 +437,7 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
   // ── Save bar ─────────────────────────────────────────────────────────────
   const [justSaved, setJustSaved] = useState(false);
 
-  const portalUrl = `${subdomain || "yourgym"}.ezfacility.com`;
+  const portalUrl = `${subdomain || "yourgym"}.sportzgym.com`;
   const embedSnippet = `<iframe\n  src="https://${portalUrl}"\n  width="100%"\n  height="800"\n  style="border:0;"\n  title="Client Portal"\n></iframe>`;
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -600,7 +603,7 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
                     }}
                   />
                   <span style={{ fontSize: "13px", color: palette.textTertiary, paddingRight: "12px" }}>
-                    .ezfacility.com
+                    .sportzgym.com
                   </span>
                 </div>
                 <button
@@ -740,9 +743,7 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
                     {logoUrl ? (
                       <img src={logoUrl} alt="Logo preview" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                     ) : (
-                      <span style={{ color: palette.primary, fontWeight: 700, fontSize: "15px", fontFamily: "var(--font-family)", whiteSpace: "nowrap" }}>
-                        EZFacility
-                      </span>
+                      <img src={isDarkMode ? defaultLogoWhite : defaultLogo} alt="Logo preview" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                     )}
                   </div>
                   <div>
@@ -1352,27 +1353,21 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
                     background: brandColor,
                   }}
                 >
-                  {logoUrl ? (
-                    <div
-                      style={{
-                        width: "26px",
-                        height: "26px",
-                        borderRadius: "6px",
-                        background: "rgba(255,255,255,0.25)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        overflow: "hidden",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    </div>
-                  ) : (
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontFamily: "var(--font-family)", flexShrink: 0 }}>
-                      EZFacility
-                    </span>
-                  )}
+                  <div
+                    style={{
+                      width: "26px",
+                      height: "26px",
+                      borderRadius: "6px",
+                      background: "rgba(255,255,255,0.25)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      overflow: "hidden",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <img src={logoUrl ?? defaultLogoWhite} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
                   <div style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>{portalUrl}</div>
                 </div>
 

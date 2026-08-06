@@ -1,4 +1,4 @@
-# EZFacility App — Style Guide
+# SportzGym App — Style Guide
 
 Living reference for UI conventions in this codebase. Consult this before building new UI; add to it whenever a new cross-cutting pattern is introduced.
 

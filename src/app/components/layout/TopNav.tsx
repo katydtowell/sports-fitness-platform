@@ -10,6 +10,8 @@ import { useTheme } from "./ThemeContext";
 import type { NavItem } from "./navTypes";
 import { HOME_ITEM, ALL_NAV_ITEMS } from "./navItems";
 import { OnboardingModal } from "./OnboardingModal";
+import logo from "../../../assets/logo.svg";
+import logoWhite from "../../../assets/logo-white.svg";
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
@@ -781,9 +783,7 @@ export function TopNav({ homeItem, pinnedItems, moreItems, activeId, onSelect }:
           /* ── Desktop / Tablet ── */
           <>
             {/* ── Left: logo ── */}
-            <span style={{ color: "var(--primary)", fontWeight: 700, fontSize: "16px", flexShrink: 0 }}>
-              EZFacility
-            </span>
+            <img src={isDarkMode ? logoWhite : logo} alt="Logo" style={{ height: "24px", flexShrink: 0 }} />
 
             {/* ── Centre: search ── */}
             <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
@@ -884,9 +884,7 @@ export function TopNav({ homeItem, pinnedItems, moreItems, activeId, onSelect }:
               borderBottom: `1px solid ${palette.borderLight}`,
               marginBottom: "4px",
             }}>
-              <span style={{ color: "var(--primary)", fontWeight: 700, fontSize: "18px", fontFamily: "var(--font-family)" }}>
-                EZFacility
-              </span>
+              <img src={isDarkMode ? logoWhite : logo} alt="Logo" style={{ height: "22px" }} />
             </div>
 
             {/* ── Fixed Home item ── */}

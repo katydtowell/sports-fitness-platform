@@ -6,7 +6,7 @@
   --text-lg: 15px;
   --text-xl: 18px;
 
-  /* ── EZFacility brand color rules ────────────────────────────────────────
+  /* ── SportzGym brand color rules ────────────────────────────────────────
    * Labels on EZ Green or EZ Red backgrounds must always be dark.
    * Use --ez-green-label / --ez-red-label for any text on these fills.
    *   ✗  background: #00BC8A + color: #ffffff

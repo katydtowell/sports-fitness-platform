@@ -19,7 +19,7 @@ interface Message {
 }
 
 const topArticles = [
-  { id: "1", title: "Getting Started with EZFacility", views: 1245, url: "#" },
+  { id: "1", title: "Getting Started with SportzGym", views: 1245, url: "#" },
   { id: "2", title: "How to Create a New Client Account", views: 1102, url: "#" },
   { id: "3", title: "Setting Up Recurring Billing", views: 987, url: "#" },
   { id: "4", title: "Managing Staff Schedules", views: 856, url: "#" },
