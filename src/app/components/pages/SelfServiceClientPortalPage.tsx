@@ -27,7 +27,6 @@ import {
   Copy,
   Check,
   Upload,
-  Image as ImageIcon,
   Smartphone,
   Monitor,
   Bell,
@@ -49,8 +48,9 @@ import {
   CalendarCheck,
   Video,
   Palette,
-  Info,
   Code2,
+  PanelRightClose,
+  PanelRightOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "../layout/ThemeContext";
@@ -73,6 +73,23 @@ const BRAND_SWATCHES = [
 ];
 
 type BackgroundStyle = "light" | "dark" | "brand";
+
+/** Width of the Live Preview rail when minimized — matches the Schedule page's right rail. */
+const MINIMIZED_RAIL_WIDTH = "52px";
+
+/** Mixes a hex color toward white by (1 - strength) — used to build a light pastel
+ *  tint of the brand color that stays legible with dark text, rather than a
+ *  low-alpha overlay that lets a dark backdrop show through. */
+function tintWithWhite(hex: string, strength: number): string {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const num = parseInt(full, 16);
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  const mix = (channel: number) => Math.round(channel * strength + 255 * (1 - strength));
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
 
 interface Capability {
   id: string;
@@ -371,6 +388,7 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
   );
   const [backgroundStyle, setBackgroundStyle] = useState<BackgroundStyle>("light");
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+  const [previewMinimized, setPreviewMinimized] = useState(false);
 
   // ── What clients can do ─────────────────────────────────────────────────
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({
@@ -472,9 +490,13 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
     boxSizing: "border-box",
   };
 
-  /* ── Preview background resolution ── */
+  /* ── Preview background resolution ──
+   * "Tinted" is a light pastel wash of the brand color — it keeps the same
+   * light cards + dark text as "Light". It must be mixed toward an actual
+   * white, not just a low-alpha brand color, since alpha alone lets the
+   * dark device-frame backdrop show through and reads as a dark surface. */
   const previewBg =
-    backgroundStyle === "dark" ? "#182023" : backgroundStyle === "brand" ? `${brandColor}14` : "#f4f7f8";
+    backgroundStyle === "dark" ? "#182023" : backgroundStyle === "brand" ? tintWithWhite(brandColor, 0.12) : "#f4f7f8";
   const previewText = backgroundStyle === "dark" ? "#dfe9ec" : "#1a2226";
   const previewSubText = backgroundStyle === "dark" ? "#a1bdc6" : "#5a6a70";
   const previewCard = backgroundStyle === "dark" ? "#243035" : "#ffffff";
@@ -527,36 +549,17 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
         </p>
       </div>
 
-      {/* ── Heads-up banner ── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          padding: "12px 16px",
-          background: `${palette.containerInfo}1f`,
-          border: `1px solid ${palette.containerInfo}55`,
-          borderRadius: "8px",
-          marginBottom: "20px",
-          fontSize: "13px",
-          color: palette.textSecondary,
-        }}
-      >
-        <Info size={16} style={{ color: palette.containerInfo, flexShrink: 0 }} />
-        Other staff will need to log out and back in for these changes to take effect.
-      </div>
-
       {/* ── Main two-column layout ── */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "1fr 380px",
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
           gap: "20px",
-          alignItems: "start",
+          alignItems: "flex-start",
         }}
       >
         {/* ═══ LEFT: settings ═══ */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: 0, flex: "1 1 0" }}>
           {/* 1. Portal status & access */}
           <Card
             icon={Globe}
@@ -721,11 +724,12 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
                 <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                   <div
                     style={{
-                      width: "56px",
-                      height: "56px",
+                      minWidth: "96px",
+                      height: "48px",
+                      padding: "0 14px",
                       borderRadius: "10px",
                       background: palette.surfaceSecondary,
-                      border: `1px dashed ${palette.borderMedium}`,
+                      border: `1px solid ${palette.borderMedium}`,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -734,36 +738,59 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
                     }}
                   >
                     {logoUrl ? (
-                      <img src={logoUrl} alt="Logo preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img src={logoUrl} alt="Logo preview" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                     ) : (
-                      <ImageIcon size={22} style={{ color: palette.textTertiary }} />
+                      <span style={{ color: palette.primary, fontWeight: 700, fontSize: "15px", fontFamily: "var(--font-family)", whiteSpace: "nowrap" }}>
+                        EZFacility
+                      </span>
                     )}
                   </div>
                   <div>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "8px 14px",
-                        background: "transparent",
-                        border: `1px solid ${palette.borderMedium}`,
-                        borderRadius: "8px",
-                        color: palette.textPrimary,
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        fontFamily: "var(--font-family)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Upload size={14} />
-                      {logoUrl ? "Replace logo" : "Upload logo"}
-                    </button>
-                    <div style={{ fontSize: "11px", color: palette.textTertiary, marginTop: "6px" }}>
-                      PNG or SVG, square works best
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "8px 14px",
+                          background: "transparent",
+                          border: `1px solid ${palette.borderMedium}`,
+                          borderRadius: "8px",
+                          color: palette.textPrimary,
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          fontFamily: "var(--font-family)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Upload size={14} />
+                        Replace Logo
+                      </button>
+                      {logoUrl && (
+                        <button
+                          onClick={() => setLogoUrl(null)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            padding: 0,
+                            color: palette.primary,
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            fontFamily: "var(--font-family)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Reset to default
+                        </button>
+                      )}
                     </div>
+                    {logoUrl && (
+                      <div style={{ fontSize: "11px", color: palette.textTertiary, marginTop: "6px" }}>
+                        Custom logo — PNG or SVG works best
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1165,12 +1192,73 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
           style={{
             position: isMobile ? "static" : "sticky",
             top: "20px",
+            width: isMobile ? "100%" : previewMinimized ? MINIMIZED_RAIL_WIDTH : "50%",
+            flexShrink: 0,
             display: "flex",
             flexDirection: "column",
             gap: "12px",
+            transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {/* Minimize / maximize toggle — same treatment as the Schedule page's right rail */}
+          {!isMobile && (
+            <button
+              onClick={() => setPreviewMinimized((v) => !v)}
+              aria-label={previewMinimized ? "Maximize live preview" : "Minimize live preview"}
+              title={previewMinimized ? "Maximize preview" : "Minimize preview"}
+              style={{
+                position: previewMinimized ? "static" : "absolute",
+                top: 0,
+                right: 0,
+                height: "32px",
+                width: MINIMIZED_RAIL_WIDTH,
+                border: `1px solid ${palette.borderMedium}`,
+                borderRadius: "6px",
+                background: palette.surfaceSecondary,
+                color: palette.textTertiary,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 5,
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = palette.primary; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = palette.textTertiary; }}
+            >
+              {previewMinimized ? <PanelRightOpen size={15} /> : <PanelRightClose size={15} />}
+            </button>
+          )}
+
+          {previewMinimized ? (
+            /* ── Minimized mini-rail ── */
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "10px",
+                paddingTop: "6px",
+              }}
+            >
+              <span
+                style={{
+                  writingMode: "vertical-rl",
+                  transform: "rotate(180deg)",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: palette.textTertiary,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  marginTop: "8px",
+                }}
+              >
+                Live Preview
+              </span>
+            </div>
+          ) : (
+            <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: "60px" }}>
             <span style={{ fontSize: "12px", fontWeight: 700, color: palette.textTertiary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
               Live preview
             </span>
@@ -1264,26 +1352,28 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
                     background: brandColor,
                   }}
                 >
-                  <div
-                    style={{
-                      width: "26px",
-                      height: "26px",
-                      borderRadius: "6px",
-                      background: "rgba(255,255,255,0.25)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      overflow: "hidden",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {logoUrl ? (
+                  {logoUrl ? (
+                    <div
+                      style={{
+                        width: "26px",
+                        height: "26px",
+                        borderRadius: "6px",
+                        background: "rgba(255,255,255,0.25)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                      }}
+                    >
                       <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      <Globe size={14} color="#ffffff" />
-                    )}
-                  </div>
-                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#ffffff" }}>{portalUrl}</div>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontFamily: "var(--font-family)", flexShrink: 0 }}>
+                      EZFacility
+                    </span>
+                  )}
+                  <div style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>{portalUrl}</div>
                 </div>
 
                 {/* Preview body */}
@@ -1371,6 +1461,8 @@ export function SelfServiceClientPortalPage({ onNavigate }: SelfServiceClientPor
           <p style={{ fontSize: "11px", color: palette.textTertiary, textAlign: "center", margin: 0 }}>
             This is a simplified preview — actual layout may vary slightly.
           </p>
+            </>
+          )}
         </div>
       </div>
 
